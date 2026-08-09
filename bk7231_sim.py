@@ -193,7 +193,7 @@ def extract_and_decrypt(data: bytes, target_name: str = "bootloader"):
     containers = []
     idx = 0
     while idx < len(data) - 4:
-        idx = data.find(b"RBL\x00", idx)
+        idx = data.find(b"\x02\x19\x9a\x01", idx)
         if idx == -1:
             break
         containers.append(idx)
@@ -215,9 +215,7 @@ def extract_and_decrypt(data: bytes, target_name: str = "bootloader"):
         size_package = unpacked[9]
             
         name = name_bytes.split(b"\x00")[0].decode("ascii", "ignore").strip()
-        print(f"DEBUG: Comparing {repr(name)} with {repr(target_name)}")
         if name == target_name:
-            # print(f"Found RBL '{name}' at {hex(idx)}. Algo: {algo}")
             mapped_address = 0x00000000 if target_name == "bootloader" else 0x00010000
             payload = data[mapped_address:mapped_address+size_package]
             
@@ -227,7 +225,6 @@ def extract_and_decrypt(data: bytes, target_name: str = "bootloader"):
                 if padding > 0:
                     payload = payload[:size_raw] + (bytes([padding]) * padding)
             else:
-                # print(f"Warning: Unsupported OTA algorithm {algo}")
                 pass
             
             # Tuya BK7231 default firmware keys: "UQ+wk6PL6txZk6F+x63rAw=="
@@ -236,7 +233,19 @@ def extract_and_decrypt(data: bytes, target_name: str = "bootloader"):
             coefs = tuple(int.from_bytes(key_bytes[i:i+4], byteorder="big") for i in range(0, 16, 4))
             cipher = BekenCodeCipher(*coefs)
             return cipher.decrypt(payload, stream_start_offset=mapped_address)
-    return None
+            
+    # If no RBL container found (e.g. raw QIO dump), fallback to raw unencrypted slice assumptions
+    print(f"Warning: '{target_name}' RBL container not found. Assuming raw payload and applying default flash decryption.")
+    
+    import base64
+    key_bytes = base64.b64decode("UQ+wk6PL6txZk6F+x63rAw==")
+    coefs = tuple(int.from_bytes(key_bytes[i:i+4], byteorder="big") for i in range(0, 16, 4))
+    cipher = BekenCodeCipher(*coefs)
+    
+    if target_name == "bootloader":
+        return cipher.decrypt(data[0:0x10000], stream_start_offset=0x00000000)
+    else:
+        return cipher.decrypt(data[0x10000:0x110000], stream_start_offset=0x00010000)
 
 # --- SIMULATOR LOGIC ---
 
