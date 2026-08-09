@@ -371,13 +371,29 @@ def main():
     ICU_GLOBAL_INT_EN = 0x00802044
 
     # Hardware state
-    state = type('', (), {})()
-    state.pending_irqs = 0
-    state.icu_int_enable = 0
-    state.icu_global_int_en = 0
-    state.uart1_int_enable = 0
-    state.uart2_int_enable = 0
-    state.insn_count = 0
+    class SimulatorState:
+        def __init__(self):
+            self.icu_int_enable = 0
+            self.icu_global_int_en = 0
+            self.pending_irqs = 0
+            self.uart1_int_enable = 0
+            self.uart2_int_enable = 0
+            self.insn_count = 0
+            self.pwm_status = 0
+            self.timer0_2_ctl = 0
+            self.timer3_5_ctl = 0
+
+    state = SimulatorState()
+
+    # Find the actual vector table (for IRQ jumps)
+    vector_base = 0x00010000
+    try:
+        val = struct.unpack("<I", mu.mem_read(vector_base, 4))[0]
+        if val == 0xFFFFFFFF or val == 0x94b5072f: # 0x94b5072f is FFFFFFFF decrypted at 0x10000
+            vector_base = 0x00011000
+    except Exception:
+        pass
+    print(f"Detected app vector table at: 0x{vector_base:08x}")
 
     def trigger_irq():
         if state.icu_global_int_en == 0:
@@ -399,7 +415,7 @@ def main():
             mu.reg_write(UC_ARM_REG_LR, pc + 4)
             
             # Jump to IRQ vector
-            mu.reg_write(UC_ARM_REG_PC, 0x00010018)
+            mu.reg_write(UC_ARM_REG_PC, 0x00000018)
         else:
             # print(f"[IRQ] Skipped because CPSR=0x{cpsr:08x}")
             pass
@@ -427,9 +443,24 @@ def main():
 
         # Every 10000 instructions, trigger a Timer/PWM interrupt if enabled
         if state.insn_count % 10000 == 0:
-            if state.icu_int_enable & (1 << 9): # PWM/Timer
-                state.pending_irqs |= (1 << 9)
-                trigger_irq()
+            if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
+                state.pwm_status |= (1 << 0) # Set bit 0 (PWM0)
+            if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
+                state.timer3_5_ctl |= (1 << 7) # Set bit 7 (BKTIMER3)
+                
+        # Update pending IRQs based on peripheral status (level triggered)
+        if state.pwm_status & 0x3F:
+            state.pending_irqs |= (1 << 9)
+        else:
+            state.pending_irqs &= ~(1 << 9)
+            
+        if (state.timer0_2_ctl & (0x7 << 7)) or (state.timer3_5_ctl & (0x7 << 7)):
+            state.pending_irqs |= (1 << 8)
+        else:
+            state.pending_irqs &= ~(1 << 8)
+            
+        if state.pending_irqs & state.icu_int_enable:
+            trigger_irq()
                 
         # Check UART interrupts
         if state.insn_count % 1000 == 0:
@@ -458,6 +489,21 @@ def main():
         if address == ICU_INT_STATUS: state.pending_irqs &= ~value # W1C
         if address == 0x00802110: state.uart1_int_enable = value
         if address == 0x00802210: state.uart2_int_enable = value
+
+        if address == 0x00802A04: # PWM_INTERRUPT_STATUS
+            w1c_mask = value & 0x3F
+            state.pwm_status = (state.pwm_status & ~0x3F) | (value & ~0x3F)
+            state.pwm_status &= ~w1c_mask
+            
+        if address == 0x00802A0C: # TIMER0_2_CTL
+            w1c_mask = value & (0x7 << 7)
+            state.timer0_2_ctl = (value & ~(0x7 << 7)) | (state.timer0_2_ctl & (0x7 << 7))
+            state.timer0_2_ctl &= ~w1c_mask
+            
+        if address == 0x00802A4C: # TIMER3_5_CTL
+            w1c_mask = value & (0x7 << 7)
+            state.timer3_5_ctl = (value & ~(0x7 << 7)) | (state.timer3_5_ctl & (0x7 << 7))
+            state.timer3_5_ctl &= ~w1c_mask
 
         if address == UART1_FIFO_PORT or address == UART2_FIFO_PORT:
             sys.__stdout__.write(chr(value))
@@ -491,6 +537,16 @@ def main():
             pass
         else:
             pass # Keep it clean
+
+        if address == 0x00802A04: # PWM_INTERRUPT_STATUS
+            mu.mem_write(address, struct.pack("<I", state.pwm_status))
+            return
+        if address == 0x00802A0C: # TIMER0_2_CTL
+            mu.mem_write(address, struct.pack("<I", state.timer0_2_ctl))
+            return
+        if address == 0x00802A4C: # TIMER3_5_CTL
+            mu.mem_write(address, struct.pack("<I", state.timer3_5_ctl))
+            return
 
         if address == 0x00802c00:
             # Bit 8 must be 0 (clears busy flag)
@@ -580,7 +636,7 @@ def main():
     mu.hook_add(UC_HOOK_INTR, hook_intr)
 
     # Force starting from app to skip bootloader rabbit hole
-    base_addr = 0x00010000
+    base_addr = vector_base
     print("App header:", app[:32].hex())
     
     # Run indefinitely (or until crash)
