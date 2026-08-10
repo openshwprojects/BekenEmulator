@@ -3,7 +3,7 @@ set SIM_SCRIPT=%~dp0bk7231_sim.py
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
-    set TARGET_FILE=%~dp0references\FlashDumps\IoT\BK7231T\BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin
+    set "TARGET_FILE=%~dp0references\FlashDumps\IoT\BK7231T\BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"
 )
 
 echo Running simulator (Verbose) for: %TARGET_FILE%
