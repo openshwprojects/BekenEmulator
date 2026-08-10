@@ -1,0 +1,14 @@
+It has added a snippet after:
+	HAL_FlashVars_IncreaseBootCount();
+Namely:
+    int a = 123;
+	ADDLOGF_INFO("integer test");
+	ADDLOGF_INFO("a = %i", a);
+	float x = 3.14;
+	float y = 1.86;
+	float z = x + y;
+	
+	ADDLOGF_INFO("float test");
+	ADDLOGF_INFO("x = %f", x);
+	ADDLOGF_INFO("y = %f", y);
+	ADDLOGF_INFO("x + y = %f", z);
