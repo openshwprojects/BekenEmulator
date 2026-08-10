@@ -1,0 +1,94 @@
+
+Early experiments with BK7231 emulation with Capstone
+
+Beken chips have been around for quite some time now, but there isn't any Beken emulator that I am aware of. We have our [url=https://github.com/openshwprojects/obkSimulator]OBK Simulator[/url], but it's basically a Windows/Linux port of OBK firmware, and not the true emulator which tries to mimic Beken chip by running their instructions at hardware level. However, as I've recently shown with [url=https://www.elektroda.com/rtvforum/topic4161641.html]ALI M3801[/url], it's relatively simple to get a basic control flow running with capstone in Python. In this topic, I will show a basic preview of my Beken simulator - just proof of concept, not functional yet.
+
+
+
+
+First test - BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06:
+
+
+[code]
+Running simulator (UART Only) for: W:\GIT\BekenSimulator\references\FlashDumps\IoT\BK7231T\BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin
+prvHeapInit-start addr:0x4203d0, size:130096
+[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...
+[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback
+[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1
+[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2
+[01-01 18:12:15 TUYA Err][uf_flash_file_app.c:411] uf_get_size err,filepath:log_seq_stat,ret:4
+[01-01 18:12:15 TUYA Err][uf_flash_file_app.c:266] uf_open log_seq_stat err 4
+[01-01 18:12:15 TUYA Err][log_seq.c:701] log stats open fail.
+[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success
+[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1
+[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935
+[01-01 18:12:15 TUYA Debug][tuya_bt_sdk.c:89] ty bt cmmod register finish 1
+[01-01 18:12:15 TUYA Debug][tuya_ble_api.c:301] ble sdk inited
+!!!!!!!!!!tuya_bt_port_init
+No TLV header found in flash
+No TLV header found in flash
+[01-01 18:12:15 TUYA Debug][tuya_ble_api.c:337] ble sdk re_inited
+[01-01 18:12:15 TUYA Notice][tuya_bt_sdk.c:130] ty bt sdk init success finish
+[01-01 18:12:15 TUYA Notice][light_system.c:2196] go to pre device!
+[01-01 18:12:15 TUYA Err][uf_flash_file_app.c:266] uf_open oem_cfg err 4
+[01-01 18:12:15 TUYA Err][soc_flash.c:196] uf file can't open and read data!
+[01-01 18:12:15 TUYA Err][user_flash.c:154] oem cfg data read error!
+[01-01 18:12:15 TUYA Err][device_config_load.c:444] oem data ERROR
+[01-01 18:12:15 TUYA Notice][light_init.c:38] oem cfg load error!
+[01-01 18:12:15 TUYA Err][light_init.c:241] Light hardware init error!
+[01-01 18:12:15 TUYA Notice][light_system.c:2199] Fast boot error!
+[01-01 18:12:15 TUYA Notice][simple_flash.c:432] key_addr: 0x1ee000   block_sz 4096
+[01-01 18:12:15 TUYA Err][simple_flash.c:452] key data is not matched magic(0x3a2d3e45),crc32(0xe2d8782c)
+[01-01 18:12:15 TUYA Notice][simple_flash.c:486] init key:
+0xcb 0x4e 0x3e 0xa4 0x0 0x30 0x9d 0xab 0x65 0x6d 0x8d 0xbf 0xe4 0xb9 0x3f 0x35
+[01-01 18:12:15 TUYA Err][simple_flash.c:691] user area read != write! 6
+[01-01 18:12:15 TUYA Err][tuya_ws_db.c:442] db init fails -1
+[01-01 18:12:15 TUYA Err][tuya_iot_com_api.c:311] db init fails -1
+[01-01 18:12:15 TUYA Notice][tuya_main.c:311] **********[oem_bk7231s_light_ty] [2.9.6] compiled at Oct 29 2020 14:38:00**********
+No TLV header found in flash
+No TLV header found in flash
+[bk]tx_txdesc_flush
+[rx_iq]rx_amp_err_rd: 0xffffffe8
+[rx_iq]rx_phase_err_rd: 0xffffffcb
+[rx_iq]rx_ty2_rd: 0x001
+*********** finally result **********
+gtx_dcorMod            : 0x8
+gtx_dcorPA             : 0xa
+gtx_pre_gain           : 0xe
+gtx_i_dc_comp          : 0x241
+gtx_q_dc_comp          : 0x241
+gtx_i_gain_comp        : 0x3ff
+gtx_q_gain_comp        : 0x3ff
+gtx_ifilter_corner over: 0x3d
+gtx_qfilter_corner over: 0x3d
+gtx_phase_comp         : 0x2ff
+gtx_phase_ty2          : 0x221
+gbias_after_cal        : 0x2
+gav_tssi               : 0x2
+g_rx_dc_gain_tab 0 over: 0x1ff01ff
+g_rx_dc_gain_tab 1 over: 0x1ff01ff
+g_rx_dc_gain_tab 2 over: 0x1ff01ff
+g_rx_dc_gain_tab 3 over: 0x1ff01ff
+g_rx_dc_gain_tab 4 over: 0x1ff01ff
+g_rx_dc_gain_tab 5 over: 0x1ff01ff
+g_rx_dc_gain_tab 6 over: 0x1ff01ff
+g_rx_dc_gain_tab 7 over: 0x1ff01ff
+grx_amp_err_wr         : 0x20c
+grx_phase_err_wr       : 0x3e6
+**************************************
+NO TXID found in flash, use def temp:280
+temp in flash is:280
+NO TXID found in flash, use lpf i&q:61, 61
+NO TXID found in flash, use def xtal:25
+xtal in flash is:25
+-----pwr_gain:12, g_idx:12, shift_b:0, shift_g:0
+-----[pwr_gain]12
+Initializing TCP/IP stack
+[/code]
+
+
+Second test - OOBK 1.18.300:
+[code]
+
+[/code]
+
