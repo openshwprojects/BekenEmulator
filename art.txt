@@ -3,12 +3,10 @@ Early experiments with BK7231 emulation with Capstone
 
 Beken chips have been around for quite some time now, but there isn't any Beken emulator that I am aware of. We have our [url=https://github.com/openshwprojects/obkSimulator]OBK Simulator[/url], but it's basically a Windows/Linux port of OBK firmware, and not the true emulator which tries to mimic Beken chip by running their instructions at hardware level. However, as I've recently shown with [url=https://www.elektroda.com/rtvforum/topic4161641.html]ALI M3801[/url], it's relatively simple to get a basic control flow running with capstone in Python. In this topic, I will show a basic preview of my Beken simulator - just proof of concept, not functional yet.
 
-
+So, the basic idea is to use existing Python libraries XCVXCVXCXVCVX. They should work, because Beken is 
 
 
 First test - BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06:
-
-
 [code]
 Running simulator (UART Only) for: W:\GIT\BekenSimulator\references\FlashDumps\IoT\BK7231T\BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin
 prvHeapInit-start addr:0x4203d0, size:130096
@@ -89,6 +87,83 @@ Initializing TCP/IP stack
 
 Second test - OOBK 1.18.300:
 [code]
-
+Running simulator (UART Only) for: W:\GIT\BekenSimulator\firmwares\OpenBK7231T_QIO_1.18.300.bin
+prvHeapInit-start addr:0x41f390, size:134256
+OpenBK7231T, version 1.18.300
+Entering initLog()...
+Commands registered!
+initLog() done!
+Info:MAIN:Main_Init_Before_Delay
+Main_Init_Before_Delay
+Warn:CFG:CFG_InitAndLoad: Config crc or ident mismatch. Default config will be loaded.
+No TLV header found in flash
+No TLV header found in flash
+Info:CFG:CFG_SetDefaultLEDCorrectionTable: setting defaults
+Info:NTP:CLOCK driver initialized.
+Error:CMD:lfs is absent
+Info:GEN:PIN_SetupPins pins have been set up.
+Info:MAIN:Main_Init_Before_Delay done
+Main_Init_Before_Delay done
+Info:MAIN:Main_Init_Delay
+Main_Init_Delay
+No TLV header found in flash
+No TLV header found in flash
+[bk]tx_txdesc_flush
+[rx_iq]rx_amp_err_rd: 0xffffffe8
+[rx_iq]rx_phase_err_rd: 0xffffffcb
+[rx_iq]rx_ty2_rd: 0x001
+*********** finally result **********
+gtx_dcorMod            : 0x8
+gtx_dcorPA             : 0xa
+gtx_pre_gain           : 0xe
+gtx_i_dc_comp          : 0x241
+gtx_q_dc_comp          : 0x241
+gtx_i_gain_comp        : 0x3ff
+gtx_q_gain_comp        : 0x3ff
+gtx_ifilter_corner over: 0x3d
+gtx_qfilter_corner over: 0x3d
+gtx_phase_comp         : 0x2ff
+gtx_phase_ty2          : 0x221
+gbias_after_cal        : 0x2
+gav_tssi               : 0x2
+g_rx_dc_gain_tab 0 over: 0x1ff01ff
+g_rx_dc_gain_tab 1 over: 0x1ff01ff
+g_rx_dc_gain_tab 2 over: 0x1ff01ff
+g_rx_dc_gain_tab 3 over: 0x1ff01ff
+g_rx_dc_gain_tab 4 over: 0x1ff01ff
+g_rx_dc_gain_tab 5 over: 0x1ff01ff
+g_rx_dc_gain_tab 6 over: 0x1ff01ff
+g_rx_dc_gain_tab 7 over: 0x1ff01ff
+grx_amp_err_wr         : 0x20c
+grx_phase_err_wr       : 0x3e6
+**************************************
+NO TXID found in flash, use def temp:280
+temp in flash is:280
+NO TXID found in flash, use lpf i&q:61, 61
+NO TXID found in flash, use def xtal:25
+xtal in flash is:25
+-----pwr_gain:12, g_idx:12, shift_b:0, shift_g:0
+-----[pwr_gain]12
+Initializing TCP/IP stack
+Info:MAIN:Main_Init_Delay done
+Main_Init_Delay done
+Info:MAIN:Main_Init_After_Delay
+Info:MAIN:Using SSID []
+Info:MAIN:Using Pass []
+Error:HTTP:Created HTTP SV thread with (stack=2048)
+Info:MQTT:MQTT_RegisterCallback called for bT obk8C000000/ subT obk8C000000/+/set
+Info:MQTT:MQTT_RegisterCallback called for bT bekens_t/ subT bekens_t/+/set
+Info:MQTT:MQTT_RegisterCallback called for bT cmnd/obk8C000000/ subT cmnd/obk8C000000/+
+Info:MQTT:MQTT_RegisterCallback called for bT cmnd/bekens_t/ subT cmnd/bekens_t/+
+Info:MQTT:MQTT_RegisterCallback called for bT obk8C000000/ subT obk8C000000/+/get
+Info:MQTT:MQTT_RegisterCallback called for bT homeassistant/ subT homeassistant/+
+Info:CMD:CMD_StartScript: started @startup at the beginning
+Error:CMD:LFS_ReadFile: lfs is absent
+Info:CMD:CMD_StartScript: failed to get file autoexec.bat
+Info:MAIN:Main_Init_After_Delay done
 [/code]
+
+
+
+Bootloader test - one of Woox:
 

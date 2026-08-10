@@ -11,6 +11,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="BK7231T Emulator")
     parser.add_argument("dump_file", help="Path to the raw BK7231T flash dump")
     parser.add_argument("--only-uart", action="store_true", help="Only print UART output (suppress MMIO/Trace/Info logs)")
+    parser.add_argument("--with-boot", action="store_true", help="Start execution from bootloader (0x00000000) instead of app (0x10000)")
     return parser.parse_args()
 
 ARGS = parse_args()
@@ -386,14 +387,18 @@ def main():
     state = SimulatorState()
 
     # Find the actual vector table (for IRQ jumps)
-    vector_base = 0x00010000
-    try:
-        val = struct.unpack("<I", mu.mem_read(vector_base, 4))[0]
-        if val == 0xFFFFFFFF or val == 0x94b5072f: # 0x94b5072f is FFFFFFFF decrypted at 0x10000
-            vector_base = 0x00011000
-    except Exception:
-        pass
-    print(f"Detected app vector table at: 0x{vector_base:08x}")
+    if ARGS.with_boot:
+        vector_base = 0x00000000
+        print(f"Booting from bootloader at: 0x{vector_base:08x}")
+    else:
+        vector_base = 0x00010000
+        try:
+            val = struct.unpack("<I", mu.mem_read(vector_base, 4))[0]
+            if val == 0xFFFFFFFF or val == 0x94b5072f: # 0x94b5072f is FFFFFFFF decrypted at 0x10000
+                vector_base = 0x00011000
+        except Exception:
+            pass
+        print(f"Detected app vector table at: 0x{vector_base:08x}")
 
     def trigger_irq():
         if state.icu_global_int_en == 0:
