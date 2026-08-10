@@ -1,6 +1,7 @@
 import sys
 import struct
 import io
+import time
 from unicorn import *
 from unicorn.arm_const import *
 
@@ -303,6 +304,7 @@ class BekenEmulator:
             self._print("App header:", self.app[:32].hex())
         
         self._print(f"Starting emulation at 0x{vector_base:08x}...")
+        start_time = time.time()
         try:
             self.mu.emu_start(vector_base, 0xFFFFFFFF, count=500000000)
         except UcError as e:
@@ -318,5 +320,7 @@ class BekenEmulator:
 
         pc = self.mu.reg_read(UC_ARM_REG_PC)
         cpsr = self.mu.reg_read(UC_ARM_REG_CPSR)
+        elapsed = time.time() - start_time
         print(f"Emulation finished. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x} (T-bit: {(cpsr & 0x20) >> 5})", flush=True)
+        print(f"Time taken: {elapsed:.2f} seconds.")
         print("\nDone.")
