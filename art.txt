@@ -202,6 +202,26 @@ I've also went futher and decided to try testing some math operations. Integer, 
 	ADDLOGF_INFO("y = %f", y);
 	ADDLOGF_INFO("x + y = %f", z);
 [/syntax]
+It runs just fine and prints expected output:
+[code]
+Running simulator (UART Only) for: W:\GIT\BekenSimulator\firmwares\OpenBK7231T_QIO_1.18.300_mathDemo.bin
+prvHeapInit-start addr:0x41f390, size:134256
+OpenBK7231T, version 2178_merge_f1fd73da79fc
+Entering initLog()...
+Commands registered!
+initLog() done!
+Info:MAIN:Main_Init_Before_Delay
+Main_Init_Before_Delay
+Info:MAIN:integer test
+Info:MAIN:a = 123
+Info:MAIN:float test
+Info:MAIN:x = 3.140000
+Info:MAIN:y = 1.860000
+Info:MAIN:x + y = 5.000000
+Warn:CFG:CFG_InitAndLoad: Config crc or ident mismatch. Default config will be loaded.
+[/code]
+thus proving that.
 
 
+So, summing up, basic emulation of BK7231 is entirely feasibly and brings a promising sdfsdfsdsfd
 
