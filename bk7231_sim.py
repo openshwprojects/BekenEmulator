@@ -367,7 +367,7 @@ def main():
     # ICU Registers
     ICU_INT_STATUS = 0x0080204c
     ICU_INT_RAW_STATUS = 0x00802048
-    ICU_INT_ENABLE = 0x00802040
+    ICU_INT_ENABLE = 0x00802050
     ICU_GLOBAL_INT_EN = 0x00802044
 
     # Hardware state
@@ -402,7 +402,12 @@ def main():
         cpsr = mu.reg_read(UC_ARM_REG_CPSR)
         if (cpsr & 0x80) == 0:  # I bit is clear (IRQs enabled)
             pc = mu.reg_read(UC_ARM_REG_PC)
-            print(f"[IRQ] Injecting IRQ! PC=0x{pc:08x}, CPSR=0x{cpsr:08x}, Pending=0x{state.pending_irqs:08x}")
+            try:
+                import struct
+                mask = struct.unpack('<I', mu.mem_read(0x404234, 4))[0]
+                print(f"[IRQ] Injecting IRQ! PC=0x{pc:08x}, CPSR=0x{cpsr:08x}, Pending=0x{state.pending_irqs:08x}, MASK=0x{mask:08x}")
+            except:
+                print(f"[IRQ] Injecting IRQ! PC=0x{pc:08x}, CPSR=0x{cpsr:08x}, Pending=0x{state.pending_irqs:08x}")
             
             # Switch to IRQ mode (0x12), disable IRQs (0x80), clear Thumb bit (0x20)
             new_cpsr = (cpsr & ~0x3F) | 0x92
@@ -437,10 +442,7 @@ def main():
 
     def hook_code(mu, address, size, user_data):
         state.insn_count += 1
-
-        if state.insn_count % 100000 == 0:
-            print(f"[TRACE] Executing at PC=0x{address:08x}, icu_global_int_en={state.icu_global_int_en}")
-
+        
         # Every 10000 instructions, trigger a Timer/PWM interrupt if enabled
         if state.insn_count % 10000 == 0:
             if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
@@ -484,7 +486,9 @@ def main():
         if address not in [UART1_FIFO_STATUS, UART2_FIFO_STATUS, SARADC_ADC_CONFIG, 0x00802c00, 0x00802c04]:
             pass #print(f"[MMIO] Write 0x{value:08x} to 0x{address:08x}")
 
-        if address == ICU_INT_ENABLE: state.icu_int_enable = value
+        if address == ICU_INT_ENABLE:
+            state.icu_int_enable = value
+            print(f"[DEBUG] ICU_INT_ENABLE set to: 0x{value:08x}", flush=True)
         if address == ICU_GLOBAL_INT_EN: state.icu_global_int_en = value
         if address == ICU_INT_STATUS: state.pending_irqs &= ~value # W1C
         if address == 0x00802110: state.uart1_int_enable = value
@@ -631,6 +635,8 @@ def main():
 
     mu.hook_add(UC_HOOK_MEM_WRITE, hook_mem_write_mmio, begin=MMIO_BASE, end=MMIO_BASE + MMIO_SIZE)
     mu.hook_add(UC_HOOK_MEM_READ, hook_mem_read_mmio, begin=MMIO_BASE, end=MMIO_BASE + MMIO_SIZE)
+    mu.hook_add(UC_HOOK_MEM_WRITE, hook_mem_write_mmio, begin=PERIPH_BASE, end=PERIPH_BASE + PERIPH_SIZE)
+    mu.hook_add(UC_HOOK_MEM_READ, hook_mem_read_mmio, begin=PERIPH_BASE, end=PERIPH_BASE + PERIPH_SIZE)
     mu.hook_add(UC_HOOK_MEM_UNMAPPED, hook_unmapped)
     mu.hook_add(UC_HOOK_CODE, hook_code)
     mu.hook_add(UC_HOOK_INTR, hook_intr)
@@ -645,7 +651,7 @@ def main():
         from unicorn.arm_const import UC_ARM_REG_PC, UC_ARM_REG_CPSR
         from unicorn import UcError
         # Run for a limited number of instructions to avoid infinite hang
-        mu.emu_start(base_addr, 0xFFFFFFFF, count=20000000)
+        mu.emu_start(base_addr, 0xFFFFFFFF, count=200000000)
     except UcError as e:
         pc = mu.reg_read(UC_ARM_REG_PC)
         cpsr = mu.reg_read(UC_ARM_REG_CPSR)
@@ -659,7 +665,7 @@ def main():
 
     pc = mu.reg_read(UC_ARM_REG_PC)
     cpsr = mu.reg_read(UC_ARM_REG_CPSR)
-    print(f"Emulation finished. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x} (T-bit: {(cpsr & 0x20) >> 5})")
+    print(f"Emulation finished. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x} (T-bit: {(cpsr & 0x20) >> 5})", flush=True)
     print("\nDone.")
 
 if __name__ == "__main__":
