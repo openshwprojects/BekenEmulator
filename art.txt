@@ -3,8 +3,7 @@ Early experiments with BK7231 emulation with Capstone
 
 Beken chips have been around for quite some time now, but there isn't any Beken emulator that I am aware of. We have our [url=https://github.com/openshwprojects/obkSimulator]OBK Simulator[/url], but it's basically a Windows/Linux port of OBK firmware, and not the true emulator which tries to mimic Beken chip by running their instructions at hardware level. However, as I've recently shown with [url=https://www.elektroda.com/rtvforum/topic4161641.html]ALI M3801[/url], it's relatively simple to get a basic control flow running with capstone in Python. In this topic, I will show a basic preview of my Beken simulator - just proof of concept, not functional yet.
 
-So, the basic idea is to use existing Python libraries XCVXCVXCXVCVX. They should work, because Beken is 
-
+So, the basic idea is to use existing Python libraries XCVXCVXCXVCVX. They should work, because Beken is cxvcxvxcvc, sdfdsfsd, However, cxvxv cxv cxvcx cx.
 
 First test - BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06:
 [code]
@@ -165,5 +164,44 @@ Info:MAIN:Main_Init_After_Delay done
 
 
 
-Bootloader test - one of Woox:
+Test with bootloader - one of Woox:
+[code]
+Running simulator (UART Only) for: W:\GIT\BekenSimulator\references\FlashDumps\IoT\BK7231T\BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin
+
+V:BK7231S_1.0.5
+CPSR:400001D3
+R0:00000000
+R1:00000000
+R2:00000000
+R3:00000000
+R4:00000000
+R13:00000000
+R14(LR):00000000
+ST:00000000
+J 0x10000
+prvHeapInit-start addr:0x4203d0, size:130096
+[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...
+[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback
+[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1
+[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2
+[01-01 18:12:15 TUYA Err][uf_flash_file_app.c:411] uf_get_size err,filepath:log_seq_stat,ret:4
+[01-01 18:12:15 TUYA Err][uf_flash_file_app.c:266] uf_open log_se
+[/code]
+
+I've also went futher and decided to try testing some math operations. Integer, and floating points. I've added following snippet to Main_Init_Before_Delay:
+[syntax=c]
+    int a = 123;
+	ADDLOGF_INFO("integer test");
+	ADDLOGF_INFO("a = %i", a);
+	float x = 3.14;
+	float y = 1.86;
+	float z = x + y;
+	
+	ADDLOGF_INFO("float test");
+	ADDLOGF_INFO("x = %f", x);
+	ADDLOGF_INFO("y = %f", y);
+	ADDLOGF_INFO("x + y = %f", z);
+[/syntax]
+
+
 
