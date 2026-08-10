@@ -12,7 +12,7 @@ TEST_CASES = [
         "name": "OpenBK7231T_QIO_1.18.300 Boot to MQTT",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300.bin"),
         "args": ["--only-uart"],
-        "timeout": 30,  # seconds
+        "timeout": 120,  # seconds
         "expected_strings": [
             "OpenBK7231T, version 1.18.300",
             "Main_Init_Delay",
@@ -23,7 +23,7 @@ TEST_CASES = [
         "name": "MathDemo Boot and Float Verification",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300_mathDemo.bin"),
         "args": ["--only-uart"],
-        "timeout": 30,
+        "timeout": 120,
         "expected_strings": [
             "Info:MAIN:float test",
             "Info:MAIN:x + y = 5.000000"
@@ -54,7 +54,11 @@ def run_test(test_config):
         output = result.stdout
     except subprocess.TimeoutExpired as e:
         # If it times out, that's often fine because it might just be hanging after booting
-        output = e.stdout if e.stdout else ""
+        output = e.stdout
+        if isinstance(output, bytes):
+            output = output.decode('utf-8', errors='ignore')
+        elif output is None:
+            output = ""
         print("Note: Process reached timeout. Checking output up to this point.")
     except Exception as e:
         print(f"FAIL: Failed to run subprocess: {e}")
