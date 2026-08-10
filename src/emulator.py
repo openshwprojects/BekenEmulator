@@ -308,15 +308,15 @@ class BekenEmulator:
         except UcError as e:
             pc = self.mu.reg_read(UC_ARM_REG_PC)
             cpsr = self.mu.reg_read(UC_ARM_REG_CPSR)
-            self._print(f"Emulation finished with error: {e}. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x}")
+            print(f"\n[!] Emulation finished with error: {e}. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x}")
         except Exception as e:
             pc = self.mu.reg_read(UC_ARM_REG_PC)
             cpsr = self.mu.reg_read(UC_ARM_REG_CPSR)
-            self._print(f"Emulation finished with python error: {e}. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x}")
+            print(f"\n[!] Emulation finished with python error: {e}. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x}")
         except KeyboardInterrupt:
-            self._print("\nEmulation stopped by user.")
+            print("\nEmulation stopped by user.")
 
         pc = self.mu.reg_read(UC_ARM_REG_PC)
         cpsr = self.mu.reg_read(UC_ARM_REG_CPSR)
-        self._print(f"Emulation finished. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x} (T-bit: {(cpsr & 0x20) >> 5})", flush=True)
-        self._print("\nDone.")
+        print(f"Emulation finished. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x} (T-bit: {(cpsr & 0x20) >> 5})", flush=True)
+        print("\nDone.")
