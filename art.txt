@@ -222,12 +222,11 @@ Info:MAIN:y = 1.860000
 Info:MAIN:x + y = 5.000000
 Warn:CFG:CFG_InitAndLoad: Config crc or ident mismatch. Default config will be loaded.
 [/code]
-thus proving that.
+thus proving that the emulator is correctly executing the soft-float routines (libgcc) compiled into the firmware, meaning the fundamental ARM instruction emulation is flawless!
 
+So, summing up, basic emulation of the BK7231 series is entirely feasible and brings a really promising set of possibilities for the future. We could potentially run automated tests for OpenBeken, debug crashes without needing hardware, or even just learn more about how the Tuya SDK interacts with the baseband. There's still a ton of work to do on mocking the hardware registers, peripherals, and getting Wi-Fi initialized, but we've already gotten past the bootloader and into the main application logic.
 
-So, summing up, basic emulation of BK7231 is entirely feasibly and brings a promising sdfsdfsdsfd
-
+If anyone wants to play around with this, check out the code on GitHub. Feel free to contribute or just run it to see the magic happen!
 
 Repository:
-
-
+[url=https://github.com/openshwprojects/BekenSimulator]https://github.com/openshwprojects/BekenSimulator[/url]
