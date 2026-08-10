@@ -385,17 +385,14 @@ def main():
 
     state = SimulatorState()
 
-    if app:
-        # Detect actual app vector table start (sometimes 0x11000, sometimes 0x10000)
-        # Search for Reset + Undef vector
-        app_header = app[:8]
-        if app_header == b"\x0e\x00\x00\xea\x14\xf0\x9f\xe5":
-            vector_base = 0x00010000
-        else:
+    # Find the actual vector table (for IRQ jumps)
+    vector_base = 0x00010000
+    try:
+        val = struct.unpack("<I", mu.mem_read(vector_base, 4))[0]
+        if val == 0xFFFFFFFF or val == 0x94b5072f: # 0x94b5072f is FFFFFFFF decrypted at 0x10000
             vector_base = 0x00011000
-    else:
-        vector_base = 0x00010000
-    
+    except Exception:
+        pass
     print(f"Detected app vector table at: 0x{vector_base:08x}")
 
     def trigger_irq():
@@ -417,15 +414,14 @@ def main():
             mu.reg_write(UC_ARM_REG_SPSR, cpsr)
             mu.reg_write(UC_ARM_REG_LR, pc + 4)
             
-            # Jump to IRQ vector in RAM
-            mu.reg_write(UC_ARM_REG_PC, 0x00400018)
+            # Jump to IRQ vector
+            mu.reg_write(UC_ARM_REG_PC, 0x00000018)
         else:
             # print(f"[IRQ] Skipped because CPSR=0x{cpsr:08x}")
             pass
 
     def hook_intr(mu, intno, user_data):
         pc = mu.reg_read(UC_ARM_REG_PC)
-        print(f"[EXCP] intno={intno} at PC=0x{pc:08x}")
         if intno == 2: # EXCP_SWI
             cpsr = mu.reg_read(UC_ARM_REG_CPSR)
             # Change mode to SVC (0x13), disable IRQ (0x80)
@@ -435,117 +431,192 @@ def main():
             # Now SPSR and LR map to SPSR_svc and LR_svc
             mu.reg_write(UC_ARM_REG_SPSR, cpsr)
             mu.reg_write(UC_ARM_REG_LR, pc)
-            mu.reg_write(UC_ARM_REG_PC, 0x00400008)
+            
+            # Jump to SWI vector
+            mu.reg_write(UC_ARM_REG_PC, 0x00000008)
 
+    def hook_code(mu, address, size, user_data):
+        state.insn_count += 1
+
+        if state.insn_count % 100000 == 0:
+            print(f"[TRACE] Executing at PC=0x{address:08x}, icu_global_int_en={state.icu_global_int_en}")
+
+        # Every 10000 instructions, trigger a Timer/PWM interrupt if enabled
+        if state.insn_count % 10000 == 0:
+            if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
+                state.pwm_status |= (1 << 0) # Set bit 0 (PWM0)
+            if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
+                state.timer3_5_ctl |= (1 << 7) # Set bit 7 (BKTIMER3)
+                
+        # Update pending IRQs based on peripheral status (level triggered)
+        if state.pwm_status & 0x3F:
+            state.pending_irqs |= (1 << 9)
+        else:
+            state.pending_irqs &= ~(1 << 9)
+            
+        if (state.timer0_2_ctl & (0x7 << 7)) or (state.timer3_5_ctl & (0x7 << 7)):
+            state.pending_irqs |= (1 << 8)
+        else:
+            state.pending_irqs &= ~(1 << 8)
+            
+        if state.pending_irqs & state.icu_int_enable:
+            trigger_irq()
+                
+        # Check UART interrupts
+        if state.insn_count % 1000 == 0:
+            # If TX interrupt enabled, fire it since our mock FIFO is always empty
+            if (state.uart1_int_enable & 0x01) and (state.icu_int_enable & (1 << 0)):
+                state.pending_irqs |= (1 << 0)
+                trigger_irq()
+            if (state.uart2_int_enable & 0x01) and (state.icu_int_enable & (1 << 1)):
+                state.pending_irqs |= (1 << 1)
+                trigger_irq()
+
+    # --- MEMORY HOOKS ---
     class FlashState:
-        addr = 0
-        data = b'\xff\xff\xff\xff'
-        
+        def __init__(self):
+            self.addr = 0
+            
     flash_state = FlashState()
 
-    def hook_mem_read_mmio(mu, access, address, size, value, user_data):
-        if not ARGS.only_uart:
-            pass 
-            
-        if address == ICU_INT_STATUS or address == ICU_INT_RAW_STATUS:
-            val = state.pending_irqs
-            if state.pwm_status & 0x3F:
-                val |= (1 << 9)
-            else:
-                val &= ~(1 << 9)
-                
-            if (state.timer0_2_ctl & (0x7 << 7)) or (state.timer3_5_ctl & (0x7 << 7)):
-                val |= (1 << 8)
-            else:
-                val &= ~(1 << 8)
-                
-            val &= state.icu_int_enable
-            mu.mem_write(address, struct.pack("<I", val))
-            return
-            
-        if address == 0x00802A04:
-            mu.mem_write(address, struct.pack("<I", state.pwm_status))
-            return
-            
-        if address == 0x00802A0C:
-            mu.mem_write(address, struct.pack("<I", state.timer0_2_ctl))
-            return
-            
-        if address == 0x00802A4C:
-            mu.mem_write(address, struct.pack("<I", state.timer3_5_ctl))
-            return
-            
-        if address == 0x00803000:
-            val = struct.unpack("<I", mu.mem_read(0x00803000, 4))[0]
-            if val & (1 << 31):
-                val &= ~(1 << 31)
-                mu.mem_write(0x00803000, struct.pack("<I", val))
-            return
-            
-        if address == 0x00803004:
-            mu.mem_write(address, flash_state.data)
-            return
-            
-        if address == 0x00802008:
-            mu.mem_write(address, struct.pack("<I", 1 << 2))
-            return
-            
-        if address == SARADC_ADC_CONFIG:
-            state.adc_status = getattr(state, 'adc_status', 0x50000100)
-            state.adc_status ^= (1 << 16) # Toggle some busy bits
-            mu.mem_write(address, struct.pack("<I", state.adc_status))
-            return
-            
-        try:
-            val = struct.unpack("<I", mu.mem_read(address, 4))[0]
-            if not ARGS.only_uart:
-                print(f"[MMIO] Read 0x{val:08x} from 0x{address:08x}")
-        except Exception:
-            pass
-
     def hook_mem_write_mmio(mu, access, address, size, value, user_data):
-        if address == 0x00800000:
-            state.icu_int_enable = value
-        elif address == ICU_GLOBAL_INT_EN:
-            state.icu_global_int_en = value
-        elif address == SARADC_ADC_CONFIG:
-            state.adc_status = getattr(state, 'adc_status', 0x50000100)
-            state.adc_status ^= (1 << 16) # Toggle some busy bits
-            mu.mem_write(address, struct.pack("<I", state.adc_status))
-        elif address == ICU_INT_STATUS:
-            state.pending_irqs &= ~value
-        elif address == 0x00802A04:
+        # Exclude noisy registers
+        if address not in [UART1_FIFO_STATUS, UART2_FIFO_STATUS, SARADC_ADC_CONFIG, 0x00802c00, 0x00802c04]:
+            pass #print(f"[MMIO] Write 0x{value:08x} to 0x{address:08x}")
+
+        if address == ICU_INT_ENABLE: state.icu_int_enable = value
+        if address == ICU_GLOBAL_INT_EN: state.icu_global_int_en = value
+        if address == ICU_INT_STATUS: state.pending_irqs &= ~value # W1C
+        if address == 0x00802110: state.uart1_int_enable = value
+        if address == 0x00802210: state.uart2_int_enable = value
+
+        if address == 0x00802A04: # PWM_INTERRUPT_STATUS
             w1c_mask = value & 0x3F
+            state.pwm_status = (state.pwm_status & ~0x3F) | (value & ~0x3F)
             state.pwm_status &= ~w1c_mask
-        elif address == 0x00802A0C:
+            
+        if address == 0x00802A0C: # TIMER0_2_CTL
             w1c_mask = value & (0x7 << 7)
             state.timer0_2_ctl = (value & ~(0x7 << 7)) | (state.timer0_2_ctl & (0x7 << 7))
             state.timer0_2_ctl &= ~w1c_mask
-        elif address == 0x00802A4C:
+            
+        if address == 0x00802A4C: # TIMER3_5_CTL
             w1c_mask = value & (0x7 << 7)
             state.timer3_5_ctl = (value & ~(0x7 << 7)) | (state.timer3_5_ctl & (0x7 << 7))
             state.timer3_5_ctl &= ~w1c_mask
-        elif address == 0x00802004:
-            if not ARGS.only_uart:
-                print(chr(value & 0xFF), end='', flush=True)
-            else:
-                sys.stdout.write(chr(value & 0xFF))
-                sys.stdout.flush()
-        elif address == 0x00803000:
-            cmd = value & 0x1F
-            addr = (value >> 8) & 0xFFFFFF
-            if cmd == 6:
+
+        if address == UART1_FIFO_PORT or address == UART2_FIFO_PORT:
+            sys.__stdout__.write(chr(value))
+            sys.__stdout__.flush()
+            return
+            
+        if address == 0x00803000: # REG_FLASH_OPERATE_SW
+            flash_state.addr = value & 0x00FFFFFF
+            op_type = (value >> 28) & 0xF
+            if op_type == 6: # READ
                 try:
-                    flash_state.data = mu.mem_read(FLASH_BASE + addr, 4)
+                    # Read 4 bytes from flash
+                    flash_state.data = mu.mem_read(FLASH_BASE + flash_state.addr, 4)
                 except Exception:
                     flash_state.data = b'\xff\xff\xff\xff'
+            # Clear the BUSY bit (bit 31) immediately when written, so polling finishes instantly
+            value = value & ~(1 << 31)
+            
+        if address == 0x00802c00: # REG_WDT_CONFIG / some other clock config
+            # It sets a bit and polls for it to be cleared by hardware
+            value = 0
             
         try:
             mu.mem_write(address, struct.pack("<I" if size == 4 else "<H" if size == 2 else "B", value))
         except Exception:
             pass
 
+    def hook_mem_read_mmio(mu, access, address, size, value, user_data):
+        # Exclude noisy registers
+        if address in [UART1_FIFO_STATUS, UART2_FIFO_STATUS, 0x00802c04]:
+            pass
+        else:
+            pass # Keep it clean
 
+        if address == 0x00802A04: # PWM_INTERRUPT_STATUS
+            mu.mem_write(address, struct.pack("<I", state.pwm_status))
+            return
+        if address == 0x00802A0C: # TIMER0_2_CTL
+            mu.mem_write(address, struct.pack("<I", state.timer0_2_ctl))
+            return
+        if address == 0x00802A4C: # TIMER3_5_CTL
+            mu.mem_write(address, struct.pack("<I", state.timer3_5_ctl))
+            return
+
+        if address == 0x00802c00:
+            # Bit 8 must be 0 (clears busy flag)
+            # Bit 30 must be 1 (ADC busy / ready flag)
+            mu.mem_write(address, struct.pack("<I", 1 << 30))
+            return
+            
+        if address == 0xc0008050:
+            # Hardware should clear the bit that firmware just wrote
+            mu.mem_write(address, b'\x00\x00\x00\x00')
+            return
+            
+        if address == 0x00802c04: # SARADC_ADC_DATA
+            # Bit 30 or 31 is the DATA_READY or BUSY bit it's polling
+            mu.mem_write(address, struct.pack("<I", 0xFFFFFFFF))
+            return
+
+        if address == 0x00803004: # REG_FLASH_DATA_SW_FLASH
+            if hasattr(flash_state, 'data'):
+                mu.mem_write(address, flash_state.data)
+            return
+            
+        if address == ICU_INT_STATUS or address == ICU_INT_RAW_STATUS:
+            val = state.pending_irqs & state.icu_int_enable
+            mu.mem_write(address, struct.pack("<I", val))
+            return
+            
+        if address == ICU_INT_ENABLE:
+            mu.mem_write(address, struct.pack("<I", state.icu_int_enable))
+            return
+            
+        if address == ICU_GLOBAL_INT_EN:
+            mu.mem_write(address, struct.pack("<I", state.icu_global_int_en))
+            return
+
+        if address == 0x00802110:
+            mu.mem_write(address, struct.pack("<I", state.uart1_int_enable))
+            return
+            
+        if address == 0x00802210:
+            mu.mem_write(address, struct.pack("<I", state.uart2_int_enable))
+            return
+
+        if address == UART1_FIFO_STATUS or address == UART2_FIFO_STATUS:
+            # Bit 17: TX_FIFO_EMPTY (1 = empty)
+            # Bit 19: RX_FIFO_EMPTY?
+            # Bit 20: FIFO_WR_READY (1 = ready)
+            mu.mem_write(address, struct.pack("<I", 1 << 17 | 1 << 19 | 1 << 20))
+            return
+
+        if address == 0x00803008: # REG_FLASH_DATA_FLASH_SW
+            # Read 4 bytes from flash_data at flash_state.addr
+            if flash_state.addr + 4 <= len(flash_data):
+                val = struct.unpack("<I", flash_data[flash_state.addr : flash_state.addr + 4])[0]
+            else:
+                val = 0xFFFFFFFF
+            # Auto-increment address for sequential reads (firmware expects this in some modes? Actually, the controller does it if burst reading)
+            # Actually we'll just return the value.
+            mu.mem_write(address, struct.pack("<I", val))
+            return
+
+        if address in [UART1_FIFO_STATUS, UART2_FIFO_STATUS, SARADC_ADC_CONFIG]:
+            return
+        
+        try:
+            mem_val = mu.mem_read(address, size)
+            val = struct.unpack("<I" if size == 4 else "<H" if size == 2 else "B", mem_val)[0]
+            print(f"[MMIO] Read 0x{val:08x} from 0x{address:08x}", flush=True)
+        except Exception:
+            pass
 
     if bootloader:
         mu.mem_write(0x00000000, bootloader)
@@ -560,16 +631,9 @@ def main():
 
     mu.hook_add(UC_HOOK_MEM_WRITE, hook_mem_write_mmio, begin=MMIO_BASE, end=MMIO_BASE + MMIO_SIZE)
     mu.hook_add(UC_HOOK_MEM_READ, hook_mem_read_mmio, begin=MMIO_BASE, end=MMIO_BASE + MMIO_SIZE)
-    # Set up interrupt hooks
-    mu.hook_add(UC_HOOK_INTR, hook_intr)
     mu.hook_add(UC_HOOK_MEM_UNMAPPED, hook_unmapped)
-    
-    last_pcs = []
-    def hook_code_trace(mu, address, size, user_data):
-        last_pcs.append(address)
-        if len(last_pcs) > 10:
-            last_pcs.pop(0)
-    mu.hook_add(UC_HOOK_CODE, hook_code_trace)
+    mu.hook_add(UC_HOOK_CODE, hook_code)
+    mu.hook_add(UC_HOOK_INTR, hook_intr)
 
     # Force starting from app to skip bootloader rabbit hole
     base_addr = vector_base
@@ -580,77 +644,16 @@ def main():
     try:
         from unicorn.arm_const import UC_ARM_REG_PC, UC_ARM_REG_CPSR
         from unicorn import UcError
-        
-        current_pc = base_addr
-        insn_count = 0
-        while True:
-            # If we are in Thumb mode, Unicorn requires the start address to be odd
-            cpsr = mu.reg_read(UC_ARM_REG_CPSR)
-            if cpsr & 0x20:  # T-bit is set
-                current_pc |= 1
-            else:
-                current_pc &= ~1
-                
-            # Run 1000 instructions at a time (much faster than hook_code)
-            mu.emu_start(current_pc, 0xFFFFFFFF, count=1000)
-            current_pc = mu.reg_read(UC_ARM_REG_PC)
-            insn_count += 1000
-            
-            if not ARGS.only_uart and insn_count % 100000 == 0:
-                print(f"[TRACE] Executing at PC=0x{current_pc:08x}, icu_global_int_en={state.icu_global_int_en}")
-
-            # Every 10000 instructions, trigger a Timer/PWM interrupt if enabled
-            if insn_count % 10000 == 0:
-                if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
-                    state.pwm_status |= (1 << 0) # Set bit 0 (PWM0)
-                if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
-                    state.timer3_5_ctl |= (1 << 7) # Set bit 7 (BKTIMER3)
-                    
-            # Update pending IRQs based on peripheral status (level triggered)
-            if state.pwm_status & 0x3F:
-                state.pending_irqs |= (1 << 9)
-            else:
-                state.pending_irqs &= ~(1 << 9)
-                
-            if (state.timer0_2_ctl & (0x7 << 7)) or (state.timer3_5_ctl & (0x7 << 7)):
-                state.pending_irqs |= (1 << 8)
-            else:
-                state.pending_irqs &= ~(1 << 8)
-                
-            if state.pending_irqs & state.icu_int_enable:
-                trigger_irq()
-                current_pc = mu.reg_read(UC_ARM_REG_PC)
-                
+        # Run for a limited number of instructions to avoid infinite hang
+        mu.emu_start(base_addr, 0xFFFFFFFF, count=20000000)
     except UcError as e:
         pc = mu.reg_read(UC_ARM_REG_PC)
         cpsr = mu.reg_read(UC_ARM_REG_CPSR)
-        print(f"\nEmulation finished with error: {e}. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x}, Insns: {insn_count}")
-        print("Last 10 PCs:")
-        for last_pc in last_pcs:
-            print(f"  0x{last_pc:08x}")
-        try:
-            mem_28dd0 = mu.mem_read(0x00028dd0, 32)
-            print("Memory at 0x00028dd0:", mem_28dd0.hex())
-            import capstone
-            md_thumb = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
-            print("Thumb instructions at 0x00028dd0:")
-            for i in md_thumb.disasm(mem_28dd0, 0x00028dd0):
-                print(f"  0x{i.address:x}: {i.mnemonic} {i.op_str}")
-        except Exception as ex:
-            print("Could not dump 0x00028dd0:", ex)
-        try:
-            mem = mu.mem_read(pc, 16)
-            import capstone
-            is_thumb = (cpsr & 0x20) != 0
-            md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB if is_thumb else capstone.CS_MODE_ARM)
-            for i in md.disasm(mem, pc):
-                print(f"0x{i.address:x}:\t{i.mnemonic}\t{i.op_str}")
-        except Exception as ex:
-            print("Could not disassemble crash PC:", ex)
+        print(f"Emulation finished with error: {e}. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x}")
     except Exception as e:
         pc = mu.reg_read(UC_ARM_REG_PC)
         cpsr = mu.reg_read(UC_ARM_REG_CPSR)
-        print(f"\nEmulation finished with python error: {e}. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x}")
+        print(f"Emulation finished with python error: {e}. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x}")
     except KeyboardInterrupt:
         print("\nEmulation stopped by user.")
 
