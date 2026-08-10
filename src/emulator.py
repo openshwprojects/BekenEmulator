@@ -306,7 +306,7 @@ class BekenEmulator:
         self._print(f"Starting emulation at 0x{vector_base:08x}...")
         start_time = time.time()
         try:
-            self.mu.emu_start(vector_base, 0xFFFFFFFF, count=500000000)
+            self.mu.emu_start(vector_base, 0xFFFFFFFF, count=1000000000)
         except UcError as e:
             pc = self.mu.reg_read(UC_ARM_REG_PC)
             cpsr = self.mu.reg_read(UC_ARM_REG_CPSR)
