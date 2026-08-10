@@ -1,5 +1,5 @@
 @echo off
-set SIM_SCRIPT=%~dp0bk7231_sim.py
+set "SIM_SCRIPT=%~dp0src\main.py"
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
