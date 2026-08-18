@@ -28,6 +28,7 @@ class SimulatorState:
         self.pwm_status = 0
         self.timer0_2_ctl = 0
         self.timer3_5_ctl = 0
+        self.efuse_ctrl = 0
 
 class FlashState:
     def __init__(self):
@@ -185,7 +186,16 @@ class BekenEmulator:
             
         if address == 0x00802c00:
             value = 0
-            
+
+        # SCTRL_EFUSE_CTRL: EFUSE_OPER_EN (bit 0) self-clears when the efuse
+        # operation completes; complete it instantly or sctrl_read_efuse spins
+        # forever on it. Kept in shadow state because Unicorn commits the
+        # original value to memory after this hook, so reads are served from
+        # the shadow in hook_mem_read_mmio.
+        if address == 0x00800074:
+            self.state.efuse_ctrl = value & ~1
+
+
         try:
             mu.mem_write(address, struct.pack("<I" if size == 4 else "<H" if size == 2 else "B", value))
         except Exception:
@@ -212,7 +222,26 @@ class BekenEmulator:
         if address == 0x00802c00:
             mu.mem_write(address, struct.pack("<I", 1 << 30))
             return
-            
+
+        # BK7238/BK7252N SARADC state register (SARADC_ADC_STATE). Its driver
+        # drains the sample FIFO with `while(!(STATE & FIFO_EMPTY)) read DATA;`
+        # spin loops during init; report FIFO_EMPTY (bit 30) so they terminate
+        # immediately. Actual sampling is interrupt-driven, never polled here.
+        if address == 0x00802c0c:
+            mu.mem_write(address, struct.pack("<I", 1 << 30))
+            return
+
+        # SCTRL_EFUSE_CTRL readback: shadow with EFUSE_OPER_EN self-cleared.
+        if address == 0x00800074:
+            mu.mem_write(address, struct.pack("<I", self.state.efuse_ctrl))
+            return
+
+        # SCTRL_EFUSE_OPTR: report a blank efuse byte (0x00) with
+        # EFUSE_OPER_RD_DATA_VALID (bit 8) set.
+        if address == 0x00800078:
+            mu.mem_write(address, struct.pack("<I", 1 << 8))
+            return
+
         if address == 0xc0008050:
             mu.mem_write(address, b'\x00\x00\x00\x00')
             return

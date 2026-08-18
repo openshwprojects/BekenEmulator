@@ -55,6 +55,18 @@ TEST_CASES = [
         ]
     },
     {
+        "name": "OpenBK7238_QIO_1.18.300 Boot to 1s timer",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7238_QIO_1.18.300.bin"),
+        # Plaintext image; needs the BK7238 chip identity (bk_check_chip_id).
+        "args": ["--only-uart", "-chip", "BK7238"],
+        "timeout": 180,
+        "expected_strings": [
+            "OpenBK7238, version 1.18.300",
+            ", idle ",
+            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+        ]
+    },
+    {
         "name": "OpenBK7252_QIO_1.18.300 Boot to 1s timer",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7252 chip identity (bk_check_chip_id).
@@ -62,6 +74,18 @@ TEST_CASES = [
         "timeout": 180,
         "expected_strings": [
             "OpenBK7252, version 1.18.300",
+            ", idle ",
+            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+        ]
+    },
+    {
+        "name": "OpenBK7252N_QIO_1.18.300 Boot to 1s timer",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252N_QIO_1.18.300.bin"),
+        # Plaintext image; needs the BK7252N chip identity (bk_check_chip_id).
+        "args": ["--only-uart", "-chip", "BK7252N"],
+        "timeout": 180,
+        "expected_strings": [
+            "OpenBK7252N, version 1.18.300",
             ", idle ",
             "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
         ]
