@@ -333,9 +333,15 @@ class BekenEmulator:
         self.mu.mem_write(SARADC_ADC_CONFIG, struct.pack("<I", 1 << 28 | 1 << 30))
         self.mu.mem_write(0x00802900, struct.pack("<I", 0))
 
+        # Mirror the raw flash at the SPI-flash window. Cap the size so it can
+        # never run into the RAM region: dumps larger than 2MB (e.g. 4MB BK7238
+        # plug images) would otherwise map past RAM_BASE and fail with UC_ERR_MAP
+        # before any code runs. Code/data live in the low 2MB, so the upper part
+        # of the mirror is not needed for boot.
         spi_flash_size = (len(self.raw_flash) + 0xFFF) & ~0xFFF
+        spi_flash_size = min(spi_flash_size, self.RAM_BASE - self.SPI_FLASH_BASE)
         self.mu.mem_map(self.SPI_FLASH_BASE, spi_flash_size)
-        self.mu.mem_write(self.SPI_FLASH_BASE, self.raw_flash)
+        self.mu.mem_write(self.SPI_FLASH_BASE, self.raw_flash[:spi_flash_size])
 
         self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.MMIO_BASE, end=self.MMIO_BASE + self.MMIO_SIZE)
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.MMIO_BASE, end=self.MMIO_BASE + self.MMIO_SIZE)

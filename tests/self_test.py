@@ -91,6 +91,24 @@ TEST_CASES = [
         ]
     },
     {
+        # 4MB dump: guards the SPI-flash-mirror size cap in emulator.setup().
+        # Before the cap, a >2MB image mapped past RAM_BASE and threw
+        # UC_ERR_MAP before any code ran (0 boot output). A shallow boot marker
+        # is enough - this only has to prove the 4MB image maps and executes.
+        "name": "BK7238 Sonoff 4MB Dump Boots (SPI mirror cap)",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "Sonoff_S61s_EUPlug_WBBK_01P_V1.3.bin"),
+        "args": ["--only-uart", "-chip", "BK7238"],
+        "timeout": 90,
+        "expected_strings": [
+            # First SDK line - proves setup() didn't crash and code executed.
+            "bk_misc_init_start_type",
+            # Early boot milestone - flash driver ran.
+            "[Flash]init over",
+            # Proves it reached wifi init and the -chip identity is served.
+            "chip id=7238 device id=21128000"
+        ]
+    },
+    {
         "name": "Woox Tuya Original Firmware Boot",
         "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
