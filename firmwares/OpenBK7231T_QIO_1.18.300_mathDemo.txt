@@ -1,14 +1,23 @@
-It has added a snippet after:
+Custom OpenBK build for emulator testing (reports itself as
+"OpenBK7231T, version 2178_merge_bde63cebc7e3").
+
+It has a math snippet added after:
 	HAL_FlashVars_IncreaseBootCount();
-Namely:
-    int a = 123;
-	ADDLOGF_INFO("integer test");
-	ADDLOGF_INFO("a = %i", a);
-	float x = 3.14;
-	float y = 1.86;
-	float z = x + y;
-	
-	ADDLOGF_INFO("float test");
-	ADDLOGF_INFO("x = %f", x);
-	ADDLOGF_INFO("y = %f", y);
-	ADDLOGF_INFO("x + y = %f", z);
+which prints (via ADDLOGF_INFO) early in Main_Init_Before_Delay:
+	Advanced math test started
+	Integer: (123 * 456) / 10 = 5608
+	Float basic: (3.141590 * 1.860000) / (3.141590 - 1.0) = 2.728513
+	Casting: float_to_int = 272, int_to_float = 1684.084106
+	Loop 1.230000
+	Loop 2.460000
+	... (8 iterations, +1.23 each) ...
+	Loop 9.840000
+
+Additionally QuickTick() logs on every quick tick:
+	Info:MAIN:quicktick
+which only appears when FreeRTOS software timers actually run (same
+mechanism as Main_OnEverySecond / the per-second "Time N, idle ..." line),
+so it doubles as a regression canary for tick interrupt emulation.
+
+Useful to verify integer math, float math/printf formatting, and timer
+interrupt delivery in one boot. tests/self_test.py asserts these strings.

@@ -43,7 +43,7 @@ class BekenEmulator:
     # ICU Registers
     ICU_INT_STATUS = 0x0080204c
     ICU_INT_RAW_STATUS = 0x00802048
-    ICU_INT_ENABLE = 0x00802050
+    ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
     def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False):
@@ -91,34 +91,44 @@ class BekenEmulator:
             mu.reg_write(UC_ARM_REG_LR, pc)
             mu.reg_write(UC_ARM_REG_PC, 0x00000008)
 
+    # The per-instruction hook is the emulation bottleneck, so the interrupt
+    # bookkeeping below only runs every IRQ_CHECK_STRIDE instructions. Pending
+    # bits are sticky (cleared by W1C only), so interrupts are delayed by at
+    # most IRQ_CHECK_STRIDE - 1 instructions, never lost. The stride must
+    # divide the 10000/1000 pacing periods.
+    IRQ_CHECK_STRIDE = 20
+
     def hook_code(self, mu, address, size, user_data):
-        self.state.insn_count += 1
-        
-        if self.state.insn_count % 10000 == 0:
-            if self.state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
-                self.state.pwm_status |= (1 << 0) 
-            if self.state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
-                self.state.timer3_5_ctl |= (1 << 7) 
-                
-        if self.state.pwm_status & 0x3F:
-            self.state.pending_irqs |= (1 << 9)
+        state = self.state
+        state.insn_count += 1
+        if state.insn_count % self.IRQ_CHECK_STRIDE:
+            return
+
+        if state.insn_count % 10000 == 0:
+            if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
+                state.pwm_status |= (1 << 0)
+            if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
+                state.timer3_5_ctl |= (1 << 7)
+
+        if state.pwm_status & 0x3F:
+            state.pending_irqs |= (1 << 9)
         else:
-            self.state.pending_irqs &= ~(1 << 9)
-            
-        if (self.state.timer0_2_ctl & (0x7 << 7)) or (self.state.timer3_5_ctl & (0x7 << 7)):
-            self.state.pending_irqs |= (1 << 8)
+            state.pending_irqs &= ~(1 << 9)
+
+        if (state.timer0_2_ctl & (0x7 << 7)) or (state.timer3_5_ctl & (0x7 << 7)):
+            state.pending_irqs |= (1 << 8)
         else:
-            self.state.pending_irqs &= ~(1 << 8)
-            
-        if self.state.pending_irqs & self.state.icu_int_enable:
+            state.pending_irqs &= ~(1 << 8)
+
+        if state.pending_irqs & state.icu_int_enable:
             self.trigger_irq()
-                
-        if self.state.insn_count % 1000 == 0:
-            if (self.state.uart1_int_enable & 0x01) and (self.state.icu_int_enable & (1 << 0)):
-                self.state.pending_irqs |= (1 << 0)
+
+        if state.insn_count % 1000 == 0:
+            if (state.uart1_int_enable & 0x01) and (state.icu_int_enable & (1 << 0)):
+                state.pending_irqs |= (1 << 0)
                 self.trigger_irq()
-            if (self.state.uart2_int_enable & 0x01) and (self.state.icu_int_enable & (1 << 1)):
-                self.state.pending_irqs |= (1 << 1)
+            if (state.uart2_int_enable & 0x01) and (state.icu_int_enable & (1 << 1)):
+                state.pending_irqs |= (1 << 1)
                 self.trigger_irq()
 
     def hook_mem_write_mmio(self, mu, access, address, size, value, user_data):
