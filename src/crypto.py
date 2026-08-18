@@ -161,10 +161,67 @@ def extract_rbl(data: bytes, target_name: str = "bootloader"):
         idx += 1
     return None
 
-# Default keys for Beken
-DEFAULT_COEFS = (0, 0, 0, 0) # usually 0, 0, 0, 0 ? Actually they are often 0.
+# Known named keys usable as "-key NAME" on the command line.
+# TUYA: default firmware encryption key of Tuya/OpenBeken BK7231T/N images.
+KNOWN_KEYS = {
+    "TUYA": "UQ+wk6PL6txZk6F+x63rAw==",
+}
 
-def extract_and_decrypt(data: bytes, target_name: str = "bootloader"):
+def parse_key(spec):
+    """Turn a -key argument into BekenCodeCipher coefficients.
+
+    Accepts a known key name (see KNOWN_KEYS, case-insensitive), 32 hex
+    characters, or base64 of 16 bytes. Returns a 4-tuple of u32 coefficients,
+    or None if spec is None (meaning: no decryption).
+    """
+    import base64
+    import re
+
+    if spec is None:
+        return None
+
+    name = spec.strip()
+    if name.upper() in KNOWN_KEYS:
+        key_bytes = base64.b64decode(KNOWN_KEYS[name.upper()])
+    elif re.fullmatch(r"[0-9a-fA-F]{32}", name):
+        key_bytes = bytes.fromhex(name)
+    else:
+        try:
+            key_bytes = base64.b64decode(name, validate=True)
+        except Exception:
+            key_bytes = b""
+        if len(key_bytes) != 16:
+            known = ", ".join(sorted(KNOWN_KEYS))
+            raise ValueError(
+                f"Invalid -key value: {spec!r}. Use a known name ({known}), "
+                f"32 hex characters, or base64 of 16 bytes.")
+
+    return tuple(int.from_bytes(key_bytes[i:i+4], byteorder="big") for i in range(0, 16, 4))
+
+def _looks_like_arm_vectors(data: bytes, offset: int = 0) -> bool:
+    """Heuristic: does data[offset:] start with a plausible ARM vector table?
+
+    Plain (unencrypted) Beken images start with 8 exception vectors that are
+    almost always B (0xEA......) or LDR PC, [PC, #x] (0xE59FF...) instructions.
+    Encrypted/scrambled flash looks random, so requiring 6 of 8 such words
+    gives a reliable plaintext detector.
+    """
+    if len(data) < offset + 32:
+        return False
+    good = 0
+    for i in range(8):
+        word = struct.unpack_from("<I", data, offset + i * 4)[0]
+        if (word >> 24) == 0xEA or (word >> 16) == 0xE59F:
+            good += 1
+    return good >= 6
+
+def extract_and_decrypt(data: bytes, target_name: str = "bootloader", coefs=None):
+    """Extract the bootloader/app slice, decrypting it with `coefs` if given.
+
+    coefs is a 4-tuple of cipher coefficients from parse_key(), or None for
+    no decryption (plaintext images, e.g. BK7238/BK7231M/U/BK7252 built from
+    beken_freertos_sdk).
+    """
     # Find RBL containers
     containers = []
     idx = 0
@@ -174,27 +231,27 @@ def extract_and_decrypt(data: bytes, target_name: str = "bootloader"):
             break
         containers.append(idx)
         idx += 4
-        
+
     for idx in containers:
         header_data = data[idx:idx+96]
         if len(header_data) < 96:
             continue
-            
+
         try:
             unpacked = struct.unpack("<4sII16s24s24sIIIII", header_data)
         except:
             continue
-            
+
         algo = unpacked[1]
         name_bytes = unpacked[3]
         size_raw = unpacked[8]
         size_package = unpacked[9]
-            
+
         name = name_bytes.split(b"\x00")[0].decode("ascii", "ignore").strip()
         if name == target_name:
             mapped_address = 0x00000000 if target_name == "bootloader" else 0x00010000
             payload = data[mapped_address:mapped_address+size_package]
-            
+
             # If NONE, it's not OTA compressed/encrypted, but still flash-encrypted
             if algo == 0:
                 padding = size_package - size_raw
@@ -202,24 +259,31 @@ def extract_and_decrypt(data: bytes, target_name: str = "bootloader"):
                     payload = payload[:size_raw] + (bytes([padding]) * padding)
             else:
                 pass
-            
-            # Tuya BK7231 default firmware keys: "UQ+wk6PL6txZk6F+x63rAw=="
-            import base64
-            key_bytes = base64.b64decode("UQ+wk6PL6txZk6F+x63rAw==")
-            coefs = tuple(int.from_bytes(key_bytes[i:i+4], byteorder="big") for i in range(0, 16, 4))
+
+            if coefs is None:
+                return payload
             cipher = BekenCodeCipher(*coefs)
             return cipher.decrypt(payload, stream_start_offset=mapped_address)
-            
-    # If no RBL container found (e.g. raw QIO dump), fallback to raw unencrypted slice assumptions
-    print(f"Warning: '{target_name}' RBL container not found. Assuming raw payload and applying default flash decryption.")
-    
-    import base64
-    key_bytes = base64.b64decode("UQ+wk6PL6txZk6F+x63rAw==")
-    coefs = tuple(int.from_bytes(key_bytes[i:i+4], byteorder="big") for i in range(0, 16, 4))
-    cipher = BekenCodeCipher(*coefs)
-    
+
+    # No RBL container found: fall back to fixed slices of the raw image.
     if target_name == "bootloader":
-        return cipher.decrypt(data[0:0x10000], stream_start_offset=0x00000000)
+        payload, mapped_address = data[0:0x10000], 0x00000000
+        vector_offsets = (0,)          # bootloader vectors at 0x0
     else:
-        return cipher.decrypt(data[0x10000:0x110000], stream_start_offset=0x00010000)
+        payload, mapped_address = data[0x10000:0x110000], 0x00010000
+        vector_offsets = (0, 0x1000)   # app vectors at 0x10000 or 0x11000
+
+    if coefs is None:
+        print(f"Warning: '{target_name}' RBL container not found. No key given, using raw slice without decryption.")
+        result = payload
+    else:
+        print(f"Warning: '{target_name}' RBL container not found. Assuming raw payload and decrypting with the given key.")
+        result = BekenCodeCipher(*coefs).decrypt(payload, stream_start_offset=mapped_address)
+
+    # Sanity hint: the slice should start with an ARM vector table.
+    if not any(_looks_like_arm_vectors(result, off) for off in vector_offsets):
+        hint = "wrong key for this image?" if coefs is not None else "encrypted image? try: -key TUYA"
+        print(f"Warning: '{target_name}' slice does not look like ARM code ({hint}).")
+
+    return result
 

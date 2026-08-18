@@ -11,7 +11,7 @@ TEST_CASES = [
     {
         "name": "OpenBK7231T_QIO_1.18.300 Boot to MQTT and 1s timer",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300.bin"),
-        "args": ["--only-uart"],
+        "args": ["--only-uart", "-key", "TUYA"],
         # Boot finishes around 28M instructions; the first Main_OnEverySecond
         # "Time N, idle ..." line lands around 38M (~90s wall on a typical machine).
         "timeout": 180,  # seconds
@@ -30,7 +30,7 @@ TEST_CASES = [
     {
         "name": "MathDemo Boot and Float Verification",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300_mathDemo.bin"),
-        "args": ["--only-uart"],
+        "args": ["--only-uart", "-key", "TUYA"],
         "timeout": 120,
         "expected_strings": [
             "Info:MAIN:Advanced math test started",
@@ -45,7 +45,7 @@ TEST_CASES = [
     {
         "name": "Woox Tuya Original Firmware Boot",
         "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
-        "args": ["--only-uart"],
+        "args": ["--only-uart", "-key", "TUYA"],
         "timeout": 120,
         # Timestamps are stripped from the expected strings: the RTOS tick now
         # advances Tuya's clock, so lines print at 18:12:15/16/... depending on
