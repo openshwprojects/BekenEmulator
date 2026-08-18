@@ -43,6 +43,30 @@ TEST_CASES = [
         ]
     },
     {
+        "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timer",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231U_QIO_1.18.300.bin"),
+        # Plaintext image (beken_freertos_sdk layout) - no key.
+        "args": ["--only-uart"],
+        "timeout": 180,
+        "expected_strings": [
+            "OpenBK7231U, version 1.18.300",
+            ", idle ",
+            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+        ]
+    },
+    {
+        "name": "OpenBK7252_QIO_1.18.300 Boot to 1s timer",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252_QIO_1.18.300.bin"),
+        # Plaintext image; needs the BK7252 chip identity (bk_check_chip_id).
+        "args": ["--only-uart", "-chip", "BK7252"],
+        "timeout": 180,
+        "expected_strings": [
+            "OpenBK7252, version 1.18.300",
+            ", idle ",
+            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+        ]
+    },
+    {
         "name": "Woox Tuya Original Firmware Boot",
         "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
         "args": ["--only-uart", "-key", "TUYA"],

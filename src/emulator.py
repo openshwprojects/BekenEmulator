@@ -5,6 +5,18 @@ import time
 from unicorn import *
 from unicorn.arm_const import *
 
+# Known chip identities served from the SCTRL id registers (0x00800000 chip
+# id, 0x00800004 device id), selectable with --chip. Values extracted from
+# each OpenBeken firmware's bk_check_chip_id (which hangs forever on a
+# mismatch after printing "Unsupported chip or dev"). BK7231T-era firmwares
+# do not check these registers at all, so the BK7231 default is safe for them.
+CHIP_FAMILIES = {
+    "BK7231": (0x0007231A, 0x18520001),   # BK7231T/U family (default)
+    "BK7238": (0x00007238, 0x21128000),   # accepts dev 0x2112xxxx or 0x2206xxxx
+    "BK7252": (0x0007221A, 0x18221020),   # BK7252 = BK7221U silicon
+    "BK7252N": (0x0007252A, 0x23A18000),  # accepts dev 0x23A1xxxx or 0x2431xxxx
+}
+
 class SimulatorState:
     def __init__(self):
         self.icu_int_enable = 0
@@ -46,12 +58,13 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None):
         self.raw_flash = raw_flash
         self.bootloader = bootloader
         self.app = app
         self.with_boot = with_boot
         self.only_uart = only_uart
+        self.chip_id_value, self.device_id_value = chip_identity or CHIP_FAMILIES["BK7231"]
         
         self.state = SimulatorState()
         self.flash_state = FlashState()
@@ -179,6 +192,13 @@ class BekenEmulator:
             pass
 
     def hook_mem_read_mmio(self, mu, access, address, size, value, user_data):
+        # SCTRL identity registers; served per the selected chip family.
+        if address == 0x00800000:
+            mu.mem_write(address, struct.pack("<I", self.chip_id_value))
+            return
+        if address == 0x00800004:
+            mu.mem_write(address, struct.pack("<I", self.device_id_value))
+            return
         if address == 0x00802A04:
             mu.mem_write(address, struct.pack("<I", self.state.pwm_status))
             return

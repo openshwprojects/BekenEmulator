@@ -7,5 +7,5 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (UART Only) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart
+python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart -chip BK7238
 pause

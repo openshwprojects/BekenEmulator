@@ -6,7 +6,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.crypto import extract_and_decrypt, strip_crcs, parse_key, KNOWN_KEYS
-from src.emulator import BekenEmulator
+from src.emulator import BekenEmulator, CHIP_FAMILIES
 
 def parse_args():
     parser = argparse.ArgumentParser(description="BK7231T/N Emulator")
@@ -16,6 +16,9 @@ def parse_args():
     parser.add_argument("-key", "--key", dest="key", default=None, metavar="KEY",
                         help="Firmware decryption key: a known name (%s), 32 hex chars, or base64 of 16 bytes. "
                              "Omit for plaintext images (no decryption)." % ", ".join(sorted(KNOWN_KEYS)))
+    parser.add_argument("-chip", "--chip", dest="chip", default="BK7231", metavar="CHIP",
+                        help="Chip identity served from the SCTRL id registers: %s. Default: BK7231 (T/U family)."
+                             % ", ".join(sorted(CHIP_FAMILIES)))
     return parser.parse_args()
 
 def main():
@@ -33,6 +36,12 @@ def main():
     except ValueError as e:
         print(e)
         sys.exit(1)
+
+    chip_name = args.chip.strip().upper()
+    if chip_name not in CHIP_FAMILIES:
+        print("Unknown -chip value: %r. Known chips: %s." % (args.chip, ", ".join(sorted(CHIP_FAMILIES))))
+        sys.exit(1)
+    chip_identity = CHIP_FAMILIES[chip_name]
 
     flash_data = strip_crcs(raw_data)
 
@@ -54,7 +63,7 @@ def main():
         else:
             print(f"Loaded 'app' payload, size: {len(app)} bytes")
 
-    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart)
+    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity)
     emu.setup()
     emu.run()
 

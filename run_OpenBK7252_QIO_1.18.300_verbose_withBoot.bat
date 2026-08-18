@@ -7,5 +7,5 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (Verbose) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --with-boot
+python "%SIM_SCRIPT%" "%TARGET_FILE%" --with-boot -chip BK7252
 pause
