@@ -21,7 +21,10 @@ TEST_CASES = [
             "Info:MQTT:MQTT_RegisterCallback called for",
             # Main_OnEverySecond runs off a FreeRTOS software timer - proves the
             # tick interrupt and the timer daemon task are alive.
-            ", idle "
+            ", idle ",
+            # Stable tail of the first "Time N" lines: no WiFi in the emulator,
+            # so MQTT is disconnected and the ping watchdog never starts.
+            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
         ]
     },
     {
@@ -41,7 +44,7 @@ TEST_CASES = [
     },
     {
         "name": "Woox Tuya Original Firmware Boot",
-        "binary": os.path.join(ROOT_DIR, "references", "FlashDumps", "IoT", "BK7231T", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
+        "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
         "args": ["--only-uart"],
         "timeout": 120,
         # Timestamps are stripped from the expected strings: the RTOS tick now
