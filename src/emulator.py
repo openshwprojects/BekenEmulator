@@ -46,6 +46,7 @@ class BekenEmulator:
     PERIPH_BASE = 0xc0000000
     PERIPH_SIZE = 0x100000
     SPI_FLASH_BASE = 0x00200000
+    XVR_BASE = 0x00900000
     
     # UART Registers
     UART1_FIFO_PORT = 0x0080210c
@@ -236,6 +237,13 @@ class BekenEmulator:
             mu.mem_write(address, struct.pack("<I", self.state.efuse_ctrl))
             return
 
+        # XVR (RF transceiver) transaction register. RF init sets bit 31 to
+        # start a transfer and spins until hardware clears it; report it always
+        # complete (bit 31 low) so the wait loop exits.
+        if address == 0x00900100:
+            mu.mem_write(address, struct.pack("<I", 0))
+            return
+
         # SCTRL_EFUSE_OPTR: report a blank efuse byte (0x00) with
         # EFUSE_OPER_RD_DATA_VALID (bit 8) set.
         if address == 0x00800078:
@@ -343,10 +351,17 @@ class BekenEmulator:
         self.mu.mem_map(self.SPI_FLASH_BASE, spi_flash_size)
         self.mu.mem_write(self.SPI_FLASH_BASE, self.raw_flash[:spi_flash_size])
 
+        # BK7238/BK7252N XVR (RF transceiver) register block. Not in the main
+        # MMIO window; map and hook it so the RF-init transaction trigger at
+        # 0x900100 can be modelled as always-complete (see hook_mem_read_mmio).
+        self.mu.mem_map(self.XVR_BASE, 0x1000)
+
         self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.MMIO_BASE, end=self.MMIO_BASE + self.MMIO_SIZE)
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.MMIO_BASE, end=self.MMIO_BASE + self.MMIO_SIZE)
         self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.PERIPH_BASE, end=self.PERIPH_BASE + self.PERIPH_SIZE)
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.PERIPH_BASE, end=self.PERIPH_BASE + self.PERIPH_SIZE)
+        self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.XVR_BASE, end=self.XVR_BASE + 0x1000)
+        self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.XVR_BASE, end=self.XVR_BASE + 0x1000)
         self.mu.hook_add(UC_HOOK_MEM_UNMAPPED, self.hook_unmapped)
         self.mu.hook_add(UC_HOOK_CODE, self.hook_code)
         self.mu.hook_add(UC_HOOK_INTR, self.hook_intr)

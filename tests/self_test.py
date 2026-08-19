@@ -91,21 +91,31 @@ TEST_CASES = [
         ]
     },
     {
-        # 4MB dump: guards the SPI-flash-mirror size cap in emulator.setup().
-        # Before the cap, a >2MB image mapped past RAM_BASE and threw
-        # UC_ERR_MAP before any code ran (0 boot output). A shallow boot marker
-        # is enough - this only has to prove the 4MB image maps and executes.
-        "name": "BK7238 Sonoff 4MB Dump Boots (SPI mirror cap)",
+        # 4MB dump; guards two emulator fixes at once:
+        #  - SPI-flash-mirror size cap in setup() (a >2MB image used to map past
+        #    RAM_BASE and throw UC_ERR_MAP before any code ran -> 0 output).
+        #  - XVR (RF transceiver) 0x900100 transaction register: RF init spins
+        #    on its bit-31 "busy" flag; without the model it hangs after
+        #    xvr_reg_init, before "enter normal mode".
+        "name": "BK7238 Sonoff 4MB Dump Boots (SPI mirror + XVR)",
         "binary": os.path.join(ROOT_DIR, "firmwares", "Sonoff_S61s_EUPlug_WBBK_01P_V1.3.bin"),
         "args": ["--only-uart", "-chip", "BK7238"],
-        "timeout": 90,
+        # "enter normal mode" lands around the 3-minute mark on a typical
+        # machine; keep headroom so the last marker is not timing-flaky.
+        "timeout": 240,
+        # Markers form a boot ladder so a failure pinpoints the stage:
         "expected_strings": [
-            # First SDK line - proves setup() didn't crash and code executed.
+            # Proves the 4MB image maps and code executes (SPI mirror cap).
             "bk_misc_init_start_type",
-            # Early boot milestone - flash driver ran.
             "[Flash]init over",
-            # Proves it reached wifi init and the -chip identity is served.
-            "chip id=7238 device id=21128000"
+            # Early SDK banner of this build.
+            "SDK Rev: 3.0.70",
+            # Wifi init reached; the -chip BK7238 identity is served.
+            "chip id=7238 device id=21128000",
+            # Past the XVR transaction wait loop: RF cal completes, the SDK
+            # brings up all threads and goes operational.
+            "calibration_main over",
+            "enter normal mode"
         ]
     },
     {
