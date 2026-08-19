@@ -84,7 +84,10 @@ def _test_card(r):
           <div class="checks-title">Assertions</div>
           <ul>{checks}</ul>
         </div>
-        <div class="log-title">UART / log output</div>
+        <div class="log-head">
+          <span class="log-title">UART / log output</span>
+          <button class="copy-btn" type="button">Copy</button>
+        </div>
         <pre class="log">{log}</pre>
       </div>
     </details>
@@ -132,6 +135,7 @@ def generate(results, meta, out_path):
         commit_html=commit_html,
         run_html=run_html,
         cards="".join(_test_card(r) for r in results),
+        script=_SCRIPT,
     )
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(page)
@@ -148,13 +152,13 @@ _PAGE = """<!doctype html>
   :root {{
     --bg:#f6f7f9; --card:#ffffff; --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea;
     --pass:#1a7f37; --fail:#cf222e; --passbg:#dafbe1; --failbg:#ffebe9;
-    --hit:#fff3b0; --hitfg:#5a4b00; --accent:#0969da;
+    --accent:#0969da;
   }}
   @media (prefers-color-scheme: dark) {{
     :root {{
       --bg:#0d1117; --card:#161b22; --fg:#e6edf3; --muted:#8b949e; --line:#30363d;
       --pass:#3fb950; --fail:#f85149; --passbg:#12261a; --failbg:#2b1214;
-      --hit:#5c4b00; --hitfg:#ffef9f; --accent:#4493f8;
+      --accent:#4493f8;
     }}
   }}
   * {{ box-sizing:border-box; }}
@@ -195,6 +199,12 @@ _PAGE = """<!doctype html>
   .args code {{ color:var(--muted); font-size:12px; }}
   .checks-title, .log-title {{ font-size:12px; text-transform:uppercase; letter-spacing:.04em;
     color:var(--muted); margin:14px 0 6px; }}
+  .log-head {{ display:flex; align-items:center; justify-content:space-between; margin:14px 0 6px; }}
+  .log-head .log-title {{ margin:0; }}
+  .copy-btn {{ font-size:12px; padding:3px 10px; border-radius:6px; border:1px solid var(--line);
+    background:var(--card); color:var(--fg); cursor:pointer; }}
+  .copy-btn:hover {{ border-color:var(--accent); color:var(--accent); }}
+  .copy-btn.copied {{ color:var(--pass); border-color:var(--pass); }}
   .checks ul {{ list-style:none; margin:0; padding:0; }}
   .checks li {{ display:flex; gap:8px; align-items:baseline; padding:2px 0; }}
   .checks .chk {{ font-weight:700; width:14px; flex:0 0 auto; }}
@@ -206,7 +216,8 @@ _PAGE = """<!doctype html>
     padding:12px; overflow:auto; max-height:460px; font-size:12px; line-height:1.45;
     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap;
     word-break:break-word; }}
-  mark.hit {{ background:var(--hit); color:var(--hitfg); font-weight:700; padding:0 2px;
+  /* Asserted strings, shown where matched in the log: bold green, not a marker. */
+  mark.hit {{ background:var(--passbg); color:var(--pass); font-weight:700; padding:0 2px;
     border-radius:3px; }}
 </style>
 </head>
@@ -223,6 +234,44 @@ _PAGE = """<!doctype html>
   </div>
   {cards}
 </div>
+{script}
 </body>
 </html>
 """
+
+
+# Wires up the per-log Copy buttons. Kept as a substituted value (not part of the
+# .format template) so its JS braces need no escaping. Uses the async clipboard
+# API where available and falls back to a hidden textarea + execCommand so it
+# also works from a file:// URL.
+_SCRIPT = """<script>
+document.querySelectorAll('.copy-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var pre = btn.closest('.body').querySelector('pre.log');
+    if (!pre) return;
+    var text = pre.innerText;
+    var done = function () {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+    } else {
+      fallbackCopy(text);
+      done();
+    }
+  });
+});
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+</script>"""
