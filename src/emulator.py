@@ -36,6 +36,7 @@ class FlashState:
     def __init__(self):
         self.addr = 0
         self.data = b'\xff\xff\xff\xff'
+        self.read_idx = 0   # word index within the current 32-byte flash page read
 
 class BekenEmulator:
     # Hardware base addresses
@@ -210,6 +211,7 @@ class BekenEmulator:
             
         if address == 0x00803000:
             self.flash_state.addr = value & 0x00FFFFFF
+            self.flash_state.read_idx = 0   # new page read starts at word 0
             op_type = (value >> 28) & 0xF
             if op_type == 6:
                 try:
@@ -378,8 +380,14 @@ class BekenEmulator:
             return
 
         if address == 0x00803008:
-            if self.flash_state.addr + 4 <= len(self.raw_flash):
-                val = struct.unpack("<I", self.raw_flash[self.flash_state.addr : self.flash_state.addr + 4])[0]
+            # REG_FLASH_DATA_FLASH_SW. The SDK's flash_read_data reads this
+            # register 8 times after one operate-write to pull a whole 32-byte
+            # page (buf[8]); serve successive words so bulk reads (e.g. the
+            # net_param config partition) get the full page, not word 0 repeated.
+            word_addr = self.flash_state.addr + self.flash_state.read_idx * 4
+            self.flash_state.read_idx += 1
+            if word_addr + 4 <= len(self.raw_flash):
+                val = struct.unpack("<I", self.raw_flash[word_addr : word_addr + 4])[0]
             else:
                 val = 0xFFFFFFFF
             mu.mem_write(address, struct.pack("<I", val))

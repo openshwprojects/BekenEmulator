@@ -87,7 +87,35 @@ TEST_CASES = [
             "Info:MAIN:Casting: float_to_int = 272, int_to_float = 1684.084106",
             # The mathDemo build logs every QuickTick - proves FreeRTOS software
             # timers fire (the same mechanism that drives Main_OnEverySecond).
-            "Info:MAIN:quicktick"
+            "Info:MAIN:quicktick",
+            # No valid OBK config in flash -> default config path (the crafted
+            # config test below is the complement: it must NOT print this).
+            "CFG_InitAndLoad: Config crc or ident mismatch"
+        ]
+    },
+    {
+        # Complement of the case above: the same mathDemo image, but with a
+        # hand-crafted mainConfig_t written into the BK_PARTITION_NET_PARAM
+        # partition (flash 0x1e1000). This proves the emulated flash controller
+        # serves a full 32-byte page per operate-write - OBK pulls the whole
+        # 3584-byte config through REG_FLASH_DATA_FLASH_SW (8 reads per page),
+        # so a controller that repeats word 0 corrupts the config and it is
+        # silently rejected as a crc mismatch.
+        #
+        # The stored crc byte is Tiny_CRC8 over config[4:sizeof] computed with
+        # SIGNED char semantics (arithmetic >>), which is what the firmware's
+        # own build does - the unsigned reading of the same code yields a
+        # different byte and the config is refused.
+        "name": "MathDemo Crafted Config Load and Startup Command",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300_mathDemo_cfgtest.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            # Config accepted - the mismatch branch was NOT taken.
+            "CFG_InitAndLoad: Correct config has been loaded",
+            # initCommandLine (offset 0x5E0) is "echo Test12343242343243";
+            # CMD_Echo logs its argument under LOG_FEATURE_CMD.
+            "Info:CMD:Test12343242343243"
         ]
     },
     {
