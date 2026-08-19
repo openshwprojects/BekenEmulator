@@ -13,6 +13,7 @@ def parse_args():
     parser.add_argument("dump_file", help="Path to the raw BK7231 flash dump")
     parser.add_argument("--only-uart", action="store_true", help="Only print UART output (suppress MMIO/Trace/Info logs)")
     parser.add_argument("--with-boot", action="store_true", help="Start execution from bootloader (0x00000000) instead of app (0x10000)")
+    parser.add_argument("--uart1-hex", action="store_true", help="Show UART1 (TuyaMCU link) as tagged hex; UART2 stays text log")
     parser.add_argument("-key", "--key", dest="key", default=None, metavar="KEY",
                         help="Firmware decryption key: a known name (%s), 32 hex chars, or base64 of 16 bytes. "
                              "Omit for plaintext images (no decryption)." % ", ".join(sorted(KNOWN_KEYS)))
@@ -63,7 +64,7 @@ def main():
         else:
             print(f"Loaded 'app' payload, size: {len(app)} bytes")
 
-    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity)
+    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex)
     emu.setup()
     emu.run()
 

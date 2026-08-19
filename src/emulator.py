@@ -49,6 +49,7 @@ class BekenEmulator:
     PERIPH_SIZE = 0x100000
     SPI_FLASH_BASE = 0x00200000
     XVR_BASE = 0x00900000
+    ACCEL_BASE = 0x00810000
     GPIO_BASE = 0x00802800
     GPIO_END = 0x008028A0
     
@@ -64,12 +65,14 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False):
         self.raw_flash = raw_flash
         self.bootloader = bootloader
         self.app = app
         self.with_boot = with_boot
         self.only_uart = only_uart
+        self.uart1_hex = uart1_hex
+        self._uart_src = None   # last UART shown, for interleaving text/hex
         self.chip_id_value, self.device_id_value = chip_identity or CHIP_FAMILIES["BK7231"]
         
         self.state = SimulatorState()
@@ -183,8 +186,25 @@ class BekenEmulator:
             self.state.timer3_5_ctl = (value & ~(0x7 << 7)) | (self.state.timer3_5_ctl & (0x7 << 7))
             self.state.timer3_5_ctl &= ~w1c_mask
 
-        if address == self.UART1_FIFO_PORT or address == self.UART2_FIFO_PORT:
-            sys.__stdout__.write(chr(value))
+        # UART output. UART2 is the firmware's debug/log port (text). UART1 is
+        # the TuyaMCU link to the external device MCU; with --uart1-hex it is
+        # shown as tagged hex so the 55 AA protocol frames are readable instead
+        # of printing as garbage characters mixed into the log.
+        if address == self.UART1_FIFO_PORT:
+            if self.uart1_hex:
+                if self._uart_src != 'u1':
+                    sys.__stdout__.write('\n[UART1/MCU] ')
+                    self._uart_src = 'u1'
+                sys.__stdout__.write('%02x ' % (value & 0xFF))
+            else:
+                sys.__stdout__.write(chr(value & 0xFF))
+            sys.__stdout__.flush()
+            return
+        if address == self.UART2_FIFO_PORT:
+            if self.uart1_hex and self._uart_src == 'u1':
+                sys.__stdout__.write('\n')
+                self._uart_src = 'u2'
+            sys.__stdout__.write(chr(value & 0xFF))
             sys.__stdout__.flush()
             return
             
@@ -207,7 +227,11 @@ class BekenEmulator:
         # this - it waits on the SARADC interrupt (ICU bit 11).
         if address == 0x00802c00:
             self.state.saradc_cfg = value
-            if (value & (1 << 2)) and self.state.saradc_pending == 0:  # CHNL_EN
+            # Only the BK7231(T/U/N/M) SARADC layout uses this model; the
+            # 7238/7252/7252N layout differs and is served via 0x802c0c.
+            if (self.chip_id_value == 0x0007231A
+                    and (value & (1 << 2))          # CHNL_EN starts a conversion
+                    and self.state.saradc_pending == 0):
                 self.state.saradc_pending = 32
 
         # SCTRL_EFUSE_CTRL: EFUSE_OPER_EN (bit 0) self-clears when the efuse
@@ -267,7 +291,8 @@ class BekenEmulator:
             # `while((cfg & FIFO_EMPTY)==0)` loop reads them. INT_CLR (bit 8) is
             # deliberately never reflected, so saradc_int_clr()'s do/while exits.
             # Identical to the historical constant (1<<30) whenever idle.
-            cfg = (1 << 30) if self.state.saradc_pending == 0 else 0
+            cfg = 0 if (self.chip_id_value == 0x0007231A
+                        and self.state.saradc_pending) else (1 << 30)
             mu.mem_write(address, struct.pack("<I", cfg))
             return
 
@@ -288,6 +313,17 @@ class BekenEmulator:
         # start a transfer and spins until hardware clears it; report it always
         # complete (bit 31 low) so the wait loop exits.
         if address == 0x00900100:
+            mu.mem_write(address, struct.pack("<I", 0))
+            return
+
+        # Accelerator block just past the main MMIO window (0x810000) - a
+        # crypto/hash engine used by original Tuya firmware during TCP/IP init.
+        # Its status register 0x810000 and trigger 0x81001c are polled for busy
+        # bits (bit 31 / bit 30) after each operation; report every operation
+        # already complete (all bits clear) so the wait loops exit. There is no
+        # real result to compute here (the emulator has no network), so the
+        # sequence just needs to unblock.
+        if address == 0x00810000 or address == 0x0081001c:
             mu.mem_write(address, struct.pack("<I", 0))
             return
 
@@ -408,6 +444,9 @@ class BekenEmulator:
         # MMIO window; map and hook it so the RF-init transaction trigger at
         # 0x900100 can be modelled as always-complete (see hook_mem_read_mmio).
         self.mu.mem_map(self.XVR_BASE, 0x1000)
+        # Accelerator block just past the main MMIO window (0x810000); mapped
+        # and hooked so the 0x81001c transaction trigger can be served.
+        self.mu.mem_map(self.ACCEL_BASE, 0x1000)
 
         self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.MMIO_BASE, end=self.MMIO_BASE + self.MMIO_SIZE)
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.MMIO_BASE, end=self.MMIO_BASE + self.MMIO_SIZE)
@@ -415,6 +454,8 @@ class BekenEmulator:
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.PERIPH_BASE, end=self.PERIPH_BASE + self.PERIPH_SIZE)
         self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.XVR_BASE, end=self.XVR_BASE + 0x1000)
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.XVR_BASE, end=self.XVR_BASE + 0x1000)
+        self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.ACCEL_BASE, end=self.ACCEL_BASE + 0x1000)
+        self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.ACCEL_BASE, end=self.ACCEL_BASE + 0x1000)
         self.mu.hook_add(UC_HOOK_MEM_UNMAPPED, self.hook_unmapped)
         self.mu.hook_add(UC_HOOK_CODE, self.hook_code)
         self.mu.hook_add(UC_HOOK_INTR, self.hook_intr)

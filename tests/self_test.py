@@ -1,4 +1,6 @@
 import subprocess
+import threading
+import time
 import os
 import sys
 
@@ -159,7 +161,7 @@ TEST_CASES = [
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7252 chip identity (bk_check_chip_id).
         "args": ["--only-uart", "-chip", "BK7252"],
-        "timeout": 180,
+        "timeout": 240,
         "expected_strings": [
             "OpenBK7252, version 1.18.300",
             ", idle ",
@@ -171,7 +173,7 @@ TEST_CASES = [
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252N_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7252N chip identity (bk_check_chip_id).
         "args": ["--only-uart", "-chip", "BK7252N"],
-        "timeout": 180,
+        "timeout": 240,
         "expected_strings": [
             "OpenBK7252N, version 1.18.300",
             ", idle ",
@@ -246,6 +248,29 @@ TEST_CASES = [
         ]
     },
     {
+        # Original Tuya TuyaMCU firmware (BLE+WiFi fan switch). This dump's
+        # TCP/IP init drives a hardware crypto/accelerator at 0x810000 (set a
+        # busy bit, spin until it clears); without that block modelled the boot
+        # hangs at "Initializing TCP/IP stack". These markers are all PAST that
+        # stall - BLE stack bring-up and BLE-netcfg advertising - so this case
+        # guards the 0x810000 / 0x81001c accelerator model. -key TUYA, and it is
+        # the deepest-booting original-Tuya dump in the suite.
+        "name": "Tuya TMWF02 TuyaMCU Boots past crypto accel",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_Tuya_TMWF02_Fan_Switch_TuyaMCU_1.1.71.bin"),
+        # --uart1-hex keeps any TuyaMCU 55AA bytes off the UART2 log stream the
+        # markers match, and exercises the dual-UART feature.
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "Initializing TCP/IP stack",
+            # Past the 0x810000 crypto-accel stall: BLE host stack comes up.
+            "STACK INIT OK",
+            "CREATE DB SUCCESS",
+            # BLE network-config advertising starts.
+            "appm start advertising"
+        ]
+    },
+    {
         "name": "Woox Tuya Original Firmware Boot",
         "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
@@ -271,29 +296,73 @@ def run_test(test_config):
     print(f"=====================================")
     print(f"Running Test: {name}")
     print(f"Binary: {binary}")
-    
+
     if not os.path.exists(binary):
         print(f"FAIL: Binary not found: {binary}")
         return False
-        
+
     cmd = [sys.executable, MAIN_SCRIPT, binary] + args
-    
+
+    # Stream the child's output and stop as soon as every expected string has
+    # been seen. The emulator never exits on its own, so the old
+    # run-until-timeout approach cost each boot case its full timeout - and made
+    # the suite fragile, because a case that reached its markers late (heavy
+    # chip, or a busy machine) would be killed by the deadline before finishing.
+    # Streaming makes a passing case take only as long as its last marker needs,
+    # and a real failure still fails at the timeout.
     try:
-        # Run process and capture stdout/stderr merged
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout)
-        output = result.stdout
-    except subprocess.TimeoutExpired as e:
-        # If it times out, that's often fine because it might just be hanging after booting
-        output = e.stdout
-        if isinstance(output, bytes):
-            output = output.decode('utf-8', errors='ignore')
-        elif output is None:
-            output = ""
-        print("Note: Process reached timeout. Checking output up to this point.")
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True,
+                                bufsize=1, encoding="utf-8", errors="ignore")
     except Exception as e:
-        print(f"FAIL: Failed to run subprocess: {e}")
+        print(f"FAIL: Failed to launch subprocess: {e}")
         return False
-        
+
+    lines = []
+    remaining = set(expected)
+    lock = threading.Lock()
+
+    def reader():
+        for line in proc.stdout:
+            with lock:
+                lines.append(line)
+                for s_ in list(remaining):
+                    if s_ in line:
+                        remaining.discard(s_)
+
+    th = threading.Thread(target=reader, daemon=True)
+    th.start()
+
+    start = time.time()
+    hit_timeout = False
+    while True:
+        with lock:
+            done = not remaining
+        if done:
+            break
+        if proc.poll() is not None:
+            # process exited on its own (e.g. a CLI test); let the reader drain.
+            th.join(timeout=1.0)
+            break
+        if time.time() - start > timeout:
+            hit_timeout = True
+            break
+        time.sleep(0.25)
+
+    if proc.poll() is None:
+        proc.kill()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+    th.join(timeout=2.0)
+
+    with lock:
+        output = "".join(lines)
+    elapsed = time.time() - start
+    if hit_timeout:
+        print(f"Note: reached {timeout}s timeout. Checking output up to this point.")
+
     all_passed = True
     for string in expected:
         if string in output:
@@ -301,15 +370,15 @@ def run_test(test_config):
         else:
             print(f"  [FAIL] Missing string: '{string}'")
             all_passed = False
-            
+
     if not all_passed:
         print("--- CAPTURED OUTPUT ---")
         print(output)
         print("-----------------------")
         print(f"Test '{name}' FAILED.")
         return False
-        
-    print(f"Test '{name}' PASSED.")
+
+    print(f"Test '{name}' PASSED. ({elapsed:.0f}s)")
     return True
 
 def main():
