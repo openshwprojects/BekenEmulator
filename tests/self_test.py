@@ -106,8 +106,9 @@ TEST_CASES = [
         # SIGNED char semantics (arithmetic >>), which is what the firmware's
         # own build does - the unsigned reading of the same code yields a
         # different byte and the config is refused.
-        "name": "MathDemo Crafted Config Load and Startup Command",
-        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300_mathDemo_cfgtest.bin"),
+        "name": "MathDemo Startup Command: echo",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_echo.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
         "timeout": 180,
         "expected_strings": [
@@ -116,6 +117,27 @@ TEST_CASES = [
             # initCommandLine (offset 0x5E0) is "echo Test12343242343243";
             # CMD_Echo logs its argument under LOG_FEATURE_CMD.
             "Info:CMD:Test12343242343243"
+        ]
+    },
+    {
+        # Same config-injection trick, but the startup command drives OBK's own
+        # uartSendHex to put bytes on UART1. This exercises the whole path end
+        # to end: config load -> command registration (UART_AddCommands runs in
+        # CMD_Init_Delayed, before the startup command is executed) -> HAL uart
+        # write -> the emulator's UART1 hex capture. uartSendHex targets
+        # UART_PORT_INDEX_0, which maps to BK_UART_1, so the bytes land on the
+        # MCU link rather than the UART2 log.
+        # This is a plain UART demo - the payload is arbitrary marker bytes, not
+        # a TuyaMCU frame; TuyaMCU gets its own image and case.
+        "name": "MathDemo Startup Command: uartSendHex on UART1",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_uartSendHex.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            # "backlog uartInit 115200; uartSendHex BADF00D12345"
+            "[UART1/MCU] ba df 00 d1 23 45"
         ]
     },
     {
