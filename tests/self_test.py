@@ -3,6 +3,7 @@ import threading
 import time
 import os
 import sys
+from datetime import datetime, timezone
 
 # Get the path to the root directory
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -432,6 +433,120 @@ TEST_CASES = [
     }
 ]
 
+# Report-facing prose, one per test name. Kept separate from TEST_CASES so the
+# (working, exactly-asserted) case definitions stay untouched; the inline
+# comments there document specific assertion strings for maintainers, while
+# these summarise each test for the HTML report's expandable description.
+DESCRIPTIONS = {
+    "CLI: invalid -key is rejected":
+        "A bad -key value must be rejected up front by parse_key(), with a message naming the "
+        "accepted forms (a known key name, 32 hex chars, or base64 of 16 bytes), rather than "
+        "failing deep inside emulation.",
+    "CLI: invalid -chip is rejected":
+        "An unknown -chip name must be rejected and the known chip identities listed, so a typo "
+        "fails fast instead of emulating with the wrong SCTRL id registers.",
+    "CLI: encrypted image without a key warns":
+        "Running an encrypted image with no key must warn that the decrypted slice does not look "
+        "like ARM code and suggest -key TUYA, instead of silently emulating garbage.",
+    "OpenBK7231T_QIO_1.18.300 Boot to MQTT and 1s timer":
+        "Full OpenBeken boot on the flagship BK7231T image through to the first per-second "
+        "Main_OnEverySecond tick. Proves the tick interrupt, the FreeRTOS timer daemon and MQTT "
+        "registration are all alive; with no WiFi in the emulator, MQTT stays disconnected (bWifi 0).",
+    "MathDemo Boot and Float Verification":
+        "A special OpenBeken build that runs integer and floating-point math at boot and logs the "
+        "results. Verifies the CPU's software-float paths and that FreeRTOS software timers fire "
+        "(quicktick); with no config in flash it takes the default-config path.",
+    "MathDemo Startup Command: echo":
+        "The mathDemo image with a hand-crafted OpenBeken config injected at flash 0x1e1000, whose "
+        "startup command is 'echo Test...'. Proves the emulated flash controller serves a full "
+        "32-byte page per read and that the config's signed-char Tiny_CRC8 is accepted, then the "
+        "echo command runs.",
+    "MathDemo Startup Command: uartSendHex on UART1":
+        "Same config-injection trick, but the startup command drives OpenBeken's uartSendHex to "
+        "place arbitrary bytes on UART1 (the MCU link). Exercises config load -> command "
+        "registration -> HAL UART write -> the emulator's UART1 hex capture.",
+    "MathDemo Startup Command: startDriver TuyaMCU sends heartbeat":
+        "Startup command 'startDriver TuyaMCU'. The driver opens UART1 itself and talks first, "
+        "unprompted: the first per-second tick emits a TuyaMCU heartbeat frame "
+        "(55 AA 00 00 00 00 FF) with no MCU attached.",
+    "OpenBK7231U_QIO_1.18.300 Boot to 1s timer":
+        "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
+        "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
+    "OpenBK7238_QIO_1.18.300 Boot to 1s timer":
+        "OpenBeken on the newer BK7238 silicon (-chip BK7238). Boots through the SPI flash mirror "
+        "and the crypto/XVR peripherals to the per-second timer, checking BK7238 chip-identity gating.",
+    "OpenBK7231N_QIO_1.18.300 Boot to 1s timer":
+        "OpenBeken on BK7231N. This variant blocks in the per-second temperature read waiting on "
+        "the SARADC interrupt (ICU bit 11), so reaching the 1s timer proves the emulated SARADC "
+        "FIFO + interrupt model works.",
+    "OpenBK7231M_QIO_1.18.300 Boot to 1s timer (no key)":
+        "OpenBeken on BK7231M from a plaintext image (no key). Confirms the shared model and "
+        "no-key path reach the per-second timer.",
+    "OpenBK7252_QIO_1.18.300 Boot to 1s timer":
+        "OpenBeken on BK7252 (BK7221U silicon, -chip BK7252). One of the heavier boots; reaches "
+        "the per-second timer.",
+    "OpenBK7252N_QIO_1.18.300 Boot to 1s timer":
+        "OpenBeken on BK7252N (-chip BK7252N). The heaviest boot in the suite; reaches the "
+        "per-second timer.",
+    "BK7238 Sonoff 4MB Dump Boots (SPI mirror + XVR)":
+        "A real 4MB Sonoff flash dump on BK7238. Exercises the SPI flash mirror and the XVR "
+        "peripheral through the vendor SDK boot to calibration / normal-mode markers.",
+    "BK7231Q Tuya MOES Relay Boot":
+        "A Tuya BK7231Q relay dump booting the Tuya IoT SDK through TCP/IP stack initialisation.",
+    "BL2028N (=BK7231N) Boots to BLE init":
+        "A BL2028N (a BK7231N-class part) fan dump booting to BLE stack init (rwble_hl_init), "
+        "covering the BLE-capable boot path.",
+    "Tuya TMWF02 TuyaMCU Boots past crypto accel":
+        "A stock Tuya fan-switch dump. Boots past the 0x810000 crypto-accelerator stall into the "
+        "BLE host stack and network-config advertising.",
+    "Woox Tuya Original Firmware Boot":
+        "Original Tuya (non-OpenBeken) light firmware. Verifies the fix that serves the un-striped "
+        "protected-key region at 0x1ee000: instead of inventing a key from blank flash, the "
+        "firmware now retrieves the stored key.",
+    "BK7231N Tuya TempHum Sensor Reads Protected Key":
+        "The stock Tuya temp/humidity sensor that first exposed the protected-key bug. With blank "
+        "flash it failed the AES magic check and dropped to mf_test; serving the dump's real bytes "
+        "lets it decrypt its key (get key).",
+    "BK7231N Tuya Plug (SDK 2.3.3) Boots and Reads Protected Key":
+        "A stock Tuya smart plug (SDK 2.3.3), picked at random after the protected-key fix to check "
+        "it generalises. Boots past SDK init and OEM config, reading its protected key; never drops "
+        "into mf_test.",
+    "BK7231N Tuya zmai90 RN8209C Energy Meter Boots":
+        "A stock Tuya energy meter (zmai90, RN8209C metering chip). A pre-pair (unactivated) dump: "
+        "it reads its protected key but then parks in the mf_test thread, so it never polls the "
+        "meter over UART1. Proves the boot + key read; the empty UART1 is the dump's provisioning "
+        "state.",
+}
+
+
+def dump_url(binary):
+    """A downloadable GitHub raw URL for a firmware dump (works in CI and locally)."""
+    name = os.path.basename(binary)
+    repo = os.environ.get("GITHUB_REPOSITORY", "openshwprojects/BekenEmulator")
+    ref = os.environ.get("GITHUB_SHA") or "main"
+    return "https://github.com/%s/raw/%s/firmwares/%s" % (repo, ref, name)
+
+
+def _result(test_config, passed, elapsed=0.0, insns=None, timed_out=False, output="", checks=None):
+    """Assemble the structured record the HTML report consumes."""
+    binary = test_config["binary"]
+    expected = test_config["expected_strings"]
+    return {
+        "name": test_config["name"],
+        "description": DESCRIPTIONS.get(test_config["name"], ""),
+        "binary": binary,
+        "binary_name": os.path.basename(binary),
+        "dump_url": dump_url(binary),
+        "args": test_config["args"],
+        "passed": passed,
+        "timed_out": timed_out,
+        "elapsed": elapsed,
+        "insns": insns,
+        "checks": checks if checks is not None else [{"string": s, "found": False} for s in expected],
+        "output": output,
+    }
+
+
 def run_test(test_config):
     name = test_config["name"]
     binary = test_config["binary"]
@@ -445,9 +560,14 @@ def run_test(test_config):
 
     if not os.path.exists(binary):
         print(f"FAIL: Binary not found: {binary}")
-        return False
+        return _result(test_config, passed=False, output="Binary not found: %s" % binary)
 
     cmd = [sys.executable, MAIN_SCRIPT, binary] + args
+    # EMU_REPORT makes the emulator periodically print its approximate
+    # instruction count on [EMU_INSNS] lines, which the reader below strips out
+    # of the displayed log and records for the report.
+    child_env = dict(os.environ)
+    child_env["EMU_REPORT"] = "1"
 
     # Stream the child's output and stop as soon as every expected string has
     # been seen. The emulator never exits on its own, so the old
@@ -459,17 +579,23 @@ def run_test(test_config):
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
-                                bufsize=1, encoding="utf-8", errors="ignore")
+                                bufsize=1, encoding="utf-8", errors="ignore", env=child_env)
     except Exception as e:
         print(f"FAIL: Failed to launch subprocess: {e}")
-        return False
+        return _result(test_config, passed=False, output="Failed to launch subprocess: %s" % e)
 
     lines = []
     remaining = set(expected)
+    insns_holder = [None]
     lock = threading.Lock()
 
     def reader():
         for line in proc.stdout:
+            if line.startswith("[EMU_INSNS]"):
+                parts = line.split()
+                if len(parts) >= 2 and parts[1].isdigit():
+                    insns_holder[0] = int(parts[1])
+                continue
             with lock:
                 lines.append(line)
                 for s_ in list(remaining):
@@ -510,40 +636,66 @@ def run_test(test_config):
         print(f"Note: reached {timeout}s timeout. Checking output up to this point.")
 
     all_passed = True
+    checks = []
     for string in expected:
-        if string in output:
+        found = string in output
+        checks.append({"string": string, "found": found})
+        if found:
             print(f"  [PASS] Found string: '{string}'")
         else:
             print(f"  [FAIL] Missing string: '{string}'")
             all_passed = False
+
+    result = _result(test_config, passed=all_passed, elapsed=elapsed,
+                     insns=insns_holder[0], timed_out=hit_timeout,
+                     output=output, checks=checks)
 
     if not all_passed:
         print("--- CAPTURED OUTPUT ---")
         print(output)
         print("-----------------------")
         print(f"Test '{name}' FAILED.")
-        return False
+        return result
 
     print(f"Test '{name}' PASSED. ({elapsed:.0f}s)")
-    return True
+    return result
+
+def _write_report(results):
+    """Emit the HTML report to report/index.html. Never fails the run itself."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import report as report_mod
+        out_dir = os.path.join(ROOT_DIR, "report")
+        os.makedirs(out_dir, exist_ok=True)
+        run_id = os.environ.get("GITHUB_RUN_ID")
+        run_url = None
+        if run_id:
+            run_url = "%s/%s/actions/runs/%s" % (
+                os.environ.get("GITHUB_SERVER_URL", "https://github.com"),
+                os.environ.get("GITHUB_REPOSITORY", ""), run_id)
+        meta = {
+            "total_time": sum(r["elapsed"] for r in results),
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "commit": os.environ.get("GITHUB_SHA"),
+            "repo": os.environ.get("GITHUB_REPOSITORY", "openshwprojects/BekenEmulator"),
+            "run_url": run_url,
+        }
+        path = report_mod.generate(results, meta, os.path.join(out_dir, "index.html"))
+        print(f"HTML report written: {path}")
+    except Exception as e:
+        print(f"WARN: could not write HTML report: {e}")
 
 def main():
-    failed = 0
-    passed = 0
-    
-    for test in TEST_CASES:
-        if run_test(test):
-            passed += 1
-        else:
-            failed += 1
-            
+    results = [run_test(test) for test in TEST_CASES]
+    passed = sum(1 for r in results if r["passed"])
+    failed = len(results) - passed
+
     print(f"=====================================")
     print(f"Test Run Completed: {passed} passed, {failed} failed.")
-    
-    if failed > 0:
-        sys.exit(1)
-    else:
-        sys.exit(0)
+
+    _write_report(results)
+
+    sys.exit(1 if failed else 0)
 
 if __name__ == "__main__":
     main()

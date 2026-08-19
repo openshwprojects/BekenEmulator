@@ -4,3 +4,4 @@ test_ext*
 app_decrypted*
 bootloader_decrypted*
 scratch/
+report/

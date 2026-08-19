@@ -1,0 +1,228 @@
+"""Render the self-test results as a single, self-contained HTML report.
+
+The report lists every test with its pass/fail status, wall time, an approximate
+executed-instruction count, and a download link for the flash dump it ran. Each
+row expands to show a longer description and the full captured UART log, with the
+strings the test asserts highlighted where they were found.
+
+The output is one static file (inline CSS/JS, no external requests), so it works
+opened locally and published to GitHub Pages unchanged.
+"""
+import html
+
+
+def _fmt_int(n):
+    return "{:,}".format(n) if isinstance(n, int) else "n/a"
+
+
+def _fmt_secs(s):
+    return "%.0fs" % s if s >= 1 else "%.1fs" % s
+
+
+def _fmt_total(secs):
+    """Header total: 'X minute(s) SS.SS seconds' past a minute, else 'SS.SS seconds'."""
+    if secs >= 60:
+        m = int(secs // 60)
+        return "%d minute%s %.2f seconds" % (m, "" if m == 1 else "s", secs - m * 60)
+    return "%.2f seconds" % secs
+
+
+def _highlight(log_text, found_strings):
+    """HTML-escape the log, then mark each found assertion string within it."""
+    escaped = html.escape(log_text)
+    # Longest first so a short string never clobbers a longer one it sits inside.
+    for s in sorted({s for s in found_strings if s}, key=len, reverse=True):
+        needle = html.escape(s)
+        escaped = escaped.replace(needle, '<mark class="hit">' + needle + "</mark>")
+    return escaped
+
+
+def _test_card(r):
+    ok = r["passed"]
+    status_cls = "pass" if ok else "fail"
+    status_txt = "PASS" if ok else "FAIL"
+
+    checks_html = []
+    for c in r["checks"]:
+        mark = "✓" if c["found"] else "✗"
+        cls = "found" if c["found"] else "missing"
+        checks_html.append(
+            '<li class="%s"><span class="chk">%s</span><code>%s</code></li>'
+            % (cls, mark, html.escape(c["string"]))
+        )
+
+    insns = "≈ %s instrs" % _fmt_int(r["insns"]) if r["insns"] is not None else ""
+    timed_out = ' <span class="warn">(timed out)</span>' if r.get("timed_out") else ""
+
+    dump = ""
+    if r.get("dump_url"):
+        dump = '<a class="dump" href="%s" download>⤓ %s</a>' % (
+            html.escape(r["dump_url"]),
+            html.escape(r["binary_name"]),
+        )
+
+    args = html.escape(" ".join(r.get("args", [])))
+
+    return """
+    <details class="card {status_cls}">
+      <summary>
+        <span class="dot"></span>
+        <span class="title">{name}</span>
+        <span class="badges">
+          <span class="badge status">{status_txt}</span>
+          <span class="badge">{secs}{timed_out}</span>
+          <span class="badge muted">{insns}</span>
+        </span>
+      </summary>
+      <div class="body">
+        <p class="desc">{desc}</p>
+        <div class="meta">
+          {dump}
+          <span class="args"><code>main.py &lt;dump&gt; {args}</code></span>
+        </div>
+        <div class="checks">
+          <div class="checks-title">Assertions</div>
+          <ul>{checks}</ul>
+        </div>
+        <div class="log-title">UART / log output</div>
+        <pre class="log">{log}</pre>
+      </div>
+    </details>
+    """.format(
+        status_cls=status_cls,
+        status_txt=status_txt,
+        name=html.escape(r["name"]),
+        secs=_fmt_secs(r["elapsed"]),
+        timed_out=timed_out,
+        insns=insns,
+        desc=html.escape(r.get("description") or "(no description)"),
+        dump=dump,
+        args=args,
+        checks="".join(checks_html),
+        log=_highlight(r.get("output", ""), [c["string"] for c in r["checks"] if c["found"]]),
+    )
+
+
+def generate(results, meta, out_path):
+    """Render results to a single HTML file at out_path. Returns out_path."""
+    passed = sum(1 for r in results if r["passed"])
+    failed = len(results) - passed
+    overall_cls = "pass" if failed == 0 else "fail"
+
+    commit_html = ""
+    if meta.get("commit"):
+        short = meta["commit"][:8]
+        if meta.get("repo"):
+            commit_html = 'commit <a href="https://github.com/%s/commit/%s"><code>%s</code></a>' % (
+                html.escape(meta["repo"]), html.escape(meta["commit"]), short)
+        else:
+            commit_html = "commit <code>%s</code>" % short
+
+    run_html = ""
+    if meta.get("run_url"):
+        run_html = ' · <a href="%s">CI run</a>' % html.escape(meta["run_url"])
+
+    page = _PAGE.format(
+        overall_cls=overall_cls,
+        passed=passed,
+        failed=failed,
+        total=len(results),
+        total_time=_fmt_total(meta.get("total_time", 0)),
+        generated=html.escape(meta.get("generated_at", "")),
+        commit_html=commit_html,
+        run_html=run_html,
+        cards="".join(_test_card(r) for r in results),
+    )
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(page)
+    return out_path
+
+
+_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beken Emulator · Self-Test Report</title>
+<style>
+  :root {{
+    --bg:#f6f7f9; --card:#ffffff; --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea;
+    --pass:#1a7f37; --fail:#cf222e; --passbg:#dafbe1; --failbg:#ffebe9;
+    --hit:#fff3b0; --hitfg:#5a4b00; --accent:#0969da;
+  }}
+  @media (prefers-color-scheme: dark) {{
+    :root {{
+      --bg:#0d1117; --card:#161b22; --fg:#e6edf3; --muted:#8b949e; --line:#30363d;
+      --pass:#3fb950; --fail:#f85149; --passbg:#12261a; --failbg:#2b1214;
+      --hit:#5c4b00; --hitfg:#ffef9f; --accent:#4493f8;
+    }}
+  }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }}
+  .wrap {{ max-width:1000px; margin:0 auto; padding:28px 18px 60px; }}
+  header h1 {{ margin:0 0 4px; font-size:22px; }}
+  .sub {{ color:var(--muted); font-size:13px; margin-bottom:18px; }}
+  .sub a {{ color:var(--accent); text-decoration:none; }}
+  .summary {{ display:flex; gap:10px; flex-wrap:wrap; margin:0 0 22px; }}
+  .stat {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:12px 16px; min-width:96px; }}
+  .stat .n {{ font-size:24px; font-weight:700; }}
+  .stat .l {{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }}
+  .stat.pass .n {{ color:var(--pass); }} .stat.fail .n {{ color:var(--fail); }}
+  .card {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
+    margin:10px 0; overflow:hidden; }}
+  .card.fail {{ border-color:var(--fail); }}
+  summary {{ display:flex; align-items:center; gap:10px; padding:12px 16px; cursor:pointer;
+    list-style:none; }}
+  summary::-webkit-details-marker {{ display:none; }}
+  .dot {{ width:10px; height:10px; border-radius:50%; flex:0 0 auto; background:var(--pass); }}
+  .card.fail .dot {{ background:var(--fail); }}
+  .title {{ font-weight:600; flex:1; }}
+  .badges {{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }}
+  .badge {{ font-size:12px; padding:2px 8px; border-radius:20px; background:var(--bg);
+    border:1px solid var(--line); color:var(--muted); white-space:nowrap; }}
+  .badge.status {{ font-weight:700; }}
+  .card.pass .badge.status {{ background:var(--passbg); color:var(--pass); border-color:transparent; }}
+  .card.fail .badge.status {{ background:var(--failbg); color:var(--fail); border-color:transparent; }}
+  .warn {{ color:var(--fail); }}
+  .body {{ padding:2px 16px 16px; border-top:1px solid var(--line); }}
+  .desc {{ color:var(--fg); margin:12px 0; }}
+  .meta {{ display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }}
+  a.dump {{ color:var(--accent); text-decoration:none; font-weight:600; font-size:13px;
+    border:1px solid var(--line); padding:4px 10px; border-radius:8px; }}
+  a.dump:hover {{ border-color:var(--accent); }}
+  .args code {{ color:var(--muted); font-size:12px; }}
+  .checks-title, .log-title {{ font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--muted); margin:14px 0 6px; }}
+  .checks ul {{ list-style:none; margin:0; padding:0; }}
+  .checks li {{ display:flex; gap:8px; align-items:baseline; padding:2px 0; }}
+  .checks .chk {{ font-weight:700; width:14px; flex:0 0 auto; }}
+  .checks li.found .chk {{ color:var(--pass); }}
+  .checks li.missing .chk {{ color:var(--fail); }}
+  .checks li.missing code {{ color:var(--fail); }}
+  code {{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; }}
+  pre.log {{ background:var(--bg); border:1px solid var(--line); border-radius:8px;
+    padding:12px; overflow:auto; max-height:460px; font-size:12px; line-height:1.45;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap;
+    word-break:break-word; }}
+  mark.hit {{ background:var(--hit); color:var(--hitfg); font-weight:700; padding:0 2px;
+    border-radius:3px; }}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Beken Emulator · Self-Test Report</h1>
+    <div class="sub">{generated} · total {total_time} · {commit_html}{run_html}</div>
+  </header>
+  <div class="summary">
+    <div class="stat"><div class="n">{total}</div><div class="l">Tests</div></div>
+    <div class="stat pass"><div class="n">{passed}</div><div class="l">Passed</div></div>
+    <div class="stat fail"><div class="n">{failed}</div><div class="l">Failed</div></div>
+  </div>
+  {cards}
+</div>
+</body>
+</html>
+"""

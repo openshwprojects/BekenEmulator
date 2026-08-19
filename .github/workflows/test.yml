@@ -6,24 +6,65 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+# Needed for the GitHub Pages deployment of the HTML report.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two Pages deploys at once; let a run finish rather than cancelling.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python 3.10
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: "3.10"
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        
-    - name: Run self tests
+
+    - name: Run self tests (also writes report/index.html)
+      id: tests
       run: |
+        set +e
         python tests/self_test.py
+        code=$?
+        echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+        set -e
+
+    # Upload the report even when tests fail - a failing report is the useful
+    # one. Only on push (PRs, especially from forks, cannot deploy Pages).
+    - name: Upload report as Pages artifact
+      if: ${{ always() && github.event_name == 'push' }}
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: report
+
+    # Surface the real test outcome after the artifact is safely uploaded.
+    - name: Reflect test outcome
+      if: ${{ always() }}
+      run: exit ${{ steps.tests.outputs.exit_code }}
+
+  deploy:
+    needs: test
+    # always(): deploy the report even if the test job failed. Push-only.
+    if: ${{ always() && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - name: Deploy report to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4

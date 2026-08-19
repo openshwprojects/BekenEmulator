@@ -34,6 +34,7 @@ class SimulatorState:
         self.saradc_pending = 0    # samples waiting in the emulated ADC FIFO
         self.last_slow = 0         # insn_count at last ~10000-insn (timer) tick
         self.last_fast = 0         # insn_count at last ~1000-insn (UART) tick
+        self.last_emit = 0         # insn_count at last [EMU_INSNS] report line
 
 class FlashState:
     def __init__(self):
@@ -77,6 +78,12 @@ class BekenEmulator:
         self.only_uart = only_uart
         self.uart1_hex = uart1_hex
         self._uart_src = None   # last UART shown, for interleaving text/hex
+        # When EMU_REPORT is set (the self-test harness does this), periodically
+        # emit the approximate executed-instruction count on a distinct
+        # [EMU_INSNS] line so the report can show it. Off by default so normal
+        # runs are not polluted, and the emit is throttled + piggybacks the
+        # existing slow tick, so it never touches the per-block hot path.
+        self._emit_insns = bool(os.environ.get("EMU_REPORT"))
         self.chip_id_value, self.device_id_value = chip_identity or CHIP_FAMILIES["BK7231"]
         
         self.state = SimulatorState()
@@ -158,6 +165,14 @@ class BekenEmulator:
         # Slow tick (~every 10000 insns): raise the periodic sources' pending.
         if state.insn_count - state.last_slow >= 10000:
             state.last_slow = state.insn_count
+            # Report-only: emit the running instruction estimate a few times per
+            # boot. Guarded by _emit_insns (off unless the harness asks) and
+            # throttled, so this costs nothing on a normal run.
+            if self._emit_insns and state.insn_count - state.last_emit >= 1_000_000:
+                state.last_emit = state.insn_count
+                buf = sys.__stdout__.buffer
+                buf.write(b"\n[EMU_INSNS] %d\n" % state.insn_count)
+                buf.flush()
             if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
                 state.pwm_status |= (1 << 0)
             if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
