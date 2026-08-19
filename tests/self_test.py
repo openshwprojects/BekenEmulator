@@ -2,6 +2,7 @@ import subprocess
 import threading
 import time
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -10,11 +11,19 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 MAIN_SCRIPT = os.path.join(ROOT_DIR, 'src', 'main.py')
 
 # How many times a periodic line must repeat for the "1s timers" cases.
-# Emulation is far slower than the wall clock (~4 ticks per 90s here), so
-# waiting for ten per-second ticks costs minutes per case: fine for CI, tedious
-# on a laptop. CI asks for ten; a local run settles for two, which still proves
-# the timer REPEATS rather than merely starting. Override with REPEATS=n.
-REPEATS = int(os.environ.get("REPEATS") or (10 if os.environ.get("CI") else 2))
+# Two is the sweet spot: a second tick already proves the timer REPEATS rather
+# than merely starting, and each extra tick costs real wall time (emulation runs
+# far slower than the clock - about 4 ticks per 90s here). Same everywhere so CI
+# and local runs assert the same thing; override with REPEATS=n to dig deeper.
+REPEATS = int(os.environ.get("REPEATS") or 2)
+
+# Seconds to keep the emulator running AFTER a test has met all its markers.
+# The pass/fail verdict is already decided at that point; lingering just keeps
+# capturing output, so the report shows more of the boot than the bare minimum
+# needed to pass - and periodic checks report how many ticks actually occurred
+# (e.g. 7/2) rather than stopping dead on the second one. CI sets LINGER=5;
+# local runs default to 0 so an ordinary run stays as quick as before.
+LINGER = float(os.environ.get("LINGER") or 0)
 
 # DRY Test definitions.
 #
@@ -557,6 +566,25 @@ def dump_url(binary):
     return "https://github.com/%s/raw/%s/firmwares/%s" % (repo, ref, name)
 
 
+# Which silicon a test covers, read off the dump's filename. Longer names come
+# first so BK7252N is not matched as BK7252, and BK7231N not as BK7231. This is
+# the *part* the dump came from, which is finer-grained than the emulated
+# identity: --chip collapses the whole T/U/N/M family onto BK7231.
+_CHIP_RE = re.compile(r"(BL2028N|BK7252N|BK7231[TUNMQ]|BK7238|BK7252|BK7236|BK7258|BK3231)", re.I)
+
+
+def chip_of(test_config):
+    """Best-effort chip name for a test: filename first, then the -chip arg."""
+    m = _CHIP_RE.search(os.path.basename(test_config["binary"]))
+    if m:
+        return m.group(1).upper()
+    args = test_config.get("args", [])
+    for i, a in enumerate(args):
+        if a in ("-chip", "--chip") and i + 1 < len(args):
+            return args[i + 1].upper()
+    return "BK7231"
+
+
 def _parse_expected(expected):
     """Normalise expected_strings entries to (string, min_count) pairs.
 
@@ -584,6 +612,7 @@ def _result(test_config, passed, elapsed=0.0, insns=None, timed_out=False, outpu
         "description": DESCRIPTIONS.get(test_config["name"], ""),
         "binary": binary,
         "binary_name": os.path.basename(binary),
+        "chip": chip_of(test_config),
         "dump_url": dump_url(binary),
         "args": test_config["args"],
         "passed": passed,
@@ -736,6 +765,7 @@ def _write_report(results):
                 os.environ.get("GITHUB_REPOSITORY", ""), run_id)
         meta = {
             "total_time": sum(r["elapsed"] for r in results),
+            "chips": sorted({r["chip"] for r in results if r.get("chip")}),
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "commit": os.environ.get("GITHUB_SHA"),
             "repo": os.environ.get("GITHUB_REPOSITORY", "openshwprojects/BekenEmulator"),

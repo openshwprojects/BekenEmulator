@@ -19,6 +19,13 @@ def _fmt_secs(s):
     return "%.0fs" % s if s >= 1 else "%.1fs" % s
 
 
+def _fmt_compact(secs):
+    """Short runtime for the stat card: '13m 13s' past a minute, else '45.7s'."""
+    if secs >= 60:
+        return "%dm %02ds" % (int(secs // 60), int(round(secs % 60)))
+    return "%.1fs" % secs
+
+
 def _fmt_total(secs):
     """Header total: 'X minute(s) SS.SS seconds' past a minute, else 'SS.SS seconds'."""
     if secs >= 60:
@@ -129,11 +136,17 @@ def generate(results, meta, out_path):
     if meta.get("run_url"):
         run_html = ' · <a href="%s">CI run</a>' % html.escape(meta["run_url"])
 
+    chips = meta.get("chips") or sorted({r["chip"] for r in results if r.get("chip")})
+
     page = _PAGE.format(
         overall_cls=overall_cls,
         passed=passed,
         failed=failed,
         total=len(results),
+        runtime=_fmt_compact(meta.get("total_time", 0)),
+        chips=len(chips),
+        # Hover the Chips card to see which parts are covered.
+        chips_list=html.escape(", ".join(chips)),
         total_time=_fmt_total(meta.get("total_time", 0)),
         generated=html.escape(meta.get("generated_at", "")),
         commit_html=commit_html,
@@ -238,6 +251,8 @@ _PAGE = """<!doctype html>
     <div class="stat"><div class="n">{total}</div><div class="l">Tests</div></div>
     <div class="stat pass"><div class="n">{passed}</div><div class="l">Passed</div></div>
     <div class="stat fail"><div class="n">{failed}</div><div class="l">Failed</div></div>
+    <div class="stat"><div class="n">{runtime}</div><div class="l">Runtime</div></div>
+    <div class="stat" title="{chips_list}"><div class="n">{chips}</div><div class="l">Chips</div></div>
   </div>
   {cards}
 </div>
