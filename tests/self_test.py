@@ -141,6 +141,26 @@ TEST_CASES = [
         ]
     },
     {
+        # "startDriver TuyaMCU" - the driver opens UART1 itself (TuyaMCU_Init
+        # calls UART_InitUART(9600)), so no uartInit is needed. It then talks
+        # unprompted: TuyaMCU_RunStateMachine_V3 starts with heartbeat_timer==0,
+        # so the very first per-second tick emits a HEARTBEAT (cmd 0x00) without
+        # the MCU ever having said anything. Frame is built by
+        # TuyaMCU_SendCommandWithData: 55 AA <ver 00> <cmd> <lenHi> <lenLo>
+        # <checksum>, checksum = 0xFF + cmd + lenHi + lenLo = 0xFF for a
+        # zero-length heartbeat.
+        "name": "MathDemo Startup Command: startDriver TuyaMCU sends heartbeat",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_tuyaMCU.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 240,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Started TuyaMCU.",
+            "[UART1/MCU] 55 aa 00 00 00 00 ff"
+        ]
+    },
+    {
         "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timer",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231U_QIO_1.18.300.bin"),
         # Plaintext image (beken_freertos_sdk layout) - no key.
