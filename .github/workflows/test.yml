@@ -36,6 +36,10 @@ jobs:
 
     - name: Run self tests (also writes report/index.html)
       id: tests
+      # REPEATS: how many per-second ticks the "1s timers" cases must see.
+      # CI has the time budget for the full ten; a local run defaults to two.
+      env:
+        REPEATS: "10"
       run: |
         set +e
         python tests/self_test.py

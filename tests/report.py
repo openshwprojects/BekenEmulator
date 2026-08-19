@@ -46,9 +46,13 @@ def _test_card(r):
     for c in r["checks"]:
         mark = "✓" if c["found"] else "✗"
         cls = "found" if c["found"] else "missing"
+        # Show a count only for repeat assertions (required > 1), e.g. 10/10.
+        tally = ""
+        if c.get("required", 1) > 1:
+            tally = '<span class="count">%d/%d</span>' % (c.get("count", 0), c["required"])
         checks_html.append(
-            '<li class="%s"><span class="chk">%s</span><code>%s</code></li>'
-            % (cls, mark, html.escape(c["string"]))
+            '<li class="%s"><span class="chk">%s</span><code>%s</code>%s</li>'
+            % (cls, mark, html.escape(c["string"]), tally)
         )
 
     insns = "≈ %s instrs" % _fmt_int(r["insns"]) if r["insns"] is not None else ""
@@ -211,6 +215,9 @@ _PAGE = """<!doctype html>
   .checks li.found .chk {{ color:var(--pass); }}
   .checks li.missing .chk {{ color:var(--fail); }}
   .checks li.missing code {{ color:var(--fail); }}
+  .checks .count {{ font-size:11px; padding:1px 7px; border-radius:20px; background:var(--passbg);
+    color:var(--pass); font-weight:700; }}
+  .checks li.missing .count {{ background:var(--failbg); color:var(--fail); }}
   code {{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; }}
   pre.log {{ background:var(--bg); border:1px solid var(--line); border-radius:8px;
     padding:12px; overflow:auto; max-height:460px; font-size:12px; line-height:1.45;

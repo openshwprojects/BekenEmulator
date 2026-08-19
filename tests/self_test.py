@@ -9,6 +9,13 @@ from datetime import datetime, timezone
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 MAIN_SCRIPT = os.path.join(ROOT_DIR, 'src', 'main.py')
 
+# How many times a periodic line must repeat for the "1s timers" cases.
+# Emulation is far slower than the wall clock (~4 ticks per 90s here), so
+# waiting for ten per-second ticks costs minutes per case: fine for CI, tedious
+# on a laptop. CI asks for ten; a local run settles for two, which still proves
+# the timer REPEATS rather than merely starting. Override with REPEATS=n.
+REPEATS = int(os.environ.get("REPEATS") or (10 if os.environ.get("CI") else 2))
+
 # DRY Test definitions.
 #
 # Ordering matters: the boot tests below run the emulator until their timeout
@@ -58,12 +65,13 @@ TEST_CASES = [
         ]
     },
     {
-        "name": "OpenBK7231T_QIO_1.18.300 Boot to MQTT and 1s timer",
+        "name": "OpenBK7231T_QIO_1.18.300 Boot to MQTT and 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
-        # Boot finishes around 28M instructions; the first Main_OnEverySecond
-        # "Time N, idle ..." line lands around 38M (~90s wall on a typical machine).
-        "timeout": 180,  # seconds
+        # Boot finishes around 28M instructions and each Main_OnEverySecond tick
+        # costs a few million more, so waiting for REPEATS ticks needs a longer
+        # budget. Streaming stops as soon as the last one is seen.
+        "timeout": 360,  # seconds
         "expected_strings": [
             "OpenBK7231T, version 1.18.300",
             "Main_Init_Delay",
@@ -71,9 +79,12 @@ TEST_CASES = [
             # Main_OnEverySecond runs off a FreeRTOS software timer - proves the
             # tick interrupt and the timer daemon task are alive.
             ", idle ",
-            # Stable tail of the first "Time N" lines: no WiFi in the emulator,
-            # so MQTT is disconnected and the ping watchdog never starts.
-            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+            # Require the stable per-second line REPEATS times: the "Time N"
+            # numbers can skip, but each Main_OnEverySecond prints this line
+            # exactly once, so several of them prove the timer keeps firing, not
+            # just starts. No WiFi in the emulator, so MQTT stays down and the
+            # ping watchdog never starts. (string, count) asks for count matches.
+            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS)
         ]
     },
     {
@@ -162,7 +173,7 @@ TEST_CASES = [
         ]
     },
     {
-        "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timer",
+        "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231U_QIO_1.18.300.bin"),
         # Plaintext image (beken_freertos_sdk layout) - no key.
         "args": ["--only-uart"],
@@ -170,11 +181,14 @@ TEST_CASES = [
         "expected_strings": [
             "OpenBK7231U, version 1.18.300",
             ", idle ",
-            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+            # Require the per-second line 10x: each Main_OnEverySecond prints it
+            # once, so ten proves the timer keeps firing (the "Time N" numbers
+            # themselves can skip). (string, count) asks for count occurrences.
+            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS)
         ]
     },
     {
-        "name": "OpenBK7238_QIO_1.18.300 Boot to 1s timer",
+        "name": "OpenBK7238_QIO_1.18.300 Boot to 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7238_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7238 chip identity (bk_check_chip_id).
         "args": ["--only-uart", "-chip", "BK7238"],
@@ -182,7 +196,10 @@ TEST_CASES = [
         "expected_strings": [
             "OpenBK7238, version 1.18.300",
             ", idle ",
-            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+            # Require the per-second line 10x: each Main_OnEverySecond prints it
+            # once, so ten proves the timer keeps firing (the "Time N" numbers
+            # themselves can skip). (string, count) asks for count occurrences.
+            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS)
         ]
     },
     {
@@ -191,7 +208,7 @@ TEST_CASES = [
         # temperature via the SARADC and blocks on the SARADC interrupt (ICU
         # bit 11), which the emulator now models. N (unlike T) unmasks bit 11,
         # so this is the case that guards the SARADC model.
-        "name": "OpenBK7231N_QIO_1.18.300 Boot to 1s timer",
+        "name": "OpenBK7231N_QIO_1.18.300 Boot to 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231N_QIO_1.18.300.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
         "timeout": 180,
@@ -203,7 +220,10 @@ TEST_CASES = [
             "Info:MAIN:Main_Init_After_Delay done",
             # The temperature read (SARADC) inside Main_OnEverySecond completes.
             ", idle ",
-            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+            # Require the per-second line 10x: each Main_OnEverySecond prints it
+            # once, so ten proves the timer keeps firing (the "Time N" numbers
+            # themselves can skip). (string, count) asks for count occurrences.
+            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS)
         ]
     },
     {
@@ -212,7 +232,7 @@ TEST_CASES = [
         # the "OpenBK7231N" banner). Runs with no -key - the regression guard
         # for the plaintext path through crypto.py on a BK7231N-family image.
         # With the SARADC model it reaches the per-second loop like N.
-        "name": "OpenBK7231M_QIO_1.18.300 Boot to 1s timer (no key)",
+        "name": "OpenBK7231M_QIO_1.18.300 Boot to 1s timers (no key)",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231M_QIO_1.18.300.bin"),
         "args": ["--only-uart"],
         "timeout": 180,
@@ -224,11 +244,14 @@ TEST_CASES = [
             # Full OpenBeken init completed.
             "Info:MAIN:Main_Init_After_Delay done",
             ", idle ",
-            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+            # Require the per-second line 10x: each Main_OnEverySecond prints it
+            # once, so ten proves the timer keeps firing (the "Time N" numbers
+            # themselves can skip). (string, count) asks for count occurrences.
+            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS)
         ]
     },
     {
-        "name": "OpenBK7252_QIO_1.18.300 Boot to 1s timer",
+        "name": "OpenBK7252_QIO_1.18.300 Boot to 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7252 chip identity (bk_check_chip_id).
         "args": ["--only-uart", "-chip", "BK7252"],
@@ -236,11 +259,14 @@ TEST_CASES = [
         "expected_strings": [
             "OpenBK7252, version 1.18.300",
             ", idle ",
-            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+            # Require the per-second line 10x: each Main_OnEverySecond prints it
+            # once, so ten proves the timer keeps firing (the "Time N" numbers
+            # themselves can skip). (string, count) asks for count occurrences.
+            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS)
         ]
     },
     {
-        "name": "OpenBK7252N_QIO_1.18.300 Boot to 1s timer",
+        "name": "OpenBK7252N_QIO_1.18.300 Boot to 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252N_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7252N chip identity (bk_check_chip_id).
         "args": ["--only-uart", "-chip", "BK7252N"],
@@ -248,7 +274,10 @@ TEST_CASES = [
         "expected_strings": [
             "OpenBK7252N, version 1.18.300",
             ", idle ",
-            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+            # Require the per-second line 10x: each Main_OnEverySecond prints it
+            # once, so ten proves the timer keeps firing (the "Time N" numbers
+            # themselves can skip). (string, count) asks for count occurrences.
+            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS)
         ]
     },
     {
@@ -448,10 +477,11 @@ DESCRIPTIONS = {
     "CLI: encrypted image without a key warns":
         "Running an encrypted image with no key must warn that the decrypted slice does not look "
         "like ARM code and suggest -key TUYA, instead of silently emulating garbage.",
-    "OpenBK7231T_QIO_1.18.300 Boot to MQTT and 1s timer":
-        "Full OpenBeken boot on the flagship BK7231T image through to the first per-second "
-        "Main_OnEverySecond tick. Proves the tick interrupt, the FreeRTOS timer daemon and MQTT "
-        "registration are all alive; with no WiFi in the emulator, MQTT stays disconnected (bWifi 0).",
+    "OpenBK7231T_QIO_1.18.300 Boot to MQTT and 1s timers":
+        "Full OpenBeken boot on the flagship BK7231T image, then ten Main_OnEverySecond ticks - "
+        "proving the timer keeps firing, not just starts. Also proves the tick interrupt, the "
+        "FreeRTOS timer daemon and MQTT registration are alive; with no WiFi in the emulator, "
+        "MQTT stays disconnected (bWifi 0).",
     "MathDemo Boot and Float Verification":
         "A special OpenBeken build that runs integer and floating-point math at boot and logs the "
         "results. Verifies the CPU's software-float paths and that FreeRTOS software timers fire "
@@ -469,23 +499,23 @@ DESCRIPTIONS = {
         "Startup command 'startDriver TuyaMCU'. The driver opens UART1 itself and talks first, "
         "unprompted: the first per-second tick emits a TuyaMCU heartbeat frame "
         "(55 AA 00 00 00 00 FF) with no MCU attached.",
-    "OpenBK7231U_QIO_1.18.300 Boot to 1s timer":
+    "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
-    "OpenBK7238_QIO_1.18.300 Boot to 1s timer":
+    "OpenBK7238_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the newer BK7238 silicon (-chip BK7238). Boots through the SPI flash mirror "
         "and the crypto/XVR peripherals to the per-second timer, checking BK7238 chip-identity gating.",
-    "OpenBK7231N_QIO_1.18.300 Boot to 1s timer":
+    "OpenBK7231N_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on BK7231N. This variant blocks in the per-second temperature read waiting on "
         "the SARADC interrupt (ICU bit 11), so reaching the 1s timer proves the emulated SARADC "
         "FIFO + interrupt model works.",
-    "OpenBK7231M_QIO_1.18.300 Boot to 1s timer (no key)":
+    "OpenBK7231M_QIO_1.18.300 Boot to 1s timers (no key)":
         "OpenBeken on BK7231M from a plaintext image (no key). Confirms the shared model and "
         "no-key path reach the per-second timer.",
-    "OpenBK7252_QIO_1.18.300 Boot to 1s timer":
+    "OpenBK7252_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on BK7252 (BK7221U silicon, -chip BK7252). One of the heavier boots; reaches "
         "the per-second timer.",
-    "OpenBK7252N_QIO_1.18.300 Boot to 1s timer":
+    "OpenBK7252N_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on BK7252N (-chip BK7252N). The heaviest boot in the suite; reaches the "
         "per-second timer.",
     "BK7238 Sonoff 4MB Dump Boots (SPI mirror + XVR)":
@@ -527,10 +557,28 @@ def dump_url(binary):
     return "https://github.com/%s/raw/%s/firmwares/%s" % (repo, ref, name)
 
 
+def _parse_expected(expected):
+    """Normalise expected_strings entries to (string, min_count) pairs.
+
+    An entry is either a plain string (needs to appear at least once) or a
+    (string, count) tuple requiring at least `count` occurrences - used to prove
+    a periodic line keeps printing, not just appears once.
+    """
+    out = []
+    for e in expected:
+        if isinstance(e, (tuple, list)) and len(e) == 2:
+            out.append((e[0], int(e[1])))
+        else:
+            out.append((e, 1))
+    return out
+
+
 def _result(test_config, passed, elapsed=0.0, insns=None, timed_out=False, output="", checks=None):
     """Assemble the structured record the HTML report consumes."""
     binary = test_config["binary"]
-    expected = test_config["expected_strings"]
+    if checks is None:
+        checks = [{"string": s, "found": False, "count": 0, "required": n}
+                  for s, n in _parse_expected(test_config["expected_strings"])]
     return {
         "name": test_config["name"],
         "description": DESCRIPTIONS.get(test_config["name"], ""),
@@ -542,7 +590,7 @@ def _result(test_config, passed, elapsed=0.0, insns=None, timed_out=False, outpu
         "timed_out": timed_out,
         "elapsed": elapsed,
         "insns": insns,
-        "checks": checks if checks is not None else [{"string": s, "found": False} for s in expected],
+        "checks": checks,
         "output": output,
     }
 
@@ -584,8 +632,11 @@ def run_test(test_config):
         print(f"FAIL: Failed to launch subprocess: {e}")
         return _result(test_config, passed=False, output="Failed to launch subprocess: %s" % e)
 
+    reqs = _parse_expected(expected)
+    required = {s: n for s, n in reqs}
+    counts = {s: 0 for s, n in reqs}
     lines = []
-    remaining = set(expected)
+    remaining = set(required)          # strings not yet at their required count
     insns_holder = [None]
     lock = threading.Lock()
 
@@ -599,8 +650,11 @@ def run_test(test_config):
             with lock:
                 lines.append(line)
                 for s_ in list(remaining):
-                    if s_ in line:
-                        remaining.discard(s_)
+                    c = line.count(s_)
+                    if c:
+                        counts[s_] += c
+                        if counts[s_] >= required[s_]:
+                            remaining.discard(s_)
 
     th = threading.Thread(target=reader, daemon=True)
     th.start()
@@ -637,13 +691,20 @@ def run_test(test_config):
 
     all_passed = True
     checks = []
-    for string in expected:
-        found = string in output
-        checks.append({"string": string, "found": found})
+    for string, need in reqs:
+        actual = output.count(string)      # recount from the full captured log
+        found = actual >= need
+        checks.append({"string": string, "found": found, "count": actual, "required": need})
         if found:
-            print(f"  [PASS] Found string: '{string}'")
+            if need > 1:
+                print(f"  [PASS] Found '{string}' x{actual} (need {need})")
+            else:
+                print(f"  [PASS] Found string: '{string}'")
         else:
-            print(f"  [FAIL] Missing string: '{string}'")
+            if need > 1:
+                print(f"  [FAIL] '{string}' found {actual}x, need {need}")
+            else:
+                print(f"  [FAIL] Missing string: '{string}'")
             all_passed = False
 
     result = _result(test_config, passed=all_passed, elapsed=elapsed,
