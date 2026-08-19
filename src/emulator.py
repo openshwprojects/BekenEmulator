@@ -441,14 +441,20 @@ class BekenEmulator:
             # register 8 times after one operate-write to pull a whole 32-byte
             # page (buf[8]); serve successive words so bulk reads (e.g. the
             # net_param config partition) get the full page, not word 0 repeated.
+            #
+            # Addresses here are PHYSICAL offsets into the dump, not offsets into
+            # the CRC-stripped image. Verified against a real OpenBeken BK7231N
+            # dump: its config carries a valid CRC at physical 0x1D1000, exactly
+            # the BK_PARTITION_NET_PARAM address from that SDK's partition table,
+            # while the address a logical mapping implies (0x1EE000) holds
+            # garbage. Serving stripped bytes here used to agree with our own
+            # config injector and with nothing else - reading Tuya's mirror KV at
+            # 0x1CF000 as blank flash, for instance, when the dump plainly has it.
             word_addr = self.flash_state.addr + self.flash_state.read_idx * 4
             self.flash_state.read_idx += 1
-            if word_addr + 4 <= len(self.raw_flash):
-                val = struct.unpack("<I", self.raw_flash[word_addr : word_addr + 4])[0]
-            elif self.physical_flash is not None and word_addr + 4 <= len(self.physical_flash):
-                # Past the end of logical (CRC-stripped) space. The dump still has
-                # real bytes there, so serve them rather than erased flash.
-                val = struct.unpack("<I", self.physical_flash[word_addr : word_addr + 4])[0]
+            src = self.physical_flash if self.physical_flash is not None else self.raw_flash
+            if word_addr + 4 <= len(src):
+                val = struct.unpack("<I", src[word_addr : word_addr + 4])[0]
             else:
                 val = 0xFFFFFFFF
             mu.mem_write(address, struct.pack("<I", val))

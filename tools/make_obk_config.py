@@ -27,7 +27,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from src.crypto import block_crc_check, crc16
 
-CONFIG_ADDR = 0x1E1000          # BK_PARTITION_NET_PARAM start
+# BK_PARTITION_NET_PARAM start, as a PHYSICAL offset into the dump - which is
+# what the firmware asks the flash controller for. Confirmed against a real
+# OpenBeken BK7231N dump: its config (valid CRC, real SSID) sits at physical
+# 0x1D1000, the exact address in that SDK's partition table, and NOT at the
+# 0x1EE000 a CRC-stripped/logical mapping would imply. The address differs per
+# chip family, so pick by image or pass --addr.
+CONFIG_ADDR = 0x1E1000          # BK7231T/U family
+CONFIG_ADDR_N = 0x1D1000        # BK7231N/M family
 CONFIG_SIZE = 3584              # MAGIC_CONFIG_SIZE_V4 == sizeof(mainConfig_t)
 CFG_VERSION = 5                 # MAIN_CFG_VERSION
 CMDLINE_OFF = 0x5E0             # offsetof(mainConfig_t, initCommandLine)
@@ -128,17 +135,22 @@ def patch_striped(raw, stripped_addr, payload, offset):
     return bytes(out)
 
 
-def inject(raw, startup_command):
-    """Return a copy of raw carrying a valid config with the given command."""
+def inject(raw, startup_command, addr=CONFIG_ADDR):
+    """Return a copy of raw carrying a valid config at PHYSICAL offset addr.
+
+    No CRC re-striping: the firmware reads this partition through the flash
+    controller by physical address, so the config is a plain contiguous blob at
+    that offset. The image is padded with erased flash if it is too short (an
+    app-only image ends well before the config partition).
+    """
     cfg = build_config(startup_command)
-    offset = detect_stripe_offset(raw)
-    if offset is None:
-        out = bytearray(raw)
-        if len(out) < CONFIG_ADDR + CONFIG_SIZE:
-            out += b"\xff" * (CONFIG_ADDR + CONFIG_SIZE - len(out))
-        out[CONFIG_ADDR:CONFIG_ADDR + CONFIG_SIZE] = cfg
-        return bytes(out), offset, cfg
-    return patch_striped(raw, CONFIG_ADDR, cfg, offset), offset, cfg
+    out = bytearray(raw)
+    end = addr + CONFIG_SIZE
+    if len(out) < end:
+        want = -(-end // SECTOR_SIZE) * SECTOR_SIZE      # round up to a sector
+        out += b"\xff" * (want - len(out))
+    out[addr:end] = cfg
+    return bytes(out), addr, cfg
 
 
 def main():
@@ -149,18 +161,27 @@ def main():
     parser.add_argument("-c", "--command", required=True,
                         help="Startup command placed in initCommandLine, e.g. "
                              "\"uartInit 9600; uartSendHex 55AA00000000FF\"")
+    parser.add_argument("--addr", default=None,
+                        help="Physical config address. Default: 0x1E1000, or "
+                             "0x1D1000 when the filename looks like a BK7231N/M image.")
     args = parser.parse_args()
 
     with open(args.input, "rb") as f:
         raw = f.read()
 
-    patched, offset, cfg = inject(raw, args.command)
+    if args.addr:
+        addr = int(args.addr, 0)
+    else:
+        name = os.path.basename(args.input).upper()
+        addr = CONFIG_ADDR_N if ("7231N" in name or "7231M" in name) else CONFIG_ADDR
+
+    patched, addr, cfg = inject(raw, args.command, addr)
 
     with open(args.output, "wb") as f:
         f.write(patched)
 
     print("Wrote %s (%d bytes, was %d)" % (args.output, len(patched), len(raw)))
-    print("  stripe offset : %s" % ("none (flat image)" if offset is None else offset))
+    print("  config addr   : 0x%06X (physical)" % addr)
     print("  config crc    : 0x%02x" % cfg[3])
     print("  startup cmd   : %s" % args.command)
 
