@@ -472,6 +472,43 @@ TEST_CASES = [
             "get key:",
             "0x80 0xd9 0xca 0xc2 0x32 0xb4 0x9c 0x30 0x6e 0x8b 0xc2 0x3d 0xf4 0x4c 0x39 0x7c"
         ]
+    },
+    {
+        # The first *stock Tuya* dump found that actually drives its MCU. An
+        # ETWF4301 thermostat (AXZN / TM1640 panel): the MCU owns the display and
+        # sensors, the Beken is only the radio, so the two talk over UART1.
+        #
+        # It is a PAIRED dump - it logs "have actived over 15 min, not enter
+        # mf_init", so unlike the pre-pair dumps (TempHum sensor, zmai90) it does
+        # not park in the manufacturing-test thread. It reaches normal operation
+        # and then sends TuyaMCU heartbeats unprompted, with no MCU attached -
+        # byte-identical to the frame OpenBeken's own driver emits.
+        #
+        # This case guards three things at once:
+        #  - the PHYSICAL flash-addressing model: both KV copies must read valid
+        #    with matching counts (the mirror at 0x1cf000 read as blank flash
+        #    under the old stripped/logical model, which is what exposed the bug);
+        #  - that a paired stock-Tuya image boots through to normal operation;
+        #  - the UART1 capture path on stock vendor firmware, not just OpenBeken.
+        "name": "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_Ettroit_ETWF4301_Thermostat_TuyaMCU_3.1.28.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        # The first frame lands only after the SDK reaches normal operation
+        # (~3-4 min here); streaming stops as soon as the required count is seen.
+        "timeout": 420,
+        "expected_strings": [
+            "bk7231n_common_user_config_ty:3.1.28",
+            # Paired: skips manufacturing test.
+            "have actived over 15 min, not enter mf_init",
+            "mf_init succ",
+            # Physical flash addressing: BOTH kv copies valid, counts matching.
+            "current kv info, addr: 1ed000, cnt: 97, is valid: 0",
+            "mirror kv info, addr: 1cf000, cnt: 97, is valid: 0",
+            # TuyaMCU heartbeat (55 AA ver=00 cmd=00 len=0000 chk=FF), repeated -
+            # proves the MCU link keeps running, not just starts.
+            ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
+        ]
     }
 ]
 
@@ -554,6 +591,13 @@ DESCRIPTIONS = {
         "A stock Tuya smart plug (SDK 2.3.3), picked at random after the protected-key fix to check "
         "it generalises. Boots past SDK init and OEM config, reading its protected key; never drops "
         "into mf_test.",
+    "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats":
+        "A stock Tuya ETWF4301 thermostat (SDK 3.1.28) and the first non-OpenBeken image found "
+        "that actually drives its MCU. Because this dump was taken after pairing, the SDK skips "
+        "manufacturing test, reaches normal operation, and sends TuyaMCU heartbeats unprompted - "
+        "the same 55 AA 00 00 00 00 FF frame OpenBeken emits. Also guards the physical "
+        "flash-addressing model: both KV copies (current 0x1ed000, mirror 0x1cf000) must read "
+        "valid with matching counts.",
     "BK7231N Tuya zmai90 RN8209C Energy Meter Boots":
         "A stock Tuya energy meter (zmai90, RN8209C metering chip). A pre-pair (unactivated) dump: "
         "it reads its protected key but then parks in the mf_test thread, so it never polls the "
