@@ -412,8 +412,10 @@ TEST_CASES = [
         # (0x1ee000, exercising the same above-logical-end fallback), then drops
         # into the mf_test manufacturing-test thread and does not reach normal
         # operation - so it never polls the RN8209C and emits nothing on UART1.
-        # The check is that it boots this far and reads the key; the absence of
-        # UART1 traffic is a property of parking in mf_test, not of the chip.
+        # This is a *pre-pair* (unactivated) dump: with no activation record the
+        # SDK treats the device as unprovisioned and parks in mf_test. Only a
+        # post-pair dump would boot on and drive the RN8209C over UART1. The
+        # check is that it boots this far and reads the key.
         "name": "BK7231N Tuya zmai90 RN8209C Energy Meter Boots",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_zmai90_RN8209C_EnergyMeter.bin"),
