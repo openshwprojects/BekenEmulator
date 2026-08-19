@@ -6,8 +6,54 @@ import sys
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 MAIN_SCRIPT = os.path.join(ROOT_DIR, 'src', 'main.py')
 
-# DRY Test definitions
+# DRY Test definitions.
+#
+# Ordering matters: the boot tests below run the emulator until their timeout
+# expires (the emulator never exits on its own), so each one costs its full
+# timeout. The CLI tests come first because their process exits in about a
+# second - a broken command line then fails the run in seconds instead of
+# after twenty minutes of emulation.
 TEST_CASES = [
+    {
+        # Guards parse_key(): an unusable key must be rejected up front with a
+        # message naming the accepted forms, not fail deep inside emulation.
+        "name": "CLI: invalid -key is rejected",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300.bin"),
+        "args": ["--only-uart", "-key", "NOT_A_REAL_KEY"],
+        "timeout": 60,
+        "expected_strings": [
+            "Invalid -key value",
+            # The error lists the known key names and the accepted formats.
+            "TUYA",
+            "32 hex characters"
+        ]
+    },
+    {
+        # Guards the -chip lookup: an unknown chip must be rejected and the
+        # known identities listed.
+        "name": "CLI: invalid -chip is rejected",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300.bin"),
+        "args": ["--only-uart", "-chip", "BK9999"],
+        "timeout": 60,
+        "expected_strings": [
+            "Unknown -chip value",
+            "BK7238",
+            "BK7252N"
+        ]
+    },
+    {
+        # Guards the plaintext-vs-encrypted heuristic in crypto.py: running an
+        # encrypted image with no key must warn that the slice is not ARM code
+        # and suggest the key, instead of silently emulating garbage.
+        "name": "CLI: encrypted image without a key warns",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300.bin"),
+        "args": ["--only-uart"],
+        "timeout": 60,
+        "expected_strings": [
+            "does not look like ARM code",
+            "try: -key TUYA"
+        ]
+    },
     {
         "name": "OpenBK7231T_QIO_1.18.300 Boot to MQTT and 1s timer",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231T_QIO_1.18.300.bin"),
@@ -64,6 +110,25 @@ TEST_CASES = [
             "OpenBK7238, version 1.18.300",
             ", idle ",
             "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
+        ]
+    },
+    {
+        # BK7231N does NOT reach the per-second "Time N" line yet: after init a
+        # task busy-spins above the FreeRTOS timer-daemon priority and starves
+        # the software timers (suspected unmodelled FIQ wait). Everything up to
+        # that point works, so assert the full init sequence instead - this
+        # guards the efuse fix that carries N through RF calibration.
+        "name": "OpenBK7231N_QIO_1.18.300 Boots through init",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231N_QIO_1.18.300.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 150,
+        "expected_strings": [
+            "OpenBK7231N, version 1.18.300",
+            # Past RF calibration (this is where N used to hang).
+            "calibration_main over",
+            "app_init finished",
+            # Full OpenBeken init completed.
+            "Info:MAIN:Main_Init_After_Delay done"
         ]
     },
     {
