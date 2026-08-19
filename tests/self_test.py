@@ -132,6 +132,25 @@ TEST_CASES = [
         ]
     },
     {
+        # BK7231M is the BK7231N build stored UNENCRYPTED (verified: the two app
+        # images are byte-identical for their first 828KB, and this one prints
+        # the "OpenBK7231N" banner). So it runs with no -key at all, which makes
+        # this the regression guard for the plaintext path through crypto.py on
+        # a BK7231N-family image. Like N, it does not reach the per-second
+        # "Time N" line (timer-daemon starvation), so assert the init sequence.
+        "name": "OpenBK7231M_QIO_1.18.300 Boots through init (no key)",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231M_QIO_1.18.300.bin"),
+        "args": ["--only-uart"],
+        "timeout": 150,
+        "expected_strings": [
+            # M ships the N build, so the banner really does say 7231N.
+            "OpenBK7231N, version 1.18.300",
+            "calibration_main over",
+            "app_init finished",
+            "Info:MAIN:Main_Init_After_Delay done"
+        ]
+    },
+    {
         "name": "OpenBK7252_QIO_1.18.300 Boot to 1s timer",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7252 chip identity (bk_check_chip_id).

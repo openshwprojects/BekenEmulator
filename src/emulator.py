@@ -47,6 +47,8 @@ class BekenEmulator:
     PERIPH_SIZE = 0x100000
     SPI_FLASH_BASE = 0x00200000
     XVR_BASE = 0x00900000
+    GPIO_BASE = 0x00802800
+    GPIO_END = 0x008028A0
     
     # UART Registers
     UART1_FIFO_PORT = 0x0080210c
@@ -210,6 +212,25 @@ class BekenEmulator:
         if address == 0x00800004:
             mu.mem_write(address, struct.pack("<I", self.device_id_value))
             return
+        # GPIO config registers (0x802800 + pin*4). Bit 0 is the input level,
+        # which real silicon drives; with nothing connected the pull decides it.
+        # Model that: a pin with the pull enabled reads back high for pull-up
+        # and low for pull-down. Without this, bit 0 always reads 0 and any
+        # firmware waiting for a pulled-up pin spins forever (BK7231U's
+        # RT-Thread build does exactly that before printing anything).
+        if self.GPIO_BASE <= address < self.GPIO_END:
+            try:
+                cfg = struct.unpack("<I", mu.mem_read(address, 4))[0]
+            except Exception:
+                cfg = 0
+            if cfg & (1 << 5):  # GCFG_PULL_ENABLE
+                if cfg & (1 << 4):  # GCFG_PULL_MODE: 1 = up
+                    cfg |= 1
+                else:
+                    cfg &= ~1
+            mu.mem_write(address, struct.pack("<I", cfg))
+            return
+
         if address == 0x00802A04:
             mu.mem_write(address, struct.pack("<I", self.state.pwm_status))
             return
