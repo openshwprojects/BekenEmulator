@@ -113,41 +113,45 @@ TEST_CASES = [
         ]
     },
     {
-        # BK7231N does NOT reach the per-second "Time N" line yet: after init a
-        # task busy-spins above the FreeRTOS timer-daemon priority and starves
-        # the software timers (suspected unmodelled FIQ wait). Everything up to
-        # that point works, so assert the full init sequence instead - this
-        # guards the efuse fix that carries N through RF calibration.
-        "name": "OpenBK7231N_QIO_1.18.300 Boots through init",
+        # BK7231N now reaches the per-second Main_OnEverySecond loop. It used
+        # to hang there: Main_OnEverySecond's first call reads the chip
+        # temperature via the SARADC and blocks on the SARADC interrupt (ICU
+        # bit 11), which the emulator now models. N (unlike T) unmasks bit 11,
+        # so this is the case that guards the SARADC model.
+        "name": "OpenBK7231N_QIO_1.18.300 Boot to 1s timer",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231N_QIO_1.18.300.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
-        "timeout": 150,
+        "timeout": 180,
         "expected_strings": [
             "OpenBK7231N, version 1.18.300",
-            # Past RF calibration (this is where N used to hang).
             "calibration_main over",
             "app_init finished",
             # Full OpenBeken init completed.
-            "Info:MAIN:Main_Init_After_Delay done"
+            "Info:MAIN:Main_Init_After_Delay done",
+            # The temperature read (SARADC) inside Main_OnEverySecond completes.
+            ", idle ",
+            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
         ]
     },
     {
         # BK7231M is the BK7231N build stored UNENCRYPTED (verified: the two app
         # images are byte-identical for their first 828KB, and this one prints
-        # the "OpenBK7231N" banner). So it runs with no -key at all, which makes
-        # this the regression guard for the plaintext path through crypto.py on
-        # a BK7231N-family image. Like N, it does not reach the per-second
-        # "Time N" line (timer-daemon starvation), so assert the init sequence.
-        "name": "OpenBK7231M_QIO_1.18.300 Boots through init (no key)",
+        # the "OpenBK7231N" banner). Runs with no -key - the regression guard
+        # for the plaintext path through crypto.py on a BK7231N-family image.
+        # With the SARADC model it reaches the per-second loop like N.
+        "name": "OpenBK7231M_QIO_1.18.300 Boot to 1s timer (no key)",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231M_QIO_1.18.300.bin"),
         "args": ["--only-uart"],
-        "timeout": 150,
+        "timeout": 180,
         "expected_strings": [
             # M ships the N build, so the banner really does say 7231N.
             "OpenBK7231N, version 1.18.300",
             "calibration_main over",
             "app_init finished",
-            "Info:MAIN:Main_Init_After_Delay done"
+            # Full OpenBeken init completed.
+            "Info:MAIN:Main_Init_After_Delay done",
+            ", idle ",
+            "MQTT 0(0), bWifi 0, secondsWithNoPing -1"
         ]
     },
     {

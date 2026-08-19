@@ -29,6 +29,8 @@ class SimulatorState:
         self.timer0_2_ctl = 0
         self.timer3_5_ctl = 0
         self.efuse_ctrl = 0
+        self.saradc_cfg = 0        # shadow of SARADC_ADC_CONFIG (0x802c00)
+        self.saradc_pending = 0    # samples waiting in the emulated ADC FIFO
 
 class FlashState:
     def __init__(self):
@@ -126,6 +128,15 @@ class BekenEmulator:
                 state.pwm_status |= (1 << 0)
             if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
                 state.timer3_5_ctl |= (1 << 7)
+            # Pulse the SARADC interrupt (ICU bit 11) while samples pend, paced
+            # here - NOT re-raised every stride - so it costs one interrupt per
+            # tick period like the timer, never an IRQ storm. The guest's ISR
+            # drains the FIFO (each read decrements pending) and the ICU W1C ack
+            # retires the pending bit. BK7231N/M block in the per-second
+            # temperature read without this; firmwares that never unmask bit 11
+            # (T and the 7238/7252 families) are unaffected.
+            if state.saradc_pending and (state.icu_int_enable & (1 << 11)):
+                state.pending_irqs |= (1 << 11)
 
         if state.pwm_status & 0x3F:
             state.pending_irqs |= (1 << 9)
@@ -187,8 +198,17 @@ class BekenEmulator:
                     self.flash_state.data = b'\xff\xff\xff\xff'
             value = value & ~(1 << 31)
             
+        # SARADC_ADC_CONFIG (BK7231N layout, verified against the OpenBK7231N
+        # SDK saradc.c). A write with CHNL_EN (bit 2) set starts a conversion;
+        # fill the emulated FIFO with a batch of samples. The driver's ISR /
+        # poll loops read DAT_AFTER_STA until FIFO_EMPTY (config bit 30) is set,
+        # so each sample read drains one. Arming only from idle (pending==0)
+        # avoids an ever-full FIFO. BK7231N's temp read blocks forever without
+        # this - it waits on the SARADC interrupt (ICU bit 11).
         if address == 0x00802c00:
-            value = 0
+            self.state.saradc_cfg = value
+            if (value & (1 << 2)) and self.state.saradc_pending == 0:  # CHNL_EN
+                self.state.saradc_pending = 32
 
         # SCTRL_EFUSE_CTRL: EFUSE_OPER_EN (bit 0) self-clears when the efuse
         # operation completes; complete it instantly or sctrl_read_efuse spins
@@ -242,7 +262,13 @@ class BekenEmulator:
             return
 
         if address == 0x00802c00:
-            mu.mem_write(address, struct.pack("<I", 1 << 30))
+            # Config readback: FIFO_EMPTY (bit 30) reflects the emulated FIFO -
+            # set when drained, clear while samples pend so the ISR's
+            # `while((cfg & FIFO_EMPTY)==0)` loop reads them. INT_CLR (bit 8) is
+            # deliberately never reflected, so saradc_int_clr()'s do/while exits.
+            # Identical to the historical constant (1<<30) whenever idle.
+            cfg = (1 << 30) if self.state.saradc_pending == 0 else 0
+            mu.mem_write(address, struct.pack("<I", cfg))
             return
 
         # BK7238/BK7252N SARADC state register (SARADC_ADC_STATE). Its driver
@@ -275,8 +301,14 @@ class BekenEmulator:
             mu.mem_write(address, b'\x00\x00\x00\x00')
             return
             
-        if address == 0x00802c04:
-            mu.mem_write(address, struct.pack("<I", 0xFFFFFFFF))
+        if address == 0x00802c04 or address == 0x00802c10:
+            # SARADC sample registers: DATA (0x802c04) and DAT_AFTER_STA
+            # (0x802c10, the one BK7231N's ISR actually reads). Each read
+            # consumes one pending FIFO sample and returns a plausible raw value
+            # (330 -> roughly +30C through the BK7231N temperature formula).
+            if self.state.saradc_pending:
+                self.state.saradc_pending -= 1
+            mu.mem_write(address, struct.pack("<I", 330))
             return
 
         if address == 0x00803004:
