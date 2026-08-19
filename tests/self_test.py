@@ -203,6 +203,24 @@ TEST_CASES = [
         ]
     },
     {
+        # BK7231Q original Tuya firmware (MOES 1-gang relay). Plaintext image,
+        # no key. Runs the full Tuya IoT SDK v2.3.1 - unlike the OpenBeken
+        # builds this is stock vendor firmware, and it boots far enough to
+        # enumerate the device's own GPIO/datapoint map, then init TCP/IP.
+        "name": "BK7231Q Tuya MOES Relay Boot",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231Q_Tuya_MOES_Relay_WA2_1.1.3.bin"),
+        "args": ["--only-uart"],
+        "timeout": 120,
+        "expected_strings": [
+            "TUYA IOT SDK V:2.3.1",
+            # The build identifies itself as a 1-switch BK7231 OEM app.
+            "oem_bk7321_bk_1_switch:1.1.3",
+            # Device brings up its pin map (relay on pin 18, button on pin 6).
+            "IO - relay[0]:",
+            "Initializing TCP/IP stack"
+        ]
+    },
+    {
         "name": "Woox Tuya Original Firmware Boot",
         "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
