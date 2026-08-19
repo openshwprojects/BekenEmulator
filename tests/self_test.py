@@ -221,6 +221,27 @@ TEST_CASES = [
         ]
     },
     {
+        # BL2028N is BK7231N silicon rebadged: this dump self-reports
+        # "chip id=7231a device id=18520001" - the exact BK7231 default identity
+        # - so it runs with no -key and the default -chip. It is the ONLY test
+        # that reaches BLE/HCI bring-up, so it also guards the XVR fix on the
+        # BLE path. (Ordinary Tuya BL2028N dumps are plaintext; the Uascent
+        # Matter builds are custom-keyed and are intentionally not used here.)
+        "name": "BL2028N (=BK7231N) Boots to BLE init",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "BL2028N_Dreo_DR-HTF004S_Fan_PAI-053.bin"),
+        "args": ["--only-uart"],
+        "timeout": 120,
+        "expected_strings": [
+            # Proves BL2028N presents as BK7231N.
+            "chip id=7231a device id=18520001",
+            "calibration_main over",
+            # Reaches BLE host-stack init - deeper than any other case, and only
+            # possible because the XVR transaction register is modelled.
+            "rwble_hl_init ok",
+            "Initializing TCP/IP"
+        ]
+    },
+    {
         "name": "Woox Tuya Original Firmware Boot",
         "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
