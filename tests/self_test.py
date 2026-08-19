@@ -379,6 +379,54 @@ TEST_CASES = [
             "get key:",
             "0x6b 0x24 0x0 0x73 0xf4 0x11 0x45 0xed 0x40 0xf1 0x9 0x9f 0x16 0xd3 0xb5 0xc0"
         ]
+    },
+    {
+        # Stock Tuya smart plug (Tuya IoT SDK 2.3.3). A third, independent
+        # device covering the protected-key path at 0x1ee000 - it was picked at
+        # random from the dump corpus after that fix landed, so it checks the
+        # fix generalises rather than being tuned to the two devices that
+        # motivated it. Boots further than the sensor: reaches OEM config load
+        # and never drops into mf_test.
+        "name": "BK7231N Tuya Plug (SDK 2.3.3) Boots and Reads Protected Key",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_Plug_TSL-PS-F4U-01-W_1.1.17.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "< TUYA IOT SDK V:2.3.3 BS:40.00_PT:2.2_LAN:3.4_CAD:1.0.5_CD:1.0.0 >",
+            "IOT DEFS < WIFI_GW:1 DEBUG:1 KV_FILE:0 SHUTDOWN_MODE:0 LITTLE_END:1 TLS_MODE:2",
+            "ENABLE_LAN_ENCRYPTION:1",
+            "oem_bk7231n_plug:1.1.17",
+            "firmware compiled at Jun 13 2023 20:36:20",
+            # Protected key store read correctly (would be a blank-flash failure
+            # chain ending in mf_test if the raw bytes above the logical end
+            # were not served).
+            "key_addr: 0x1ee000",
+            "get key:",
+            "0xe7 0x10 0xac 0x15 0x88 0x2b 0x38 0x50 0xb2 0x9a 0xd 0xfa 0x35 0xbe 0x99 0x37"
+        ]
+    },
+    {
+        # BK7231N "zmai90" energy meter built around an RN8209C metering chip on
+        # UART. Stock Tuya firmware (SDK 2.3.1). Reads its protected key fine
+        # (0x1ee000, exercising the same above-logical-end fallback), then drops
+        # into the mf_test manufacturing-test thread and does not reach normal
+        # operation - so it never polls the RN8209C and emits nothing on UART1.
+        # The check is that it boots this far and reads the key; the absence of
+        # UART1 traffic is a property of parking in mf_test, not of the chip.
+        "name": "BK7231N Tuya zmai90 RN8209C Energy Meter Boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_zmai90_RN8209C_EnergyMeter.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "< TUYA IOT SDK V:2.3.1 BS:40.00_PT:2.2_LAN:3.3_CAD:1.0.3_CD:1.0.0 >",
+            "firmware compiled at Apr 26 2022 15:12:39",
+            "init protected data length 460",
+            "key_addr: 0x1ee000",
+            "get key:",
+            "0x80 0xd9 0xca 0xc2 0x32 0xb4 0x9c 0x30 0x6e 0x8b 0xc2 0x3d 0xf4 0x4c 0x39 0x7c"
+        ]
     }
 ]
 
