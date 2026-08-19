@@ -18,12 +18,16 @@ MAIN_SCRIPT = os.path.join(ROOT_DIR, 'src', 'main.py')
 REPEATS = int(os.environ.get("REPEATS") or 2)
 
 # Seconds to keep the emulator running AFTER a test has met all its markers.
-# The pass/fail verdict is already decided at that point; lingering just keeps
-# capturing output, so the report shows more of the boot than the bare minimum
-# needed to pass - and periodic checks report how many ticks actually occurred
-# (e.g. 7/2) rather than stopping dead on the second one. CI sets LINGER=5;
-# local runs default to 0 so an ordinary run stays as quick as before.
-LINGER = float(os.environ.get("LINGER") or 0)
+# The verdict is already decided at that point, so this changes no pass/fail -
+# it just keeps capturing output, giving the report more of the boot than the
+# bare minimum, and letting periodic checks show how many ticks actually
+# happened (e.g. 7/2) instead of stopping dead on the second one.
+# Tune these two; env LINGER=n overrides both.
+LINGER_SECONDS_CI = 5.0      # GitHub Actions: spend a little more for richer logs
+LINGER_SECONDS_LOCAL = 0.0   # local runs stay as quick as before
+
+LINGER = float(os.environ.get("LINGER") or
+               (LINGER_SECONDS_CI if os.environ.get("CI") else LINGER_SECONDS_LOCAL))
 
 # DRY Test definitions.
 #
@@ -690,16 +694,27 @@ def run_test(test_config):
 
     start = time.time()
     hit_timeout = False
+    done_at = None          # when every marker was first satisfied
     while True:
         with lock:
             done = not remaining
         if done:
-            break
-        if proc.poll() is not None:
+            if proc.poll() is not None:
+                break       # nothing left to capture - process already gone
+            if LINGER <= 0:
+                break
+            # Keep running a little longer to capture more of the boot. The
+            # verdict is already settled; this only enriches the log.
+            if done_at is None:
+                done_at = time.time()
+                print(f"  ... all markers met, lingering {LINGER:.0f}s for a fuller log")
+            elif time.time() - done_at >= LINGER:
+                break
+        elif proc.poll() is not None:
             # process exited on its own (e.g. a CLI test); let the reader drain.
             th.join(timeout=1.0)
             break
-        if time.time() - start > timeout:
+        elif time.time() - start > timeout:
             hit_timeout = True
             break
         time.sleep(0.25)
