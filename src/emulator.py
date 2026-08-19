@@ -1,4 +1,5 @@
 import sys
+import os
 import struct
 import io
 import time
@@ -66,7 +67,7 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None):
         self.raw_flash = raw_flash
         self.bootloader = bootloader
         self.app = app
@@ -78,6 +79,11 @@ class BekenEmulator:
         
         self.state = SimulatorState()
         self.flash_state = FlashState()
+        # The unstripped dump. Flash reads are normally served from the
+        # CRC-stripped (logical) image, but a 2MB physical dump only yields
+        # ~1.88MB of logical space, and some firmware addresses data above
+        # that. Keep the physical bytes so such reads can be served.
+        self.physical_flash = physical_flash
         
         try:
             self.mu = Uc(UC_ARCH_ARM, UC_MODE_ARM)
@@ -88,6 +94,19 @@ class BekenEmulator:
     def _print(self, *args, **kwargs):
         if not self.only_uart:
             print(*args, **kwargs)
+
+    def _uart_write(self, data):
+        """Emit UART bytes verbatim.
+
+        A UART carries arbitrary bytes, not console text. Writing them through
+        sys.stdout in text mode raises UnicodeEncodeError for anything the
+        console codepage cannot represent (cp1250 has no 0x96, for instance),
+        which killed the whole emulation mid-boot. Go straight to the binary
+        buffer so a stray non-ASCII byte in a log stream is just a byte.
+        """
+        out = sys.__stdout__.buffer
+        out.write(data)
+        out.flush()
 
     def trigger_irq(self):
         if self.state.icu_global_int_en == 0:
@@ -194,25 +213,35 @@ class BekenEmulator:
         if address == self.UART1_FIFO_PORT:
             if self.uart1_hex:
                 if self._uart_src != 'u1':
-                    sys.__stdout__.write('\n[UART1/MCU] ')
+                    self._uart_write(b'\n[UART1/MCU] ')
                     self._uart_src = 'u1'
-                sys.__stdout__.write('%02x ' % (value & 0xFF))
+                self._uart_write(b'%02x ' % (value & 0xFF))
             else:
-                sys.__stdout__.write(chr(value & 0xFF))
-            sys.__stdout__.flush()
+                self._uart_write(bytes([value & 0xFF]))
             return
         if address == self.UART2_FIFO_PORT:
             if self.uart1_hex and self._uart_src == 'u1':
-                sys.__stdout__.write('\n')
+                self._uart_write(b'\n')
                 self._uart_src = 'u2'
-            sys.__stdout__.write(chr(value & 0xFF))
-            sys.__stdout__.flush()
+            self._uart_write(bytes([value & 0xFF]))
             return
             
+        # REG_FLASH_CONF. CRC_EN (bit 26) selects whether flash reads go through
+        # the controller's 32-data + 2-CRC framing. The emulator always serves
+        # the stripped image, so this is only observed, not acted on - logging it
+        # shows whether firmware ever switches to raw physical addressing.
+        if address == 0x0080301C and os.environ.get("FLASHDBG"):
+            sys.__stderr__.write("FLASHDBG conf=0x%08x CRC_EN=%d\n" % (value, (value >> 26) & 1))
+            sys.__stderr__.flush()
+
         if address == 0x00803000:
             self.flash_state.addr = value & 0x00FFFFFF
             self.flash_state.read_idx = 0   # new page read starts at word 0
             op_type = (value >> 28) & 0xF
+            if os.environ.get("FLASHDBG") and self.flash_state.addr >= 0x001E0000:
+                sys.__stderr__.write("FLASHDBG op addr=0x%06x reg=0x%08x\n"
+                                     % (self.flash_state.addr, value))
+                sys.__stderr__.flush()
             if op_type == 6:
                 try:
                     self.flash_state.data = mu.mem_read(self.FLASH_BASE + self.flash_state.addr, 4)
@@ -388,6 +417,10 @@ class BekenEmulator:
             self.flash_state.read_idx += 1
             if word_addr + 4 <= len(self.raw_flash):
                 val = struct.unpack("<I", self.raw_flash[word_addr : word_addr + 4])[0]
+            elif self.physical_flash is not None and word_addr + 4 <= len(self.physical_flash):
+                # Past the end of logical (CRC-stripped) space. The dump still has
+                # real bytes there, so serve them rather than erased flash.
+                val = struct.unpack("<I", self.physical_flash[word_addr : word_addr + 4])[0]
             else:
                 val = 0xFFFFFFFF
             mu.mem_write(address, struct.pack("<I", val))

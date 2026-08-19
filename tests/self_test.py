@@ -349,9 +349,35 @@ TEST_CASES = [
         # advances Tuya's clock, so lines print at 18:12:15/16/... depending on
         # emulation timing.
         "expected_strings": [
-            "TUYA Notice][simple_flash.c:486] init key:",
+            # Tuya keeps its "protected" key block at flash 0x1ee000, which is
+            # above the end of the CRC-stripped (logical) image - a 2MB physical
+            # dump yields only ~1.88MB of logical space. The emulator used to
+            # answer 0xFF there, so the firmware saw blank flash and took the
+            # "init key:" path (simple_flash.c:486), inventing a key. Serving the
+            # dump's real bytes makes it retrieve the stored one instead, which
+            # is what the hardware does; assert that stronger behaviour.
+            "simple_flash.c:432] key_addr: 0x1ee000",
+            "simple_flash.c:500] get key:",
             "0xcb 0x4e 0x3e 0xa4 0x0 0x30 0x9d 0xab 0x65 0x6d 0x8d 0xbf 0xe4 0xb9 0x3f 0x35",
             "TUYA Notice][tuya_main.c:311] **********[oem_bk7231s_light_ty] [2.9.6] compiled at Oct 29 2020 14:38:00**********"
+        ]
+    },
+    {
+        # The BK7231N temp/humidity sensor exercises the same protected-key path
+        # and was the case that exposed it: with 0xFF served it failed the magic
+        # check ("flash is encrypted or empty" - the magic and crc32 it reported
+        # are literally AES-128-ECB-decrypt(0xFF x16) under the firmware's
+        # hardcoded key "qwertyuiopasdfgh"), then dropped to mf_test with
+        # "db init fails". Serving the dump's real bytes lets it decrypt its key.
+        "name": "BK7231N Tuya TempHum Sensor Reads Protected Key",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_TempHum_LCD_Sensor_TuyaMCU_2025-26-9.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "key_addr: 0x1ee000",
+            "get key:",
+            "0x6b 0x24 0x0 0x73 0xf4 0x11 0x45 0xed 0x40 0xf1 0x9 0x9f 0x16 0xd3 0xb5 0xc0"
         ]
     }
 ]
