@@ -32,6 +32,8 @@ class SimulatorState:
         self.efuse_ctrl = 0
         self.saradc_cfg = 0        # shadow of SARADC_ADC_CONFIG (0x802c00)
         self.saradc_pending = 0    # samples waiting in the emulated ADC FIFO
+        self.last_slow = 0         # insn_count at last ~10000-insn (timer) tick
+        self.last_fast = 0         # insn_count at last ~1000-insn (UART) tick
 
 class FlashState:
     def __init__(self):
@@ -133,26 +135,35 @@ class BekenEmulator:
             mu.reg_write(UC_ARM_REG_LR, pc)
             mu.reg_write(UC_ARM_REG_PC, 0x00000008)
 
-    # The per-instruction hook is the emulation bottleneck, so the interrupt
-    # bookkeeping below only runs every IRQ_CHECK_STRIDE instructions. Pending
-    # bits are sticky (cleared by W1C only), so interrupts are delayed by at
-    # most IRQ_CHECK_STRIDE - 1 instructions, never lost. The stride must
-    # divide the 10000/1000 pacing periods.
-    IRQ_CHECK_STRIDE = 20
+    # Interrupt/pacing bookkeeping runs once per BASIC BLOCK, not per
+    # instruction. A per-instruction UC_HOOK_CODE callback dominated runtime
+    # (measured ~3.7x slower than a block hook on a real boot): Unicorn must
+    # leave the translated block to call into Python for every instruction,
+    # which defeats block execution. UC_HOOK_BLOCK fires once per ~5
+    # instructions, so whole blocks run natively between callbacks.
+    #
+    # insn_count is therefore an ESTIMATE: block byte size >> 2, i.e. the ARM
+    # instruction width. Pure-ARM code counts exactly; Thumb blocks undercount
+    # (slightly slowing the device clock there). Device time is already a
+    # fiction paced off this counter, so the approximation only nudges the
+    # wall<->device-time ratio - it never changes what the firmware computes.
+    # The periodic sources fire on threshold crossing (>= since last tick)
+    # rather than exact modulo, because the per-block increment is variable.
+    IRQ_CHECK_STRIDE = 20  # retained for reference; pacing is now per-block
 
-    def hook_code(self, mu, address, size, user_data):
+    def hook_block(self, mu, address, size, user_data):
         state = self.state
-        state.insn_count += 1
-        if state.insn_count % self.IRQ_CHECK_STRIDE:
-            return
+        state.insn_count += (size >> 2) or 1
 
-        if state.insn_count % 10000 == 0:
+        # Slow tick (~every 10000 insns): raise the periodic sources' pending.
+        if state.insn_count - state.last_slow >= 10000:
+            state.last_slow = state.insn_count
             if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
                 state.pwm_status |= (1 << 0)
             if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
                 state.timer3_5_ctl |= (1 << 7)
             # Pulse the SARADC interrupt (ICU bit 11) while samples pend, paced
-            # here - NOT re-raised every stride - so it costs one interrupt per
+            # here - NOT re-raised every block - so it costs one interrupt per
             # tick period like the timer, never an IRQ storm. The guest's ISR
             # drains the FIFO (each read decrements pending) and the ICU W1C ack
             # retires the pending bit. BK7231N/M block in the per-second
@@ -174,7 +185,9 @@ class BekenEmulator:
         if state.pending_irqs & state.icu_int_enable:
             self.trigger_irq()
 
-        if state.insn_count % 1000 == 0:
+        # Fast tick (~every 1000 insns): UART RX/TX interrupts.
+        if state.insn_count - state.last_fast >= 1000:
+            state.last_fast = state.insn_count
             if (state.uart1_int_enable & 0x01) and (state.icu_int_enable & (1 << 0)):
                 state.pending_irqs |= (1 << 0)
                 self.trigger_irq()
@@ -498,7 +511,7 @@ class BekenEmulator:
         self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.ACCEL_BASE, end=self.ACCEL_BASE + 0x1000)
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.ACCEL_BASE, end=self.ACCEL_BASE + 0x1000)
         self.mu.hook_add(UC_HOOK_MEM_UNMAPPED, self.hook_unmapped)
-        self.mu.hook_add(UC_HOOK_CODE, self.hook_code)
+        self._tick_hook = self.mu.hook_add(UC_HOOK_BLOCK, self.hook_block)
         self.mu.hook_add(UC_HOOK_INTR, self.hook_intr)
 
     def run(self):
