@@ -200,6 +200,31 @@ TEST_CASES = [
         ]
     },
     {
+        # Berry is OpenBeken's embedded scripting language (ENABLE_OBK_BERRY),
+        # absent from the 1.18.300 image the other cases use, so this pulls the
+        # dedicated 1.18.302 "berry" build. The startup command is a one-line
+        # Berry snippet:  berry print("Hello " + str(5+2*2))
+        # which exercises the VM end to end - integer arithmetic with operator
+        # precedence (2*2 then +5 = 9), str() conversion, string concatenation,
+        # and print(). Berry's print routes through be_writebuffer ->
+        # ADDLOG_INFO(LOG_FEATURE_BERRY, ...), whose tag is "BERRY:", so a
+        # correct evaluation shows up as exactly "Info:BERRY:Hello 9".
+        #
+        # OBK also runs its own "berry import autoexec" at boot, which fails
+        # with "module 'autoexec' not found" because there is no user script -
+        # that is expected and not asserted here.
+        "name": "Berry Startup Command: print(\"Hello \" + str(5+2*2))",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.302_berry_obkStartupCommand_berryHello.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            # 5 + 2*2 = 9 -> str -> "Hello " + "9". The whole Berry VM in one line.
+            "Info:BERRY:Hello 9",
+        ]
+    },
+    {
         # Ground truth for the GPIO capture. Every other case can only show
         # whatever pin writes a firmware happens to make; here we ORDER a
         # specific pin to a known state and check the exact register word.
@@ -1255,6 +1280,11 @@ DESCRIPTIONS = {
         "Five BK7231N pwm_new channels at once at 16 kHz - the highest PWM frequency in the suite "
         "and the only case exercising all three pwm_new register groups simultaneously. Period "
         "1625 = 26 MHz / 16000 exactly, matching its stored pwmhz:16000.",
+    "Berry Startup Command: print(\"Hello \" + str(5+2*2))":
+        "Pulls OpenBeken's dedicated 1.18.302 Berry build and runs a one-line Berry script from the "
+        "startup command: berry print(\"Hello \" + str(5+2*2)). Exercises the embedded VM end to "
+        "end - arithmetic precedence (=9), str(), string concatenation and print() - which surfaces "
+        "as Info:BERRY:Hello 9.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
@@ -1441,6 +1471,8 @@ def tags_for(test_config):
     # driven pin", not merely "this firmware happens to touch GPIO".
     if test_config.get("expected_pins"):
         feat.append("GPIO")
+    if "BERRY:" in exp or "berry" in base:
+        feat.append("Berry")
     if "Float basic" in exp:
         feat.append("float math")
     # Crypto only for the cases whose subject IS key handling.
