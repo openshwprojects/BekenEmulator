@@ -41,6 +41,7 @@ class FlashState:
         self.addr = 0
         self.data = b'\xff\xff\xff\xff'
         self.read_idx = 0   # word index within the current 32-byte flash page read
+        self.write_buf = []  # words staged via REG_FLASH_DATA_SW_FLASH for a page program
 
 class BekenEmulator:
     # Hardware base addresses
@@ -103,6 +104,43 @@ class BekenEmulator:
     def _print(self, *args, **kwargs):
         if not self.only_uart:
             print(*args, **kwargs)
+
+    def _flash_backing(self):
+        """The image flash reads are served from, as a mutable buffer.
+
+        Addresses are physical, so writes land in the unstripped dump when we
+        have it (see the 0x803008 read handler for why).
+        """
+        if self.physical_flash is not None:
+            if not isinstance(self.physical_flash, bytearray):
+                self.physical_flash = bytearray(self.physical_flash)
+            return self.physical_flash
+        if not isinstance(self.raw_flash, bytearray):
+            self.raw_flash = bytearray(self.raw_flash)
+        return self.raw_flash
+
+    def _flash_program(self, addr, words):
+        """Page program: AND the staged words into flash (NOR bits only clear)."""
+        if not words:
+            return
+        buf = self._flash_backing()
+        data = b"".join(struct.pack("<I", w) for w in words)
+        base = addr & ~0x1F                      # programs are page aligned
+        for i, byte in enumerate(data):
+            pos = base + i
+            if pos < len(buf):
+                # Real NOR flash can only turn 1 bits into 0; an erase is what
+                # restores them. Modelling that keeps program-without-erase
+                # behaving as the firmware expects rather than silently working.
+                buf[pos] &= byte
+
+    def _flash_erase(self, addr, size):
+        """Sector/block erase: restore the region to erased (0xFF)."""
+        buf = self._flash_backing()
+        start = addr & ~(size - 1)
+        end = min(start + size, len(buf))
+        if start < end:
+            buf[start:end] = b"\xff" * (end - start)
 
     def _uart_write(self, data):
         """Emit UART bytes verbatim.
@@ -266,19 +304,36 @@ class BekenEmulator:
             sys.__stderr__.write("FLASHDBG conf=0x%08x CRC_EN=%d\n" % (value, (value >> 26) & 1))
             sys.__stderr__.flush()
 
+        # REG_FLASH_DATA_SW_FLASH: words staged for the next page program.
+        # flash_write_data() pushes eight of them (one 32-byte page) before
+        # triggering the PP opcode below.
+        if address == 0x00803004:
+            self.flash_state.write_buf.append(value & 0xFFFFFFFF)
+            del self.flash_state.write_buf[:-8]      # keep only the last page
+            mu.mem_write(address, struct.pack("<I", value))
+            return
+
         if address == 0x00803000:
             self.flash_state.addr = value & 0x00FFFFFF
             self.flash_state.read_idx = 0   # new page read starts at word 0
-            op_type = (value >> 28) & 0xF
+            # Opcode field is 5 bits at OP_TYPE_SW_POSI (24) - see flash.h. The
+            # previous (value >> 28) & 0xF never matched a real opcode, so page
+            # programs and sector erases were silently ignored: firmware that
+            # persists data at boot then read back stale bytes, failed its own
+            # verify ("Err write addr:...") and rebooted in a loop.
+            op_type = (value >> 24) & 0x1F
             if os.environ.get("FLASHDBG") and self.flash_state.addr >= 0x001E0000:
-                sys.__stderr__.write("FLASHDBG op addr=0x%06x reg=0x%08x\n"
-                                     % (self.flash_state.addr, value))
+                sys.__stderr__.write("FLASHDBG op addr=0x%06x op=%d reg=0x%08x\n"
+                                     % (self.flash_state.addr, op_type, value))
                 sys.__stderr__.flush()
-            if op_type == 6:
-                try:
-                    self.flash_state.data = mu.mem_read(self.FLASH_BASE + self.flash_state.addr, 4)
-                except Exception:
-                    self.flash_state.data = b'\xff\xff\xff\xff'
+
+            if op_type == 12:        # FLASH_OPCODE_PP - program one 32-byte page
+                self._flash_program(self.flash_state.addr, self.flash_state.write_buf)
+            elif op_type == 13:      # FLASH_OPCODE_SE - erase one 4K sector
+                self._flash_erase(self.flash_state.addr, 0x1000)
+            elif op_type in (14, 15):  # FLASH_OPCODE_BE1 / BE2 - block erase
+                self._flash_erase(self.flash_state.addr, 0x10000)
+
             value = value & ~(1 << 31)
             
         # SARADC_ADC_CONFIG (BK7231N layout, verified against the OpenBK7231N
@@ -397,26 +452,14 @@ class BekenEmulator:
             mu.mem_write(address, struct.pack("<I", 0))
             return
 
-        # Two more XVR "start and wait" registers, same idiom as 0x900100:
-        #
-        #     r2 = 0x80 << 24            ; bit 31
-        #     r1 = [reg]; r2 |= r1; [reg] = r2      ; kick the transaction off
-        #  L: r2 = [reg]; cmp r2, #0; blt L         ; spin while bit 31 stays set
-        #
-        # Found by sampling the PC of a wedged stock-Tuya boot: 96.5% of all
-        # basic blocks were this one loop at 0x8fb88. Unmodelled, the register
-        # simply reads back what the guest wrote - bit 31 included - so the loop
-        # never exits and the whole boot hangs.
-        #
-        # Report the transaction complete and the result zero, exactly as
-        # 0x900100 does. Echoing back the guest's own written bits instead was
-        # tried first and is worse: the RF code re-reads these registers and
-        # treats the low bits as calibration data, so feeding it the command
-        # word it just wrote sends it into a BLE link-layer assert
-        # (lld.c:404) a few steps later.
-        if address == 0x009000F8 or address == 0x009000FC:
-            mu.mem_write(address, struct.pack("<I", 0))
-            return
+        # NOTE: 0x9000F8 / 0x9000FC were briefly modelled here as
+        # "transaction complete, result 0", to break a spin loop in one
+        # stock-Tuya dump. Reverted: it never actually made that device
+        # boot (it just moved the stall to a BLE link-layer assert) and
+        # it BROKE three dumps that previously worked - TempHum, Plug and
+        # zmai90 all hung at "ty bt sdk init finish" and never reached
+        # their protected-key read. Whatever those registers carry, the
+        # BLE/RF init needs something other than zero.
 
         # Accelerator block just past the main MMIO window (0x810000) - a
         # crypto/hash engine used by original Tuya firmware during TCP/IP init.

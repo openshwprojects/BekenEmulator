@@ -594,6 +594,36 @@ TEST_CASES = [
             ("[UART1/MCU] 58 aa", REPEATS)
         ]
     }
+,
+    {
+        # Presence/radar sensor (TuyaOS 3.8.18) - a third SDK line and another
+        # hardware class alongside the thermostats and the clamp meter.
+        #
+        # This is the case that guards FLASH WRITES. The device persists a 4K
+        # sector during start-up, and the emulator used to ignore page-program
+        # and sector-erase opcodes entirely - the opcode field was decoded from
+        # the wrong bits of REG_FLASH_OPERATE_SW - so the firmware read back
+        # stale bytes, failed its own verify with "Err write addr:0x001f1000"
+        # and called bk_reboot, looping forever. With writes implemented it runs
+        # on to normal operation and drives its MCU. Any firmware that saves
+        # state at boot depends on this.
+        "name": "BK7231N Tuya NAS-PS10 Presence Sensor sends TuyaMCU heartbeats",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_NAS-PS10_PresenceSensor_TuyaMCU_TuyaOS_3.8.18.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "< TuyaOS V:3.8.18 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
+            # Reached normal operation - it rebooted here before flash writes
+            # worked, so this line is the flash-write regression guard.
+            "mf_init succ",
+            "current kv info, addr: 1ed000, cnt: 16, is valid: 0",
+            "mirror kv info, addr: 1cf000, cnt: 16, is valid: 0",
+            "0x9a 0xe5 0x6a 0x9b 0x84 0x26 0x71 0x1a 0x9f 0x6a 0xdb 0x77 0x34 0xf9 0xae 0xf7",
+            "read baud rate 9600",
+            ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
+        ]
+    }
 ]
 
 # Report-facing prose, one per test name. Kept separate from TEST_CASES so the
@@ -691,6 +721,11 @@ DESCRIPTIONS = {
         "opens UART1 at 4800 baud and speaks the BL0942 register protocol - two init writes "
         "(0xA8|addr) followed by a repeating full-packet read (0x58 0xAA) - which looks nothing like "
         "TuyaMCU framing. Proves the UART1 capture path is protocol-agnostic, not tuned to 55 AA.",
+    "BK7231N Tuya NAS-PS10 Presence Sensor sends TuyaMCU heartbeats":
+        "A paired presence/radar sensor on TuyaOS 3.8.18 - a third SDK line and hardware class. "
+        "It is the flash-write guard: the device persists a 4K sector during start-up, and while "
+        "page-program and sector-erase opcodes were ignored it failed its own read-back verify and "
+        "rebooted in a loop. With writes implemented it reaches normal operation and drives its MCU.",
     "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats":
         "A stock Tuya ETWF4301 thermostat (SDK 3.1.28) and the first non-OpenBeken image found "
         "that actually drives its MCU. Because this dump was taken after pairing, the SDK skips "
