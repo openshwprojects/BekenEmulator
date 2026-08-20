@@ -624,6 +624,30 @@ TEST_CASES = [
             ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
         ]
     }
+,
+    {
+        # A PWM-driven light rather than an MCU device: the Beken itself drives
+        # the LED channels through hardware PWM (its stored config declares
+        # cool on P6, warm on P8 at 1000 Hz), so there is no TuyaMCU traffic on
+        # UART1 by design - every other stock-Tuya case here talks to an MCU.
+        #
+        # Also a fourth Tuya SDK generation (TuyaOS 3.3.44) next to IOT SDK
+        # 2.3.3, TuyaOS 3.8.18 and 3.11.12. Paired dump: reads its protected key
+        # and reaches normal operation.
+        "name": "BK7231N Tuya Arlec RGB Strip (PWM light, TuyaOS 3.3.44) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_Arlec_Razer_RGBStrip_PWM_TuyaOS_3.3.44.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "< TuyaOS V:3.3.44 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
+            "oem_bk7231n_slide_strip_ty:1.3.3",
+            "mf_init succ",
+            "key_addr: 0x1ee000",
+            "get key:",
+            "0x34 0x8b 0xdd 0xe7 0x7b 0x9c 0x63 0xe0 0x44 0x1e 0xa7 0x1f 0x21 0x6b 0x5 0xc"
+        ]
+    }
 ]
 
 # Report-facing prose, one per test name. Kept separate from TEST_CASES so the
@@ -726,6 +750,11 @@ DESCRIPTIONS = {
         "It is the flash-write guard: the device persists a 4K sector during start-up, and while "
         "page-program and sector-erase opcodes were ignored it failed its own read-back verify and "
         "rebooted in a loop. With writes implemented it reaches normal operation and drives its MCU.",
+    "BK7231N Tuya Arlec RGB Strip (PWM light, TuyaOS 3.3.44) boots":
+        "A paired RGB LED strip driven by hardware PWM straight from the Beken - cool on P6, warm "
+        "on P8 at 1000 Hz - rather than by an external MCU, so unlike the other stock-Tuya cases it "
+        "produces no UART1 traffic by design. Adds a fourth Tuya SDK generation (TuyaOS 3.3.44) and "
+        "reaches normal operation after reading its protected key.",
     "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats":
         "A stock Tuya ETWF4301 thermostat (SDK 3.1.28) and the first non-OpenBeken image found "
         "that actually drives its MCU. Because this dump was taken after pairing, the SDK skips "

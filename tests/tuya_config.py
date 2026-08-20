@@ -284,6 +284,23 @@ _DP_TYPE = {"value": "numeric", "bool": "on/off", "enum": "enum",
             "string": "text", "bitmap": "bitmap", "raw": "raw"}
 
 
+def _redact(value):
+    """Mask secrets before they reach a published report.
+
+    Decrypted Tuya storage carries the owner's WiFi SSID and PSK plus the
+    device's auth key. These dumps are public, but re-publishing someone's home
+    network name and credentials on a web page is not something to do by
+    default. Shape is kept so the field is still recognisable.
+    """
+    v = str(value)
+    if len(v) <= 4:
+        return "*" * len(v)
+    return "%s%s%s" % (v[:2], "*" * (len(v) - 4), v[-2:])
+
+
+REDACT_SECRETS = True       # set False to show raw values locally
+
+
 def summarise(found, key_off, inner_key, encrypted):
     """Build the [(label, value)] list shown beside the raw records."""
     out = []
@@ -296,11 +313,16 @@ def summarise(found, key_off, inner_key, encrypted):
     for name, label in (("uuid", "Device UUID"), ("auth_key", "Auth key"),
                         ("ap_ssid", "AP SSID"), ("pskKey", "PSK key")):
         if found["ids"].get(name):
-            out.append((label, found["ids"][name]))
+            val = found["ids"][name]
+            if REDACT_SECRETS and name in ("auth_key", "pskKey", "ap_ssid"):
+                val = _redact(val)
+            out.append((label, val))
     net = found.get("network")
     if net:
         if net.get("ssid"):
-            out.append(("Paired WiFi SSID", str(net["ssid"])))
+            ssid = str(net["ssid"])
+            out.append(("Paired WiFi SSID",
+                        _redact(ssid) if REDACT_SECRETS else ssid))
         out.append(("Network config type", str(net.get("nc_tp"))))
         out.append(("Network status", str(net.get("stat"))))
     if found["dps"]:
