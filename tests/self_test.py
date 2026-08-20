@@ -97,7 +97,21 @@ TEST_CASES = [
             # exactly once, so several of them prove the timer keeps firing, not
             # just starts. No WiFi in the emulator, so MQTT stays down and the
             # ping watchdog never starts. (string, count) asks for count matches.
-            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS)
+            ("MQTT 0(0), bWifi 0, secondsWithNoPing -1", REPEATS),
+            # With no SSID configured, Main_Init_Delay arms g_openAP = 5, so
+            # five device-seconds in, Main_OnEverySecond calls
+            # HAL_SetupWiFiOpenAccessPoint. These three lines are that HAL
+            # path executing with the right values: the IP triple is the
+            # compile-time APP_DRONE_DEF_NET_* constants, and the SSID prefix
+            # is asserted WITHOUT its MAC-derived suffix (OpenBK7231T_8C000000
+            # on this dump) so the check does not depend on which MAC a dump
+            # carries. Output goes silent after this - bk_wlan_start() descends
+            # into the SDK's RW MAC stack, which needs radio hardware the
+            # emulator does not model - so this marks exactly how far the
+            # WiFi bring-up gets.
+            "no flash configuration, use default",
+            "set ip info: 192.168.4.1,255.255.255.0,192.168.4.1",
+            "ssid:OpenBK7231T_",
         ]
     },
     {
@@ -380,6 +394,30 @@ TEST_CASES = [
         ],
         "expected_pins": {8: 0x48},
         "expected_pwm": {2: (0x1B73, 0x0AFA)},
+    },
+    {
+        # Two pwm_new channels with DIFFERENT commanded duties - the corner no
+        # real firmware covers: every stock N dump leaves its sub-channel-1
+        # slots (ch1/ch3/ch5) at 0%, so the toggle-replay decode for the upper
+        # half of each group had only ever been checked against zero. Here
+        # both driven channels ARE sub-channel 1 (P7 = ch1 in group 0, P9 =
+        # ch3 in group 1), at 25% and 70% of a 4500 Hz period:
+        #   T4 = 26000000 / 4500 = 5777 = 0x1691 (both)
+        #   ch1 T1 = 25% -> 1444 = 0x05A4 ; ch3 T1 = 70% -> 4043 = 0x0FCB
+        # Distinct duties on distinct groups also rule out one channel's
+        # registers being read through the other's offsets.
+        "name": "OpenBK7231N Startup Command: dual PWM 25%/70% on pins 7 and 9",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231N_QIO_1.18.300_obkStartupCommand_setPinRolePWMdual.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 240,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Info:CMD:Channel 1 is 25",
+            "Info:CMD:Channel 2 is 70",
+        ],
+        "expected_pins": {7: 0x48, 9: 0x48},
+        "expected_pwm": {1: (0x1691, 0x05A4), 3: (0x1691, 0x0FCB)},
     },
     {
         "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timers",
@@ -1102,7 +1140,10 @@ DESCRIPTIONS = {
         "Full OpenBeken boot on the flagship BK7231T image, then ten Main_OnEverySecond ticks - "
         "proving the timer keeps firing, not just starts. Also proves the tick interrupt, the "
         "FreeRTOS timer daemon and MQTT registration are alive; with no WiFi in the emulator, "
-        "MQTT stays disconnected (bWifi 0).",
+        "MQTT stays disconnected (bWifi 0). Runs on to ~5 device-seconds, where the no-SSID path "
+        "opens the fallback access point: the HAL logs its IP config and the MAC-derived SSID "
+        "(OpenBK7231T_xxxx), then goes silent inside bk_wlan_start() - the exact edge of what the "
+        "emulator models of the WiFi stack.",
     "MathDemo Boot and Float Verification":
         "A special OpenBeken build that runs integer and floating-point math at boot and logs the "
         "results. Verifies the CPU's software-float paths and that FreeRTOS software timers fire "
@@ -1157,6 +1198,11 @@ DESCRIPTIONS = {
         "predicted before the first run - period 0x1B73 and a 40% toggle at 0x0AFA - and the duty "
         "is reconstructed by replaying edge toggles, making this the sharpest single check the "
         "N-family decoder has.",
+    "OpenBK7231N Startup Command: dual PWM 25%/70% on pins 7 and 9":
+        "Two pwm_new channels commanded to different duties (25% and 70%) at 4500 Hz, both on the "
+        "sub-channel-1 half of their groups - the slots every stock N dump leaves at 0%, so the "
+        "toggle-replay duty decode for them had only ever been checked against zero. Distinct "
+        "values on distinct groups also rule out cross-channel register mix-ups.",
     "MathDemo Startup Command: AlwaysHigh and AlwaysLow pins":
         "Startup command 'SetPinRole 14 AlwaysHigh; SetPinRole 15 AlwaysLow'. The two fixed-output "
         "roles drive a pin high and low with no channel involved, on plain GPIOs that have no "
