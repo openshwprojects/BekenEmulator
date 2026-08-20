@@ -175,8 +175,73 @@ PWM_CLOCK_HZ = 26000000
 
 def infer_base(pwm):
     """Return the offset PWM_BASE sits at within the captured window."""
-    # Writes at or above +0x80 mean the shifted layout is in use.
-    return 0x80 if any(off >= 0x80 for off in pwm) else 0x00
+    # Writes at or above +0x80 mean the shifted layout is in use. Offsets at
+    # 0x100+ belong to a DIFFERENT peripheral (pwm_new on BK7231N, audio on
+    # the 7252 family) and must not influence the old-block base inference.
+    return 0x80 if any(0x80 <= off < 0x100 for off in pwm) else 0x00
+
+
+# ---------------------------------------------------------------------------
+# BK7231N "pwm_new" block (beken378/driver/pwm/pwm_new.c/h in the N SDK).
+#
+# A different peripheral from the old block above: REG_PWM_BASE_ADDR is
+# 0x00802B00, i.e. offset 0x100 in our capture window, with three GROUPS of
+# 0x40 bytes. Each group holds one shared CTRL word and two sub-channels of
+# four edge-time registers T1..T4:
+#
+#     group g at 0x100 + 0x40*g:
+#         +0x00 CTRL      +0x04..0x10 sub0 T1..T4    +0x14..0x20 sub1 T1..T4
+#
+# Logical channel ch (0..5) = group ch//2, sub ch%2; pad map is the same
+# 6,7,8,9,24,26. CTRL packs per-sub fields at bit 8*s: mode[2:0] (1 = PWM),
+# enable at +3, init level at +6, cfg-update strobe at +7; pre-divider is
+# bits[23:16] (never set by the SDK - 0 means divide-by-1); int-status W1C at
+# bits 30/31. The strobe and int bits read back sticky in a last-value capture
+# and must be masked before interpreting.
+#
+# T4 is the period. T1..T3 are LEVEL-TOGGLE times: output starts at the init
+# level and flips at each nonzero T < T4 (a toggle at >= T4 coincides with
+# reload and never happens - the SDK's CW code relies on that). Duty therefore
+# comes from replaying the toggles, not from a duty register.
+#
+# Why the gating on which decoder to use is by CHIP: pwm_new.c is compiled
+# only for SOC_BK7231N and the old pwm.c only for everything else, and on the
+# 7252 family 0x802B00 is the AUDIO block - so the same captured offsets mean
+# different things per chip, and only the harness knows which chip a run is.
+PWM_NEW_OFF = 0x100
+
+
+def pwm_new_channels(pwm):
+    """[(channel, period, high_ticks, freq_hz, duty_pct)] from pwm_new writes."""
+    rows = []
+    for ch in range(6):
+        g, s = ch // 2, ch % 2
+        base = PWM_NEW_OFF + 0x40 * g
+        ctrl = pwm.get(base)
+        if ctrl is None:
+            continue
+        if not (ctrl >> (8 * s + 3)) & 1:        # enable
+            continue
+        if (ctrl >> (8 * s)) & 0x7 != 1:         # mode: 1 = PWM (2 = timer)
+            continue
+        toff = base + 0x04 + 0x10 * s
+        t = [pwm.get(toff + 4 * i) or 0 for i in range(4)]
+        period = t[3]
+        if not period:
+            continue                              # cleared = channel stopped
+        pre = (ctrl >> 16) & 0xFF                 # SDK never sets it; 0 = /1
+        freq = PWM_CLOCK_HZ / (max(1, pre) * period)
+        if not (PWM_FREQ_MIN_HZ <= freq <= PWM_FREQ_MAX_HZ):
+            continue
+        level = (ctrl >> (8 * s + 6)) & 1         # init level
+        high, prev = 0, 0
+        for tog in sorted(x for x in t[:3] if 0 < x < period):
+            high += (tog - prev) * level
+            level ^= 1
+            prev = tog
+        high += (period - prev) * level
+        rows.append((ch, period, high, freq, 100.0 * high / period))
+    return rows
 
 
 # A real PWM output lands somewhere between mains-flicker and switching-supply

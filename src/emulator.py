@@ -76,6 +76,12 @@ class BekenEmulator:
     PWM_BASE = 0x00802A00
     GPIO_BASE = 0x00802800
     GPIO_END = 0x008028A0
+    # Capture-only upper bound for the WRITE hook. Wider than GPIO_END so the
+    # function-select registers REG_GPIO_FUNC_CFG_2/_3 (0x8028B8/0x8028BC) are
+    # recorded - they carry the P24/P26 pin-mux on BK7231N. GPIO_END itself
+    # must stay at 0x8028A0: the READ hook pull-simulates bit 0 for everything
+    # below it, which would corrupt read-modify-writes of a mux register.
+    GPIO_CAP_END = 0x008028C0
     
     # UART Registers
     UART1_FIFO_PORT = 0x0080210c
@@ -242,7 +248,7 @@ class BekenEmulator:
                     for pin in sorted(state.gpio_dirty):
                         buf.write(b"[EMU_GPIO] %d %08x\n" % (pin, state.gpio_cfg[pin]))
                     for off in sorted(state.pwm_dirty):
-                        buf.write(b"[EMU_PWM] %02x %08x\n" % (off, state.pwm_regs[off]))
+                        buf.write(b"[EMU_PWM] %03x %08x\n" % (off, state.pwm_regs[off]))
                     state.gpio_dirty.clear()
                     state.pwm_dirty.clear()
                     buf.flush()
@@ -303,7 +309,7 @@ class BekenEmulator:
 
         # GPIO config registers - one 32-bit word per pin at GPIO_BASE + n*4.
         # Bit 1 is the driven output level (GCFG_OUTPUT), bit 3 output-enable.
-        if self.GPIO_BASE <= address < self.GPIO_END:
+        if self.GPIO_BASE <= address < self.GPIO_CAP_END:
             _pin = (address - self.GPIO_BASE) // 4
             self.state.gpio_cfg[_pin] = value & 0xFFFFFFFF
             if self._emit_insns:
@@ -313,7 +319,13 @@ class BekenEmulator:
         # or PWM_NEW_BASE + 0x80 depending on a build switch, so capture the
         # whole window and let the report show offsets rather than guess which
         # layout an image uses. Recorded for the report only.
-        if self.PWM_BASE <= address < self.PWM_BASE + 0x100:
+        # Window covers BOTH PWM generations: the old block at 0x802A00
+        # (BK7231T; period/duty pairs) and pwm_new at 0x802B00 (BK7231N;
+        # three groups of 0x40 with T1..T4 edge registers). Offsets 0x100+
+        # in pwm_regs are therefore pwm_new registers. On 7252-family chips
+        # 0x802B00 is the audio block instead, so the DECODER gates on chip
+        # identity - capture here just records writes.
+        if self.PWM_BASE <= address < self.PWM_BASE + 0x1C0:
             _off = address - self.PWM_BASE
             self.state.pwm_regs[_off] = value & 0xFFFFFFFF
             if self._emit_insns:

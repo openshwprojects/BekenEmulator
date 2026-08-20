@@ -161,7 +161,13 @@ def _gpio_html(r):
           % (ctl_note, chans, ", ".join("P%d" % p for p in sorted(pads)) or "none"))
     if per["pwm_regs"]:
         base = per.get("pwm_base")
-        if per.get("pwm_pins") and not per.get("pwm_channels"):
+        if per.get("pwm_layout") == "new":
+            note = ("BK7231N-family image: registers are the pwm_new block at "
+                    "0x802B00 (capture offsets 0x100+), three groups of two "
+                    "channels with T1..T4 edge registers. Duty is reconstructed "
+                    "by replaying the level toggles, not read from a duty "
+                    "register.")
+        elif per.get("pwm_pins") and not per.get("pwm_channels"):
             note = ("Offsets from 0x802A00. PWM-capable pads ARE in second "
                     "function here, but every write landed below +0x80. Only "
                     "the +0x80 / stride-12 layout is confirmed against "

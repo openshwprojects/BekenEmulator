@@ -832,6 +832,174 @@ TEST_CASES = [
         "expected_pwm": {4: (0x21DA, 0x0000), 5: (0x21DA, 0x21DA)},
     },
     {
+        # A five-channel RGBCW bulb - the widest PWM configuration in the
+        # suite, driving PWM0, 1, 2, 4 and 5 at once from a single image.
+        #
+        # Two things make it worth having beyond channel count:
+        #  - PWM1 (P7) is exercised by real firmware here for the first time;
+        #    every other real dump uses P6/P8 or P24/P26.
+        #  - PWM2 is mid-ramp while the rest sit at zero, so this is the only
+        #    real dump where the channels differ from one another at all.
+        #
+        # PWM2's DUTY is deliberately not asserted. It was measured at 0x6590
+        # (100%) when the harness stops and 0x375A (54.5%) in longer manual
+        # runs - the bulb ramps during light init, so the duty is a function of
+        # how far the boot got, not an invariant. The period is set once at
+        # init and is stable, so that is what the case pins.
+        #
+        # All five periods are 0x6590 = 26000 = 26 MHz / 1000, matching the
+        # pwmhz:1000 this bulb's own stored config declares.
+        #
+        # PWM_CTL is deliberately NOT asserted: it is written late in light
+        # init and was observed as both 0x0 and 0x100 depending on how far the
+        # run got, so it is genuinely timing-dependent here.
+        "name": "BK7231T Tuya A60 RGBCW Bulb (5-channel PWM) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231T_Tuya_A60_SmartBulb_RGBCWW_5ch_PWM_1000Hz.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "< TUYA IOT SDK V:2.0.0 BS:30.06_PT:2.2_LAN:3.3_CAD:1.0.2_CD:1.0.0 >",
+            "mf_init succ",
+            # Paired: it skips manufacturing test instead of parking in it.
+            "have actived over 15 min, not enter mf_init",
+        ],
+        "expected_pins": {6: 0x48, 7: 0x48, 8: 0x48, 24: 0x48, 26: 0x48},
+        "expected_pwm": {0: (0x6590, 0x0000), 1: (0x6590, 0x0000),
+                         2: (0x6590, None),   # ramps; period only
+                         4: (0x6590, 0x0000), 5: (0x6590, 0x0000)},
+    },
+    {
+        # The only real firmware in the suite that drives PWM3. Together with
+        # the A60 (PWM0/1/2/4/5) this completes real-device coverage of all six
+        # PWM channels - previously PWM1 and PWM3 existed only in the synthetic
+        # OpenBeken images, where the pin and frequency are chosen by us rather
+        # than by a shipped product.
+        #
+        # PWM3's period register sits at PWM_BASE + 0x08 + 12*3 = +0xAC, the
+        # same offset the synthetic 1400 Hz case pins down. A real product
+        # landing on it independently is what rules out that offset being an
+        # artefact of how we drive OpenBeken.
+        #
+        # A CW bulb with the warm channel at 100% and the cold one off. Both
+        # duties are stable here, unlike the A60's ramping PWM2, so both are
+        # asserted.
+        "name": "BK7231T Tuya Ledvance WW/CW Bulb (PWM3) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231T_Tuya_Ledvance_WW_CW_Bulb_PWM_2000Hz_1.0.8.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "oem_bk7231s_ty_ffc_db_ldv",
+            "< TUYA IOT SDK V:2.0.0 BS:30.06_PT:2.2_LAN:3.3_CAD:1.0.2_CD:1.0.0 >",
+            "mf_init succ",
+        ],
+        "expected_pins": {8: 0x48, 9: 0x48},
+        # 0x32C8 = 13000 = 26 MHz / 2000, matching this bulb's pwmhz:2000.
+        "expected_pwm": {2: (0x32C8, 0x0000), 3: (0x32C8, 0x32C8)},
+    },
+    {
+        # Picked for its period arithmetic. 26 MHz / 600 = 43333.33, and
+        # HAL_PIN_PWM_Start uses integer division, so the register holds 43333
+        # (0xA945) - which decodes BACK to 600.0046 Hz, not 600. Every other
+        # real device in the suite either divides evenly or is close enough to
+        # hide the truncation. Asserting the raw register pins the truncation
+        # itself rather than a rounded frequency.
+        #
+        # Also the first five-channel PWM_CTL cross-check: 0x110111 enables
+        # PWM0, 1, 2, 4 and 5, exactly the set decoded from the period
+        # registers, corroborating the channel numbering from a different
+        # register than the one being decoded.
+        #
+        # All five duties are 0 - the bulb is off in this dump - and stable,
+        # so unlike the A60's ramping channel they can all be asserted.
+        "name": "BK7231T Tuya ROOMLUX A60 RGBCW Bulb (600 Hz PWM) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231T_Tuya_ROOMLUX_B15515_A60_RGBCW_PWM_600Hz_1.1.2.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "[oem_bk7231s_light_ty] [1.1.2]",
+            "< TUYA IOT SDK V:2.0.0 BS:30.06_PT:2.2_LAN:3.3_CAD:1.0.2_CD:1.0.0 >",
+            "mf_init succ",
+        ],
+        "expected_pins": {6: 0x48, 7: 0x48, 8: 0x48, 24: 0x48, 26: 0x48},
+        # 0xA945 = 43333 = floor(26 MHz / 600); its stored config says pwmhz:600.
+        "expected_pwm": {0: (0xA945, 0x0000), 1: (0xA945, 0x0000),
+                         2: (0xA945, 0x0000),
+                         4: (0xA945, 0x0000), 5: (0xA945, 0x0000)},
+    },
+    {
+        # A strip CONTROLLER rather than a bulb - different product category,
+        # and the only real device driving its colours through the UPPER half
+        # of the channel map: r/g/b on P9/P24/P26 = PWM3/4/5, with the low
+        # channels untouched. Every bulb so far clusters on P6/P7/P8.
+        # oem firmware is oem_bk7231s_strip_ty 1.0.5 (Apr 2020), the oldest
+        # light build in the suite.
+        #
+        # PWM_CTL is not asserted (observed 0x0 here - written later than the
+        # harness runs, same lesson as the A60).
+        "name": "BK7231T Tuya TreatLife RGB LED Strip (PWM3/4/5) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231T_Tuya_TreatLife_RGB_LEDStrip_PWM_1000Hz_1.0.5.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "[oem_bk7231s_strip_ty] [1.0.5]",
+            "< TUYA IOT SDK V:2.0.0 BS:30.05_PT:2.2_LAN:3.3_CAD:1.0.2_CD:1.0.0 >",
+            "mf_init succ",
+        ],
+        "expected_pins": {9: 0x48, 24: 0x48, 26: 0x48},
+        # 0x6590 = 26000 = 26 MHz / 1000, matching its stored pwmhz:1000.
+        "expected_pwm": {3: (0x6590, 0x0000), 4: (0x6590, 0x0000),
+                         5: (0x6590, 0x0000)},
+    },
+    {
+        # Third N-family light, third distinct frequency: 5 kHz -> period
+        # 5200 = 0x1450, again exactly what its stored pwmhz:5000 implies.
+        # With Arlec at 1000 Hz and the Plafon at 16 kHz, the pwm_new decode
+        # is pinned by three devices whose frequencies span 16x - no single
+        # default or coincidence can satisfy all three.
+        # Its config also maps the channels OPPOSITE to the Plafon (c on P26
+        # here vs P8 there), so pad-to-channel numbering is exercised in both
+        # directions.
+        "name": "BK7231N Tuya Gleco Bulb (5ch pwm_new, 5 kHz) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_Gleco_Bulb_5ch_PWM_5000Hz_CB2L_1.5.21.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "< TuyaOS V:3.3.40 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
+            "mf_init succ",
+        ],
+        "expected_pins": {6: 0x48, 7: 0x48, 8: 0x48, 24: 0x48, 26: 0x48},
+        "expected_pwm": {0: (0x1450, 0x0000), 1: (0x1450, 0x0000),
+                         2: (0x1450, 0x0000),
+                         4: (0x1450, 0x0000), 5: (0x1450, 0x0000)},
+    },
+    {
+        # Five pwm_new channels at once, at 16 kHz - the highest PWM frequency
+        # of any device in the suite, an order of magnitude above the bulbs.
+        # Period 1625 = 26 MHz / 16000 exactly, matching its stored
+        # pwmhz:16000. Exercises all three pwm_new GROUPS simultaneously
+        # (ch0/1 group 0, ch2 group 1, ch4/5 group 2), which the Arlec case
+        # (ch0+ch2 only) does not.
+        "name": "BK7231N Tuya LED RGB Plafon (5ch pwm_new, 16 kHz) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_ledRGBPlafon_5ch_PWM_16000Hz_TuyaOS_3.3.43.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "< TuyaOS V:3.3.43 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
+            "mf_init succ",
+        ],
+        "expected_pins": {6: 0x48, 7: 0x48, 8: 0x48, 24: 0x48, 26: 0x48},
+        # 1625 = 0x659; duties all 0 (light off at boot), stable in repeat runs.
+        "expected_pwm": {0: (0x659, 0x0000), 1: (0x659, 0x0000),
+                         2: (0x659, 0x0000),
+                         4: (0x659, 0x0000), 5: (0x659, 0x0000)},
+    },
+    {
         # A PWM-driven light rather than an MCU device: the Beken itself drives
         # the LED channels through hardware PWM (its stored config declares
         # cool on P6, warm on P8 at 1000 Hz), so there is no TuyaMCU traffic on
@@ -852,7 +1020,15 @@ TEST_CASES = [
             "key_addr: 0x1ee000",
             "get key:",
             "0x34 0x8b 0xdd 0xe7 0x7b 0x9c 0x63 0xe0 0x44 0x1e 0xa7 0x1f 0x21 0x6b 0x5 0xc"
-        ]
+        ],
+        # First N-family PWM assertions. BK7231N uses the pwm_new block at
+        # 0x802B00 (three groups, T1..T4 edge registers), a different
+        # peripheral from the T-family period/duty pair - these dumps sat
+        # undecodable until that block was captured and decoded. Period
+        # 0x6590 = 26000 = 26 MHz / 1000 matches this strip's own stored
+        # pwmhz:1000; c_pin 6 -> ch0, w_pin 8 -> ch2 per its config.
+        "expected_pins": {6: 0x48, 8: 0x48},
+        "expected_pwm": {0: (0x6590, 0x0000), 2: (0x6590, 0x0000)}
     }
 ]
 
@@ -929,6 +1105,34 @@ DESCRIPTIONS = {
         "roles drive a pin high and low with no channel involved, on plain GPIOs that have no "
         "second function. Asserting the low pin at 0x00 - a written value, not an absent one - is "
         "what separates 'driving low' from 'never configured'.",
+    "BK7231T Tuya A60 RGBCW Bulb (5-channel PWM) boots":
+        "A five-channel RGBCW bulb driving PWM0/1/2/4/5 at once, all at 1000 Hz as its stored "
+        "config declares. It is the first real firmware to exercise PWM1. PWM2's duty is left "
+        "unasserted on purpose: the bulb ramps it during light init, so it reads 100% when the "
+        "harness stops and 54.5% in longer runs - a function of boot progress, not an invariant.",
+    "BK7231T Tuya Ledvance WW/CW Bulb (PWM3) boots":
+        "The only real firmware in the suite driving PWM3, which completes real-device coverage of "
+        "all six PWM channels. Its period register sits at the same +0xAC offset the synthetic "
+        "1400 Hz case pins down, so a shipped product confirms that offset independently of how we "
+        "drive OpenBeken. 2000 Hz, matching its stored pwmhz.",
+    "BK7231T Tuya ROOMLUX A60 RGBCW Bulb (600 Hz PWM) boots":
+        "Chosen for its period arithmetic: 26 MHz / 600 truncates to 43333, which decodes back to "
+        "600.0046 Hz rather than 600, so the case pins the integer truncation instead of a rounded "
+        "frequency. Also the first five-channel PWM_CTL cross-check - 0x110111 names exactly the "
+        "channels decoded from the period registers.",
+    "BK7231T Tuya TreatLife RGB LED Strip (PWM3/4/5) boots":
+        "A strip controller driving r/g/b through P9/P24/P26 = PWM3/4/5 - the only real device on "
+        "the upper half of the channel map, where every bulb clusters on P6/P7/P8. 1000 Hz, "
+        "matching its stored pwmhz. Its oem build (strip_ty 1.0.5, Apr 2020) is the oldest light "
+        "firmware in the suite.",
+    "BK7231N Tuya Gleco Bulb (5ch pwm_new, 5 kHz) boots":
+        "Third N-family light at a third frequency: 5 kHz, period 5200 matching its stored "
+        "pwmhz:5000. Together with Arlec (1 kHz) and the Plafon (16 kHz), the pwm_new decode is "
+        "corroborated across a 16x frequency span, with channel maps running in both directions.",
+    "BK7231N Tuya LED RGB Plafon (5ch pwm_new, 16 kHz) boots":
+        "Five BK7231N pwm_new channels at once at 16 kHz - the highest PWM frequency in the suite "
+        "and the only case exercising all three pwm_new register groups simultaneously. Period "
+        "1625 = 26 MHz / 16000 exactly, matching its stored pwmhz:16000.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
@@ -1175,7 +1379,12 @@ def _add_derived_tags(result):
             result["tags"].append({"name": name, "group": "data"})
 
 
-def _periph(lines):
+# Chips whose PWM is the pwm_new block at 0x802B00 (capture offset 0x100+).
+# BL2028N is a BK7231N clone; BK7231M is the N die in another package.
+PWM_NEW_CHIPS = {"BK7231N", "BK7231M", "BL2028N"}
+
+
+def _periph(lines, chip=""):
     """Decode captured [EMU_GPIO]/[EMU_PWM] lines; never breaks a run."""
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1183,8 +1392,17 @@ def _periph(lines):
         gpio, pwm = periph.parse_lines(lines)
         if not gpio and not pwm:
             return None
-        channels, ctl, base = periph.pwm_channels(pwm)
+        # Same captured offsets mean different peripherals per chip: 0x100+
+        # is pwm_new on the N family but AUDIO on 7252 - so the chip, which
+        # only the harness knows, selects the decoder.
+        if chip in PWM_NEW_CHIPS and any(off >= 0x100 for off in pwm):
+            channels = periph.pwm_new_channels(pwm)
+            ctl, base, layout = 0, None, "new"
+        else:
+            channels, ctl, base = periph.pwm_channels(pwm)
+            layout = "old"
         return {"gpio": periph.gpio_table(gpio),
+                "pwm_layout": layout,
                 "raw": gpio,
                 "pwm_pins": periph.pwm_output_pins(gpio),
                 "func": periph.func_rows(gpio),
@@ -1375,7 +1593,7 @@ def run_test(test_config):
                 print(f"  [FAIL] Missing string: '{string}'")
             all_passed = False
 
-    periph_data = _periph(periph_lines)
+    periph_data = _periph(periph_lines, chip_of(test_config))
 
     # Pin assertions, when a case declares "expected_pins". This is what turns
     # the GPIO capture from a display into a tested invariant: the expected
@@ -1410,8 +1628,16 @@ def run_test(test_config):
             (test_config.get("expected_pwm") or {}).items()):
         chans = {c[0]: c for c in ((periph_data or {}).get("pwm_channels") or [])}
         got = chans.get(ch)
-        ok = got is not None and got[1] == want_period and got[2] == want_duty
-        label = "PWM%d period = 0x%04X, duty = 0x%04X" % (ch, want_period, want_duty)
+        # duty None = assert the period only. Some devices ramp their duty
+        # during light init, so it is not a stable invariant at the moment the
+        # harness stops; pinning one would make the test fail on timing rather
+        # than on decoding.
+        ok = (got is not None and got[1] == want_period
+              and (want_duty is None or got[2] == want_duty))
+        if want_duty is None:
+            label = "PWM%d period = 0x%04X (duty varies, not asserted)" % (ch, want_period)
+        else:
+            label = "PWM%d period = 0x%04X, duty = 0x%04X" % (ch, want_period, want_duty)
         if ok:
             print(f"  [PASS] {label} ({got[3]:.1f} Hz, {got[4]:.1f}%)")
         else:
