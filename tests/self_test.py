@@ -244,6 +244,38 @@ TEST_CASES = [
         "expected_pins": {7: 0x02, 9: None},
     },
     {
+        # AlwaysHigh and AlwaysLow are the simplest possible output roles:
+        # PIN_SetPinRoleForPinIndex calls HAL_PIN_Setup_Output then
+        # HAL_PIN_SetOutputValue with a fixed 1 or 0, with no channel involved
+        # at all. That makes them the cleanest check of the pin path itself.
+        #
+        # The AlwaysLow pin is the point of this case. 0x00 is a WRITTEN value
+        # meaning "output driver enabled, driving low", and it is only
+        # distinguishable from a pin nobody touched because the capture records
+        # which registers were written. The inverted-bit-3 reading this decoder
+        # started with rendered exactly this word as "configured, all functions
+        # off", so a case asserting 0x00 would have caught that on its own.
+        #
+        # Pins 14 and 15 are plain GPIOs - no alias, no second function, and
+        # clear of gpio_ops_filter which blocks GPIO20-23. Every other pin case
+        # uses a pad that doubles as PWM or UART, so this one isolates the GPIO
+        # path. Pin 16 is asserted untouched so "driving low" and "never
+        # written" are shown to be different states rather than assumed to be.
+        "name": "MathDemo Startup Command: AlwaysHigh and AlwaysLow pins",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_alwaysHighLow.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            # No channel is involved, so there is no GetChannel to assert on;
+            # the echo proves the backlog ran to the end rather than dying on
+            # the first command.
+            "Info:CMD:AlwaysPinsDone",
+        ],
+        "expected_pins": {14: 0x02, 15: 0x00, 16: None},
+    },
+    {
         # The PWM counterpart of the relay cases, and the only test where a
         # decoded FREQUENCY is known in advance. HAL_PIN_PWM_Start computes
         # period = 26000000 / freq, so an odd request like 1400 Hz gives
@@ -777,11 +809,12 @@ TEST_CASES = [
         # Woox and Arlec both use P6/P8, so no real firmware covered the high
         # channels until this one.
         #
-        # The duties are what a CW bulb at full warm white looks like: PWM4
-        # (cold) at 0x0000 and PWM5 (warm) at 0x21DA - 0% and 100%. That is
-        # also why PWM_CTL reads 0x100000, only PWM5 actually running, which is
-        # consistent with rather than contradicted by both channels having a
-        # configured period.
+        # The stored config maps c_pin:26 and w_pin:24, so PWM5 (P26) is the
+        # COLD channel and PWM4 (P24) the warm one. Observed duties are 0x21DA
+        # on PWM5 and 0x0000 on PWM4 - i.e. the bulb sits at full COLD white.
+        # That is also why PWM_CTL reads 0x100000: only PWM5 is actually
+        # running, which is consistent with rather than contradicted by both
+        # channels having a configured period.
         "name": "BK7231T Tuya Geeni BW223 Filament Bulb (single-colour CW PWM) boots",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231T_Tuya_Geeni_BW223_FilamentBulb_CW_PWM_3000Hz_1.1.1.bin"),
@@ -889,7 +922,13 @@ DESCRIPTIONS = {
         "A real white-only filament bulb on stock Tuya firmware. Its stored config declares "
         "pwmhz:3000, so the emulator's decoded 3000.2 Hz is checked against the device's own claim "
         "rather than against our arithmetic. Drives P24/P26 (PWM4/PWM5), the high channels no other "
-        "real-firmware test covers, at 0% and 100% duty - a CW bulb sitting at full warm white.",
+        "real-firmware test covers. Its config maps c_pin:26/w_pin:24, so PWM5 is cold and PWM4 warm; "
+        "the captured duties (100% and 0%) show the bulb at full cold white.",
+    "MathDemo Startup Command: AlwaysHigh and AlwaysLow pins":
+        "Startup command 'SetPinRole 14 AlwaysHigh; SetPinRole 15 AlwaysLow'. The two fixed-output "
+        "roles drive a pin high and low with no channel involved, on plain GPIOs that have no "
+        "second function. Asserting the low pin at 0x00 - a written value, not an absent one - is "
+        "what separates 'driving low' from 'never configured'.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
