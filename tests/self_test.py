@@ -621,7 +621,9 @@ TEST_CASES = [
         "name": "Woox Tuya Original Firmware Boot",
         "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_QIO_Woox_R5111_2023-14-10-23-46-06.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
-        "timeout": 120,
+        # Reaches the Wi-Fi scan now (deeper than the old key-read stall), so it
+        # needs a larger budget; streaming stops as soon as the markers are hit.
+        "timeout": 300,
         # Timestamps are stripped from the expected strings: the RTOS tick now
         # advances Tuya's clock, so lines print at 18:12:15/16/... depending on
         # emulation timing.
@@ -636,7 +638,19 @@ TEST_CASES = [
             "simple_flash.c:432] key_addr: 0x1ee000",
             "simple_flash.c:500] get key:",
             "0xcb 0x4e 0x3e 0xa4 0x0 0x30 0x9d 0xab 0x65 0x6d 0x8d 0xbf 0xe4 0xb9 0x3f 0x35",
-            "TUYA Notice][tuya_main.c:311] **********[oem_bk7231s_light_ty] [2.9.6] compiled at Oct 29 2020 14:38:00**********"
+            "TUYA Notice][tuya_main.c:311] **********[oem_bk7231s_light_ty] [2.9.6] compiled at Oct 29 2020 14:38:00**********",
+            # Boot used to die right after the key read, spinning on a threshold
+            # poll of the 0x810020 accelerator result register (never served, so
+            # the value stayed 0 and the loop's "> 0x1d3" test was never met).
+            # With that register served, Woox runs on through activation, the
+            # SDK banner, BLE pairing advertise and the start of the Wi-Fi scan -
+            # the markers below prove each of those stages is now reached.
+            "tuya_main.c:341] mf_init succ",
+            "< TUYA IOT SDK V:1.0.2 BS:40.00_PT:2.2_LAN:3.3_CAD:1.0.2_CD:1.0.0 >",
+            "appm start advertising",
+            # Manufacturing-test SSID baked into the firmware (not a user network).
+            "current product ssid name:tuya_mdev_test1",
+            "scan_start_req_handler",
         ]
     },
     {

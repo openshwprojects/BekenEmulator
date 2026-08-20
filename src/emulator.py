@@ -542,6 +542,19 @@ class BekenEmulator:
             mu.mem_write(address, struct.pack("<I", 0))
             return
 
+        # Result register of that same block (0x810020). The Woox bk7231s light
+        # triggers an op at 0x81001c, waits (handled above), reads this result,
+        # and repeats the whole thing until the value exceeds 0x1d3 - so with
+        # the register left at 0, the threshold is never met and boot spins here
+        # forever, right after the protected-key read. The firmware immediately
+        # reduces the value to a boolean (result > 0x1d3 ? 1 : 0) and discards
+        # the number, so the exact value does not matter as long as it clears
+        # the threshold; 0x200 does. Serving it lets Woox run on to mf_init,
+        # the SDK banner, BLE advertising and the Wi-Fi scan.
+        if address == 0x00810020:
+            mu.mem_write(address, struct.pack("<I", 0x200))
+            return
+
         # SCTRL_EFUSE_OPTR: report a blank efuse byte (0x00) with
         # EFUSE_OPER_RD_DATA_VALID (bit 8) set.
         if address == 0x00800078:
