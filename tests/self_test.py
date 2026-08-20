@@ -509,6 +509,64 @@ TEST_CASES = [
             # proves the MCU link keeps running, not just starts.
             ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
         ]
+    },
+    {
+        # Second paired stock-Tuya device that drives its MCU, and deliberately a
+        # DIFFERENT SDK generation from the Ettroit case: TuyaOS 3.11.12 (built
+        # 2025) rather than the older "TUYA IOT SDK V:2.3.3" line. It also takes a
+        # different path - it never prints "have actived", yet still skips
+        # manufacturing test - so the two cases together cover both variants.
+        #
+        # Picked by a static signal that separates paired from factory dumps
+        # perfectly across every device checked: a paired unit has written BOTH
+        # KV copies (mirror 0x1cf000 as well as current 0x1ed000), because the
+        # store only rotates after real service use. Factory dumps leave the
+        # mirror erased. (The earlier "user data %" heuristic was noise - it
+        # scored this device the same as unpaired ones.)
+        "name": "BK7231N Tuya BEOK Thermostat (TuyaOS 3.11.12) sends TuyaMCU heartbeats",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_BEOK_TOL47WIFI_Thermostat_TuyaMCU_TuyaOS_3.11.12.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "< TuyaOS V:3.11.12 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
+            "mf_init succ",
+            # Physical flash addressing: BOTH kv copies valid with matching counts.
+            "current kv info, addr: 1ed000, cnt: 8, is valid: 0",
+            "mirror kv info, addr: 1cf000, cnt: 8, is valid: 0",
+            # Protected key decrypted from 0x1ee000.
+            "0x53 0xc1 0xb1 0x85 0xe3 0xbf 0xb6 0x3 0xe8 0x43 0xad 0xfb 0x83 0x82 0x69 0xdf",
+            # The MCU link is opened at the TuyaMCU baud before any frame goes out.
+            "read baud rate 9600",
+            ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
+        ]
+    },
+    {
+        # Third paired stock-Tuya device driving its MCU, chosen for a different
+        # device CLASS rather than a different SDK: a dual-clamp power meter,
+        # where the MCU owns the current clamps and all metering and the Beken is
+        # purely the radio. (It ships the same TuyaOS 3.11.12 build as the BEOK
+        # case, so this adds hardware-class coverage, not SDK coverage.)
+        #
+        # Its KV pair carries cnt 16 - a different rotation count from the other
+        # two (97 and 8) - which is useful: it shows the physical-addressing fix
+        # is not tied to one particular store state.
+        "name": "BK7231N Tuya PJ1103C Dual-Clamp Power Meter sends TuyaMCU heartbeats",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_PJ1103C_DualClampPowerMeter_TuyaMCU_TuyaOS_3.11.12.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "< TuyaOS V:3.11.12 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
+            "mf_init succ",
+            # Physical flash addressing: BOTH kv copies valid, counts matching.
+            "current kv info, addr: 1ed000, cnt: 16, is valid: 0",
+            "mirror kv info, addr: 1cf000, cnt: 16, is valid: 0",
+            # This device's own protected key, decrypted from 0x1ee000.
+            "0xfe 0x2f 0xe2 0x48 0x9 0x3f 0x8d 0x4a 0xad 0x1a 0xc1 0xf3 0x79 0x2f 0x56 0xf6",
+            "read baud rate 9600",
+            ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
+        ]
     }
 ]
 
@@ -591,6 +649,17 @@ DESCRIPTIONS = {
         "A stock Tuya smart plug (SDK 2.3.3), picked at random after the protected-key fix to check "
         "it generalises. Boots past SDK init and OEM config, reading its protected key; never drops "
         "into mf_test.",
+    "BK7231N Tuya BEOK Thermostat (TuyaOS 3.11.12) sends TuyaMCU heartbeats":
+        "A paired BEOK TOL47WIFI-WP-WF thermostat running TuyaOS 3.11.12 - a newer SDK line than "
+        "the Ettroit case, and one that never prints \"have actived\" yet still skips manufacturing "
+        "test. It opens the MCU link at 9600 baud and streams TuyaMCU heartbeats. Selected by the "
+        "mirror-KV signal: paired units have written both KV copies, factory dumps leave the mirror "
+        "erased.",
+    "BK7231N Tuya PJ1103C Dual-Clamp Power Meter sends TuyaMCU heartbeats":
+        "A paired PJ1103C dual-clamp power meter (TuyaOS 3.11.12). The MCU owns the current clamps "
+        "and all metering while the Beken is only the radio, so this covers a different hardware "
+        "class from the two thermostat cases. Its KV pair carries a third distinct rotation count "
+        "(16), showing the physical flash-addressing model is not tied to one store state.",
     "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats":
         "A stock Tuya ETWF4301 thermostat (SDK 3.1.28) and the first non-OpenBeken image found "
         "that actually drives its MCU. Because this dump was taken after pairing, the SDK skips "
