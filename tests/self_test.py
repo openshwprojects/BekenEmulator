@@ -186,6 +186,46 @@ TEST_CASES = [
         ]
     },
     {
+        # Ground truth for the GPIO capture. Every other case can only show
+        # whatever pin writes a firmware happens to make; here we ORDER a
+        # specific pin to a known state and check the exact register word.
+        #
+        # "Rel" (not "Relay") is index 1 of htmlPinRoleNames[]; the role token
+        # is only ever stricmp'd against that table, so a numeric index is
+        # rejected with "Unknown role".
+        #
+        # Command order matters twice over:
+        #  - SetPinChannel runs BEFORE SetPinRole so that the IOR_Relay setup,
+        #    which immediately calls HAL_PIN_SetOutputValue(pin, channelValue),
+        #    already sees the binding.
+        #  - "SetChannel 1 0" precedes "SetChannel 1 1" to force a value
+        #    TRANSITION: CMD_SetChannel passes iFlags=0, so CHANNEL_Set_Ex
+        #    early-returns on prevValue == iVal and writes no GPIO at all.
+        #
+        # This works only because the startup command is executed from
+        # Main_Init_AfterDelay_Unsafe, i.e. after g_enable_pins = 1 and
+        # PIN_SetupPins() have run at the end of Main_Init_BeforeDelay_Unsafe.
+        # Were it the other way round, the role would be stored and then
+        # overwritten by the config pass.
+        "name": "MathDemo Startup Command: SetPinRole drives a relay pin",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_setPinRole.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            # GetChannel logs "Channel %i is %i" under LOG_FEATURE_CMD, which
+            # proves the whole backlog ran rather than dying on argument one.
+            "Info:CMD:Channel 1 is 1",
+        ],
+        # 0x02: bit1 = driven output level HIGH, bit3 = 0. Bit 3 is named
+        # GCFG_OUTPUT_ENABLE_POS in the SDK header but is really an output
+        # DISABLE - gpio_config() writes 0x00 for GMODE_OUTPUT and 0x0C/0x48
+        # for the input and second-function modes. gpio_output() then
+        # read-modify-writes bit 1 alone, giving 0x02 for a pin driving high.
+        "expected_pins": {9: 0x02},
+    },
+    {
         "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231U_QIO_1.18.300.bin"),
         # Plaintext image (beken_freertos_sdk layout) - no key.
@@ -687,6 +727,12 @@ DESCRIPTIONS = {
         "Startup command 'startDriver TuyaMCU'. The driver opens UART1 itself and talks first, "
         "unprompted: the first per-second tick emits a TuyaMCU heartbeat frame "
         "(55 AA 00 00 00 00 FF) with no MCU attached.",
+    "MathDemo Startup Command: SetPinRole drives a relay pin":
+        "Startup command 'SetPinChannel 9 1; SetPinRole 9 Rel; SetChannel 1 0; SetChannel 1 1'. "
+        "Orders OpenBeken to make pin 9 a relay output bound to channel 1, then switches that "
+        "channel on. The only case where the expected GPIO register word is known independently "
+        "- from the vendor SDK's own gpio_config()/gpio_output() - so it verifies the emulator's "
+        "pin capture rather than merely displaying it.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
@@ -869,6 +915,10 @@ def tags_for(test_config):
     # the same silicon never reach that path.
     if is_obk and ("7231N" in base or "7231M" in base):
         feat.append("SARADC")
+    # Keyed off the pin assertions, so the tag means "this case verifies a
+    # driven pin", not merely "this firmware happens to touch GPIO".
+    if test_config.get("expected_pins"):
+        feat.append("GPIO")
     if "Float basic" in exp:
         feat.append("float math")
     # Crypto only for the cases whose subject IS key handling.
@@ -903,6 +953,32 @@ def _parse_expected(expected):
     return out
 
 
+def _add_derived_tags(result):
+    """Tags for what the run actually produced, not what the case declares.
+
+    These cannot come from the test definition: whether a dump yields a Tuya
+    config, or whether the firmware touched GPIO/PWM at all, is only known
+    after the emulator has run.
+    """
+    derived = []
+    if result.get("tuya_config"):
+        derived.append("has Tuya config")
+    per = result.get("periph")
+    if per:
+        if any(st != "factory" for _pin, _alias, st, _d in per["gpio"]):
+            derived.append("has GPIO data")
+        # Deliberately NOT keyed on "wrote PWM registers": the FreeRTOS tick
+        # is a PWM channel in timer mode, so that tags every single firmware.
+        if per.get("pwm_pins"):
+            derived.append("has PWM")
+    if result.get("timed_out"):
+        derived.append("timed out")
+    have = {t["name"] for t in result["tags"]}
+    for name in derived:
+        if name not in have:
+            result["tags"].append({"name": name, "group": "data"})
+
+
 def _periph(lines):
     """Decode captured [EMU_GPIO]/[EMU_PWM] lines; never breaks a run."""
     try:
@@ -911,14 +987,31 @@ def _periph(lines):
         gpio, pwm = periph.parse_lines(lines)
         if not gpio and not pwm:
             return None
-        channels, ctl = periph.pwm_channels(pwm)
+        channels, ctl, base = periph.pwm_channels(pwm)
         return {"gpio": periph.gpio_table(gpio),
+                "raw": gpio,
+                "pwm_pins": periph.pwm_output_pins(gpio),
                 "func": periph.func_rows(gpio),
                 "pwm_ctl": ctl,
+                "pwm_base": base,
                 "pwm_channels": channels,
                 "pwm_regs": periph.pwm_registers(pwm)}
-    except Exception:
+    except Exception as exc:
+        # Decoding is best-effort and must never fail a run, but swallowing it
+        # silently once cost a whole debug cycle: a stale 2-tuple unpack here
+        # made every GPIO tab look "empty" rather than "broken".
+        print("[warn] peripheral decode failed: %r" % (exc,), file=sys.stderr)
         return None
+
+
+def _pin_desc(value):
+    """Human-readable form of a pin config word, for test output."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import periph
+        return periph.decode_pin(value)
+    except Exception:
+        return "?"
 
 
 def _tuya_config(binary):
@@ -1086,10 +1179,31 @@ def run_test(test_config):
                 print(f"  [FAIL] Missing string: '{string}'")
             all_passed = False
 
+    periph_data = _periph(periph_lines)
+
+    # Pin assertions, when a case declares "expected_pins". This is what turns
+    # the GPIO capture from a display into a tested invariant: the expected
+    # register value is derived from the vendor SDK's own gpio_config() /
+    # gpio_output(), not from whatever the emulator happened to emit. Without
+    # it, a break in the capture path renders an empty tab and still "passes".
+    for pin, want in sorted((test_config.get("expected_pins") or {}).items()):
+        got = (periph_data or {}).get("raw", {}).get(pin)
+        ok = got == want
+        label = "GPIO P%d config = 0x%02X" % (pin, want)
+        if ok:
+            print(f"  [PASS] {label} ({_pin_desc(want)})")
+        else:
+            seen = "0x%02X" % got if got is not None else "no write captured"
+            print(f"  [FAIL] {label}, got {seen}")
+            all_passed = False
+        checks.append({"string": label, "found": ok,
+                       "count": 1 if ok else 0, "required": 1})
+
     result = _result(test_config, passed=all_passed, elapsed=elapsed,
                      insns=insns_holder[0], timed_out=hit_timeout,
                      output=output, checks=checks)
-    result["periph"] = _periph(periph_lines)
+    result["periph"] = periph_data
+    _add_derived_tags(result)
 
     if not all_passed:
         print("--- CAPTURED OUTPUT ---")

@@ -51,32 +51,70 @@ def pin_role(pin):
     return PIN_ROLE.get(pin, "")
 
 
+# Mode words the SDK's gpio_config() actually writes, from
+# beken378/driver/gpio/gpio.c - byte-identical in the BK7231T and BK7231N
+# trees, so this table is not family-specific:
+#
+#     GMODE_OUTPUT               0x00        GMODE_SECOND_FUNC          0x48
+#     GMODE_INPUT                0x0C        GMODE_SECOND_FUNC_PULL_UP  0x78
+#     GMODE_INPUT_PULLUP         0x3C
+#     GMODE_INPUT_PULLDOWN       0x2C
+#
+# Bit 3 is the trap. gpio.h names it GCFG_OUTPUT_ENABLE_POS, but the table
+# above shows it SET for every input and second-function mode and CLEAR for
+# GMODE_OUTPUT - it is an output *disable*. Decoding it as an active-high
+# enable (as this file first did) inverts the whole picture: every
+# peripheral-owned pin prints "OUTPUT = 0" and every genuinely driven output
+# is missed. That is why a pin reading 0x02 is not an idle latch but a GPIO
+# actively driving HIGH.
+KNOWN_MODES = {
+    0x00: "GMODE_OUTPUT",
+    0x0C: "GMODE_INPUT",
+    0x2C: "GMODE_INPUT_PULLDOWN",
+    0x3C: "GMODE_INPUT_PULLUP",
+    0x48: "GMODE_SECOND_FUNC",
+    0x78: "GMODE_SECOND_FUNC_PULL_UP",
+}
+
+
 def decode_pin(value):
     """Return a readable description of one pin config word."""
-    out_en = bool(value & (1 << 3))
+    second = bool(value & (1 << 6))
+    # Bit 3 clear == the GPIO output driver is active. See the note above.
+    driving = not (value & (1 << 3))
     in_en = bool(value & (1 << 2))
-    pull_en = bool(value & (1 << 5))
     level = 1 if value & (1 << 1) else 0
     bits = []
-    if value & (1 << 6):
-        # Second function means a peripheral drives the pad; naming which one
-        # is the whole point, otherwise every UART/PWM pin looks identical.
+    if second:
+        # A peripheral owns the pad; naming which one is the whole point,
+        # otherwise every UART and PWM pin looks identical.
         bits.append("second function")
-    if out_en:
+    elif driving:
         bits.append("OUTPUT = %d" % level)
-    elif value & (1 << 1):
-        # The output latch is set but the driver is not enabled - worth showing
-        # rather than calling the pin "disabled".
-        bits.append("output latch = %d (not driven)" % level)
     if in_en:
         bits.append("input")
-    if pull_en:
+    if value & (1 << 5):
         bits.append("pull-%s" % ("up" if value & (1 << 4) else "down"))
     if value & (1 << 7):
         bits.append("monitor")
     if not bits:
-        bits.append("configured, all functions off")
+        bits.append("configured, no direction enabled")
     return ", ".join(bits)
+
+
+def mode_name(value):
+    """The SDK mode constant this word corresponds to, if it is an exact match.
+
+    gpio_config() writes these whole-word, but gpio_output() then flips bit 1
+    in place, so a driven pin is "GMODE_OUTPUT with bit 1 set" rather than an
+    exact hit - hence the retry with the output level masked off.
+    """
+    if value in KNOWN_MODES:
+        return KNOWN_MODES[value]
+    base = value & ~(1 << 1)
+    if base in KNOWN_MODES:
+        return "%s + output %d" % (KNOWN_MODES[base], 1 if value & (1 << 1) else 0)
+    return ""
 
 
 def parse_lines(lines):
@@ -154,6 +192,24 @@ def pwm_channels(pwm):
         pct = (100.0 * duty / period) if duty is not None else None
         rows.append((ch, period, duty, freq, pct))
     return rows, pwm.get(base, 0), base
+
+
+# PWM-capable pads, from OpenBeken's HAL_PIN_GetPinNameAlias table.
+PWM_PINS = {6: 0, 7: 1, 8: 2, 9: 3, 24: 4, 26: 5}
+
+
+def pwm_output_pins(gpio):
+    """Pins actually handed to the PWM peripheral.
+
+    PWM register writes on their own prove nothing: fclk_init() runs a PWM
+    channel in PMODE_TIMER with duty_cycle 0 as the FreeRTOS tick, on every
+    boot, bound to no pad at all (beken378/func/misc/fake_clock.c). So a
+    "wrote PWM registers" test tags literally every firmware. A PWM-capable
+    pad switched to second function is the thing that distinguishes a bulb
+    driving its channels from the OS keeping time.
+    """
+    return sorted(pin for pin, val in gpio.items()
+                  if pin in PWM_PINS and (val & (1 << 6)))
 
 
 def pwm_registers(pwm):

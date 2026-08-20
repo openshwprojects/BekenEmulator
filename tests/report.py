@@ -50,7 +50,7 @@ def _tag_class(tag):
     name, group = tag["name"], tag.get("group", "feature")
     if group == "source":
         return "tag src-" + {"OpenBeken": "obk", "Tuya": "tuya"}.get(name, "cli")
-    return "tag " + {"chip": "chip", "state": "state"}.get(group, "feat")
+    return "tag " + {"chip": "chip", "state": "state", "data": "data"}.get(group, "feat")
 
 
 def _tags_html(r):
@@ -93,27 +93,61 @@ def _gpio_html(r):
     if not per:
         return ('<p class="empty">No GPIO or PWM writes were observed during this run.</p>')
     rows = []
-    for pin, state, detail in per["gpio"]:
+    for pin, alias, state, detail in per["gpio"]:
         cls = "set" if state == "set by firmware" else "factory"
-        rows.append('<tr class="%s"><td><code>P%d</code></td><td>%s</td><td>%s</td></tr>'
-                    % (cls, pin, html.escape(state), html.escape(detail)))
-    touched = sum(1 for _, st, _ in per["gpio"] if st != "factory")
+        rows.append('<tr class="%s"><td><code>P%d</code></td><td><code>%s</code></td>'
+                    '<td>%s</td></tr>'
+                    % (cls, pin, html.escape(alias or ""), html.escape(detail)))
+    touched = sum(1 for _p, _a, st, _d in per["gpio"] if st != "factory")
     extra = ""
     if per["func"]:
         extra = ('<div class="cfg-h">Function select</div><table class="cfg-t">%s</table>'
                  % "".join('<tr><td><code>%s</code></td><td><code>%s</code></td></tr>'
                            % (html.escape(n), html.escape(v)) for n, v in per["func"]))
     pwm = ""
+    # Only decode channels when a PWM-capable pad is actually in second
+    # function. Otherwise these registers belong to the FreeRTOS tick, which
+    # runs a PWM channel in PMODE_TIMER on every boot - decoding those as a
+    # light gives absurdities like "0.1 Hz" from what is really a timer reload
+    # value, which is exactly what this report used to print.
+    if per.get("pwm_channels") and per.get("pwm_pins"):
+        # The decoded view is the point of capturing PWM at all: a period of
+        # 0x54A2 means nothing, "1200 Hz at 42% duty" is the bulb's actual
+        # output. Frequency = 26 MHz / period; duty = duty/period.
+        chans = "".join(
+            '<tr><td><code>PWM%d</code></td><td><code>P%s</code></td>'
+            '<td>%s</td><td>%s</td><td><code>0x%X</code></td></tr>'
+            % (ch, {0: "6", 1: "7", 2: "8", 3: "9", 4: "24", 5: "26"}.get(ch, "?"),
+               ("%.1f Hz" % freq) if freq else "-",
+               ("%.1f%%" % pct) if pct is not None else "-", period)
+            for ch, period, _duty, freq, pct in per["pwm_channels"])
+        pwm += ("""
+          <div class="cfg-h">PWM channels</div>
+          <table class="cfg-t"><tr><th>Ch</th><th>Pin</th><th>Freq</th>
+          <th>Duty</th><th>Period</th></tr>%s</table>""" % chans)
     if per["pwm_regs"]:
-        pwm = ("""
+        base = per.get("pwm_base")
+        if not per.get("pwm_pins"):
+            note = ("Offsets from 0x802A00. No PWM-capable pad is in second "
+                    "function here, so these writes are the FreeRTOS tick - "
+                    "fclk_init() runs a PWM channel in PMODE_TIMER with duty 0 "
+                    "and no pin - rather than a PWM output. They are shown raw "
+                    "for that reason, not decoded as channels.")
+        elif base:
+            note = ("Offsets are from 0x802A00. The firmware wrote at or above "
+                    "+0x80, so PWM_BASE is the shifted layout "
+                    "(PWM_NEW_BASE + 0x80). Channel numbering is inferred from "
+                    "that base and may not line up with the pad names.")
+        else:
+            note = ("Offsets are from 0x802A00, which is where this image put "
+                    "PWM_BASE.")
+        pwm += ("""
           <div class="cfg-h">PWM registers written</div>
           <table class="cfg-t">%s</table>
-          <p class="cfg-note">Shown at their observed offsets from 0x802A00.
-          pwm.h places PWM_BASE at either that address or +0x80 depending on a
-          build switch, so which register is PWM_CTL differs per image and is
-          not guessed at here.</p>"""
-          % "".join('<tr><td><code>%s</code></td><td><code>%s</code></td></tr>'
-                    % (html.escape(o), html.escape(v)) for o, v in per["pwm_regs"]))
+          <p class="cfg-note">%s</p>"""
+          % ("".join('<tr><td><code>%s</code></td><td><code>%s</code></td></tr>'
+                     % (html.escape(o), html.escape(v)) for o, v in per["pwm_regs"]),
+             html.escape(note)))
     return ('<p class="cfg-note">%d of %d pins configured by firmware; the rest are '
             'left at their factory (reset) state.</p>'
             '<div class="cfg-cols"><div class="cfg-col">'
@@ -153,7 +187,7 @@ def _test_card(r):
     args = html.escape(" ".join(r.get("args", [])))
 
     return """
-    <details class="card {status_cls}">
+    <details class="card {status_cls}" data-tags="{tagdata}">
       <summary>
         <span class="dot"></span>
         <span class="head">
@@ -201,12 +235,49 @@ def _test_card(r):
         args=args,
         checks="".join(checks_html),
         tags=_tags_html(r),
+        tagdata=html.escape("|".join("%s:%s" % (t.get("group", "feature"), t["name"])
+                                     for t in r.get("tags", []))),
         tuya=_tuya_html(r),
         tuya_dis="" if r.get("tuya_config") else " disabled",
         gpio=_gpio_html(r),
         gpio_dis="" if r.get("periph") else " disabled",
         log=_highlight(r.get("output", ""), [c["string"] for c in r["checks"] if c["found"]]),
     )
+
+
+def _filters_html(results):
+    """Facet bar: every tag with a live count, grouped."""
+    order = ["source", "chip", "state", "feature", "data"]
+    groups = {}
+    for r in results:
+        for t in r.get("tags", []):
+            g = t.get("group", "feature")
+            groups.setdefault(g, {}).setdefault(t["name"], 0)
+            groups[g][t["name"]] += 1
+    if not groups:
+        return ""
+    blocks = []
+    for g in order:
+        if g not in groups:
+            continue
+        chips = "".join(
+            '<button class="fchip %s" type="button" data-group="%s" data-tag="%s">'
+            '%s<span class="fcount">%d</span></button>'
+            % (_tag_class({"name": n, "group": g}).replace("tag ", ""),
+               html.escape(g), html.escape(n), html.escape(n), c)
+            for n, c in sorted(groups[g].items(), key=lambda kv: (-kv[1], kv[0])))
+        blocks.append('<div class="fgroup"><span class="flabel">%s</span>%s</div>'
+                      % (html.escape(g), chips))
+    return """
+  <div class="filters">
+    <div class="fhead">
+      <span class="fhint">Filter by tag - none selected shows everything.
+        Picking two in the same row widens; picking across rows narrows.</span>
+      <button class="fclear" type="button" hidden>Clear all</button>
+    </div>
+    %s
+    <div class="fstatus" hidden></div>
+  </div>""" % "".join(blocks)
 
 
 def generate(results, meta, out_path):
@@ -243,6 +314,7 @@ def generate(results, meta, out_path):
         generated=html.escape(meta.get("generated_at", "")),
         commit_html=commit_html,
         run_html=run_html,
+        filters=_filters_html(results),
         cards="".join(_test_card(r) for r in results),
         script=_SCRIPT,
     )
@@ -289,6 +361,24 @@ _PAGE = """<!doctype html>
   .stat .n {{ font-size:24px; font-weight:700; }}
   .stat .l {{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }}
   .stat.pass .n {{ color:var(--pass); }} .stat.fail .n {{ color:var(--fail); }}
+  .filters {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; margin:0 0 16px; }}
+  .fhead {{ display:flex; align-items:center; justify-content:space-between; gap:12px;
+    margin-bottom:8px; }}
+  .fhint {{ font-size:12px; color:var(--muted); }}
+  .fclear {{ font-size:12px; padding:3px 10px; border-radius:6px; border:1px solid var(--line);
+    background:var(--bg); color:var(--fg); cursor:pointer; }}
+  .fgroup {{ display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; margin:5px 0; }}
+  .flabel {{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); width:56px; flex:0 0 auto; }}
+  .fchip {{ font-size:11.5px; padding:2px 8px; border-radius:20px; cursor:pointer;
+    border:1px solid var(--line); background:var(--bg); color:var(--muted);
+    display:inline-flex; gap:6px; align-items:center; }}
+  .fchip:hover {{ color:var(--fg); border-color:var(--accent); }}
+  .fchip.on {{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }}
+  .fchip.zero {{ opacity:.35; }}
+  .fcount {{ font-size:10px; opacity:.8; }}
+  .fstatus {{ margin-top:8px; font-size:12px; color:var(--muted); }}
   .card {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
     margin:10px 0; overflow:hidden; }}
   .card.fail {{ border-color:var(--fail); }}
@@ -310,6 +400,7 @@ _PAGE = """<!doctype html>
   .tag.chip     {{ background:transparent; color:var(--muted); border-color:var(--line); }}
   .tag.state    {{ background:var(--passbg); color:var(--pass); }}
   .tag.feat     {{ background:var(--t-feat-bg); color:var(--t-feat); }}
+  .tag.data     {{ background:transparent; color:var(--accent); border-color:var(--accent); }}
   .badges {{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }}
   .badge {{ font-size:12px; padding:2px 8px; border-radius:20px; background:var(--bg);
     border:1px solid var(--line); color:var(--muted); white-space:nowrap; }}
@@ -388,6 +479,7 @@ _PAGE = """<!doctype html>
     <div class="stat"><div class="n">{runtime}</div><div class="l">Runtime</div></div>
     <div class="stat" title="{chips_list}"><div class="n">{chips}</div><div class="l">Chips</div></div>
   </div>
+  {filters}
   {cards}
 </div>
 {script}
@@ -401,6 +493,83 @@ _PAGE = """<!doctype html>
 # API where available and falls back to a hidden textarea + execCommand so it
 # also works from a file:// URL.
 _SCRIPT = """<script>
+
+// --- tag filtering -------------------------------------------------------
+// Selected tags in the same group are OR-ed (two chips widens the result);
+// different groups are AND-ed (chip + feature narrows it). That is what makes
+// "BK7231N" + "BK7231T" show both families instead of nothing.
+(function () {
+  var bar = document.querySelector('.filters');
+  if (!bar) return;
+  var chips = Array.prototype.slice.call(bar.querySelectorAll('.fchip'));
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.card'));
+  var status = bar.querySelector('.fstatus');
+  var clear = bar.querySelector('.fclear');
+  var sel = {};   // group -> Set of selected tag names
+
+  cards.forEach(function (c) {
+    c._tags = {};
+    (c.getAttribute('data-tags') || '').split('|').forEach(function (t) {
+      if (!t) return;
+      var i = t.indexOf(':');
+      var g = t.slice(0, i), n = t.slice(i + 1);
+      (c._tags[g] = c._tags[g] || []).push(n);
+    });
+  });
+
+  function matches(card, selection) {
+    for (var g in selection) {
+      if (!selection[g] || !selection[g].size) continue;
+      var have = card._tags[g] || [];
+      var hit = false;
+      selection[g].forEach(function (n) { if (have.indexOf(n) >= 0) hit = true; });
+      if (!hit) return false;      // this group is AND-ed against the others
+    }
+    return true;
+  }
+
+  function apply() {
+    var shown = 0;
+    cards.forEach(function (c) {
+      var ok = matches(c, sel);
+      c.hidden = !ok;
+      if (ok) shown++;
+    });
+    // Facet counts: for each chip, how many cards WOULD show if it were the
+    // choice in its group - i.e. apply every other group's filter, then count.
+    chips.forEach(function (ch) {
+      var g = ch.getAttribute('data-group'), n = ch.getAttribute('data-tag');
+      var probe = {};
+      for (var k in sel) if (k !== g) probe[k] = sel[k];
+      var c = cards.filter(function (card) {
+        return matches(card, probe) && (card._tags[g] || []).indexOf(n) >= 0;
+      }).length;
+      ch.querySelector('.fcount').textContent = c;
+      ch.classList.toggle('zero', c === 0);
+    });
+    var any = Object.keys(sel).some(function (g) { return sel[g] && sel[g].size; });
+    clear.hidden = !any;
+    status.hidden = !any;
+    if (any) status.textContent = 'Showing ' + shown + ' of ' + cards.length + ' tests.';
+  }
+
+  chips.forEach(function (ch) {
+    ch.addEventListener('click', function () {
+      var g = ch.getAttribute('data-group'), n = ch.getAttribute('data-tag');
+      sel[g] = sel[g] || new Set();
+      if (sel[g].has(n)) { sel[g].delete(n); ch.classList.remove('on'); }
+      else { sel[g].add(n); ch.classList.add('on'); }
+      apply();
+    });
+  });
+  clear.addEventListener('click', function () {
+    sel = {};
+    chips.forEach(function (c) { c.classList.remove('on'); });
+    apply();
+  });
+  apply();
+})();
+
 document.querySelectorAll('.tab-btn').forEach(function (btn) {
   btn.addEventListener('click', function () {
     if (btn.classList.contains('disabled')) return;
