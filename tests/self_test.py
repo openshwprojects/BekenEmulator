@@ -767,6 +767,38 @@ TEST_CASES = [
     }
 ,
     {
+        # A real single-colour (white-only) PWM bulb, chosen because its own
+        # stored Tuya config declares pwmhz:3000 - so the decoded frequency is
+        # checked against the DEVICE's own claim rather than against our
+        # arithmetic. 26 MHz / 8666 = 3000.2 Hz, matching that declaration.
+        #
+        # It also drives P24 and P26, i.e. PWM4 and PWM5, whose period
+        # registers (+0xB8, +0xC4) sit near the top of the captured window.
+        # Woox and Arlec both use P6/P8, so no real firmware covered the high
+        # channels until this one.
+        #
+        # The duties are what a CW bulb at full warm white looks like: PWM4
+        # (cold) at 0x0000 and PWM5 (warm) at 0x21DA - 0% and 100%. That is
+        # also why PWM_CTL reads 0x100000, only PWM5 actually running, which is
+        # consistent with rather than contradicted by both channels having a
+        # configured period.
+        "name": "BK7231T Tuya Geeni BW223 Filament Bulb (single-colour CW PWM) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231T_Tuya_Geeni_BW223_FilamentBulb_CW_PWM_3000Hz_1.1.1.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "key_addr: 0x1ee000",
+            "oem_bk7231s_light_ty_oldDp:1.1.1",
+            "< TUYA IOT SDK V:1.0.2 BS:40.00_PT:2.2_LAN:3.3_CAD:1.0.2_CD:1.0.0 >",
+            # Paired dump: it skips manufacturing test rather than parking in it.
+            "mf_init succ",
+        ],
+        "expected_pins": {24: 0x48, 26: 0x48},
+        # period 0x21DA = 8666 = 26 MHz / 3000, exactly what pwmhz:3000 implies.
+        "expected_pwm": {4: (0x21DA, 0x0000), 5: (0x21DA, 0x21DA)},
+    },
+    {
         # A PWM-driven light rather than an MCU device: the Beken itself drives
         # the LED channels through hardware PWM (its stored config declares
         # cool on P6, warm on P8 at 1000 Hz), so there is no TuyaMCU traffic on
@@ -853,6 +885,11 @@ DESCRIPTIONS = {
         "different duties on each (10% and 75%). Exercises the top of the captured register window "
         "and the first multi-channel PWM_CTL value, where an off-by-one in the channel stride would "
         "push the registers out of range entirely.",
+    "BK7231T Tuya Geeni BW223 Filament Bulb (single-colour CW PWM) boots":
+        "A real white-only filament bulb on stock Tuya firmware. Its stored config declares "
+        "pwmhz:3000, so the emulator's decoded 3000.2 Hz is checked against the device's own claim "
+        "rather than against our arithmetic. Drives P24/P26 (PWM4/PWM5), the high channels no other "
+        "real-firmware test covers, at 0% and 100% duty - a CW bulb sitting at full warm white.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",

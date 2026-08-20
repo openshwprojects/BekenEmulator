@@ -41,6 +41,17 @@ class SimulatorState:
         # so recording them costs nothing measurable.
         self.gpio_cfg = {}         # pin -> last value written to its config reg
         self.pwm_regs = {}         # register offset -> last value written
+        # Keys changed since the last report emission. The snapshot used to go
+        # out only on the 1,000,000-instruction [EMU_INSNS] tick, which races
+        # the harness: it stops as soon as its log markers match, so a register
+        # written after the last tick was never reported and an assertion saw a
+        # stale value. Tracking dirty keys lets the fast tick emit just what
+        # changed, which removes the race and prints less than the snapshot.
+        self.gpio_dirty = set()
+        self.pwm_dirty = set()
+        # True while stdout sits at a line boundary. Report lines may only be
+        # written then, so they never land inside a UART log line.
+        self.uart_at_line_start = True
 
 class FlashState:
     def __init__(self):
@@ -161,6 +172,12 @@ class BekenEmulator:
         out = sys.__stdout__.buffer
         out.write(data)
         out.flush()
+        # Remember whether the stream is mid-line. The report's peripheral
+        # lines share this stdout, and injecting one between two UART bytes
+        # splits the log line in half - which silently broke an asserted
+        # marker string once the emission rate went up.
+        if data:
+            self.state.uart_at_line_start = data.endswith(b"\n")
 
     def trigger_irq(self):
         if self.state.icu_global_int_en == 0:
@@ -213,19 +230,27 @@ class BekenEmulator:
             # Report-only: emit the running instruction estimate a few times per
             # boot. Guarded by _emit_insns (off unless the harness asks) and
             # throttled, so this costs nothing on a normal run.
-            if self._emit_insns and state.insn_count - state.last_emit >= 1_000_000:
-                state.last_emit = state.insn_count
-                buf = sys.__stdout__.buffer
-                buf.write(b"\n[EMU_INSNS] %d\n" % state.insn_count)
-                # Peripheral snapshot on the same throttled tick. Emitting it
-                # only at the end would never be seen: the emulator does not
-                # exit on its own, it gets killed. The harness filters these
-                # lines out of the displayed log.
-                for pin in sorted(state.gpio_cfg):
-                    buf.write(b"[EMU_GPIO] %d %08x\n" % (pin, state.gpio_cfg[pin]))
-                for off in sorted(state.pwm_regs):
-                    buf.write(b"[EMU_PWM] %02x %08x\n" % (off, state.pwm_regs[off]))
-                buf.flush()
+            if self._emit_insns:
+                # Peripheral changes go out on THIS tick (~every 10000 insns)
+                # rather than the 1M-instruction one, and only for registers
+                # that actually changed. The emulator never exits on its own -
+                # it is killed once the harness has what it needs - so whatever
+                # has not been emitted by then is simply lost. The harness
+                # filters these lines out of the displayed log.
+                if (state.gpio_dirty or state.pwm_dirty) and state.uart_at_line_start:
+                    buf = sys.__stdout__.buffer
+                    for pin in sorted(state.gpio_dirty):
+                        buf.write(b"[EMU_GPIO] %d %08x\n" % (pin, state.gpio_cfg[pin]))
+                    for off in sorted(state.pwm_dirty):
+                        buf.write(b"[EMU_PWM] %02x %08x\n" % (off, state.pwm_regs[off]))
+                    state.gpio_dirty.clear()
+                    state.pwm_dirty.clear()
+                    buf.flush()
+                if state.insn_count - state.last_emit >= 1_000_000:
+                    state.last_emit = state.insn_count
+                    buf = sys.__stdout__.buffer
+                    buf.write(b"\n[EMU_INSNS] %d\n" % state.insn_count)
+                    buf.flush()
             if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
                 state.pwm_status |= (1 << 0)
             if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
@@ -279,14 +304,20 @@ class BekenEmulator:
         # GPIO config registers - one 32-bit word per pin at GPIO_BASE + n*4.
         # Bit 1 is the driven output level (GCFG_OUTPUT), bit 3 output-enable.
         if self.GPIO_BASE <= address < self.GPIO_END:
-            self.state.gpio_cfg[(address - self.GPIO_BASE) // 4] = value & 0xFFFFFFFF
+            _pin = (address - self.GPIO_BASE) // 4
+            self.state.gpio_cfg[_pin] = value & 0xFFFFFFFF
+            if self._emit_insns:
+                self.state.gpio_dirty.add(_pin)
 
         # PWM block. pwm.h places PWM_BASE at either PWM_NEW_BASE (0x802A00)
         # or PWM_NEW_BASE + 0x80 depending on a build switch, so capture the
         # whole window and let the report show offsets rather than guess which
         # layout an image uses. Recorded for the report only.
         if self.PWM_BASE <= address < self.PWM_BASE + 0x100:
-            self.state.pwm_regs[address - self.PWM_BASE] = value & 0xFFFFFFFF
+            _off = address - self.PWM_BASE
+            self.state.pwm_regs[_off] = value & 0xFFFFFFFF
+            if self._emit_insns:
+                self.state.pwm_dirty.add(_off)
 
         if address == 0x00802A04:
             w1c_mask = value & 0x3F

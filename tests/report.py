@@ -127,9 +127,19 @@ def _gpio_html(r):
         decoded = [c[0] for c in per["pwm_channels"]]
         ctl_note = ""
         if ctl_on:
-            agree = "matches" if sorted(ctl_on) == sorted(decoded) else "DISAGREES with"
-            ctl_note = ('<p class="cfg-note">PWM_CTL = 0x%X enables %s, which %s '
-                        'the channels decoded below.</p>'
+            # Subset, not equality. A channel can be configured with a real
+            # period and still not be running - a CW bulb sitting at full warm
+            # white leaves its cold channel at 0% duty and switched off in CTL,
+            # so CTL is a strict subset of the channels whose registers were
+            # written. Only a channel CTL claims is enabled but that we failed
+            # to decode indicates something actually wrong.
+            missing = [c for c in ctl_on if c not in decoded]
+            if missing:
+                agree = ("but %s could NOT be decoded below"
+                         % ", ".join("PWM%d" % c for c in missing))
+            else:
+                agree = "consistent with the channels decoded below"
+            ctl_note = ('<p class="cfg-note">PWM_CTL = 0x%X enables %s, %s.</p>'
                         % (per.get("pwm_ctl") or 0,
                            ", ".join("PWM%d" % c for c in ctl_on), agree))
         canon = {0: 6, 1: 7, 2: 8, 3: 9, 4: 24, 5: 26}
