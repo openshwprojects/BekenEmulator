@@ -21,6 +21,36 @@ PIN_COUNT = 32
 FUNC_REGS = {32: "REG_GPIO_FUNC_CFG", 46: "REG_GPIO_FUNC_CFG_2"}
 
 
+
+# Special-function pin names for BK7231N, from OpenBeken's
+# HAL_PIN_GetPinNameAlias (src/hal/bk7231/hal_pins_bk7231.c). Without these a
+# pin in "second function" mode is unreadable - it is precisely these aliases
+# that say WHICH peripheral took the pin.
+PIN_ALIAS = {
+    0: "TXD2", 1: "RXD2",           # UART2 - the debug/log port
+    11: "TXD1", 10: "RXD1",         # UART1 - the TuyaMCU / programming port
+    6: "PWM0", 7: "PWM1", 8: "PWM2", 9: "PWM3",
+    24: "PWM4/ADC2", 26: "PWM5/ADC1",
+    21: "ADC6", 22: "ADC5", 28: "ADC4",
+}
+
+# What a pin in second-function mode is most likely doing, by peripheral group.
+PIN_ROLE = {
+    0: "UART2 TX (log)", 1: "UART2 RX (log)",
+    11: "UART1 TX (TuyaMCU / programming)", 10: "UART1 RX (TuyaMCU / programming)",
+    6: "PWM channel 0", 7: "PWM channel 1", 8: "PWM channel 2", 9: "PWM channel 3",
+    24: "PWM channel 4 / ADC2", 26: "PWM channel 5 / ADC1",
+}
+
+
+def pin_alias(pin):
+    return PIN_ALIAS.get(pin, "")
+
+
+def pin_role(pin):
+    return PIN_ROLE.get(pin, "")
+
+
 def decode_pin(value):
     """Return a readable description of one pin config word."""
     out_en = bool(value & (1 << 3))
@@ -29,6 +59,8 @@ def decode_pin(value):
     level = 1 if value & (1 << 1) else 0
     bits = []
     if value & (1 << 6):
+        # Second function means a peripheral drives the pad; naming which one
+        # is the whole point, otherwise every UART/PWM pin looks identical.
         bits.append("second function")
     if out_en:
         bits.append("OUTPUT = %d" % level)
@@ -69,13 +101,18 @@ def parse_lines(lines):
 
 
 def gpio_table(gpio):
-    """[(pin, state, detail)] for every pin, touched or not."""
+    """[(pin, alias, state, detail)] for every pin, touched or not."""
     rows = []
     for pin in range(PIN_COUNT):
+        alias = pin_alias(pin)
         if pin in gpio:
-            rows.append((pin, "set by firmware", decode_pin(gpio[pin])))
+            detail = decode_pin(gpio[pin])
+            role = pin_role(pin)
+            if role and "second function" in detail:
+                detail = detail.replace("second function", role)
+            rows.append((pin, alias, "set by firmware", detail))
         else:
-            rows.append((pin, "factory", "not configured"))
+            rows.append((pin, alias, "factory", "not configured"))
     return rows
 
 
