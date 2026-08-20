@@ -179,11 +179,15 @@ class BekenEmulator:
                 state.timer3_5_ctl |= (1 << 7)
             # Pulse the SARADC interrupt (ICU bit 11) while samples pend, paced
             # here - NOT re-raised every block - so it costs one interrupt per
-            # tick period like the timer, never an IRQ storm. The guest's ISR
-            # drains the FIFO (each read decrements pending) and the ICU W1C ack
-            # retires the pending bit. BK7231N/M block in the per-second
-            # temperature read without this; firmwares that never unmask bit 11
-            # (T and the 7238/7252 families) are unaffected.
+            # tick period like the timer, never an IRQ storm. The generic
+            # `pending_irqs & icu_int_enable` check below delivers it. Raising
+            # it on the faster 1000-instruction tick was measured to be a net
+            # loss: the extra interrupt overhead slowed device-time progress
+            # (4 fewer device-seconds per 400s run) without unblocking anything.
+            # The guest's ISR drains the FIFO (each read decrements pending) and
+            # the ICU W1C ack retires the pending bit. BK7231N/M block in the
+            # per-second temperature read without this; firmwares that never
+            # unmask bit 11 (T and the 7238/7252 families) are unaffected.
             if state.saradc_pending and (state.icu_int_enable & (1 << 11)):
                 state.pending_irqs |= (1 << 11)
 
@@ -200,7 +204,7 @@ class BekenEmulator:
         if state.pending_irqs & state.icu_int_enable:
             self.trigger_irq()
 
-        # Fast tick (~every 1000 insns): UART RX/TX interrupts.
+        # Fast tick (~every 1000 insns): UART RX/TX and SARADC interrupts.
         if state.insn_count - state.last_fast >= 1000:
             state.last_fast = state.insn_count
             if (state.uart1_int_enable & 0x01) and (state.icu_int_enable & (1 << 0)):
@@ -286,12 +290,30 @@ class BekenEmulator:
         # this - it waits on the SARADC interrupt (ICU bit 11).
         if address == 0x00802c00:
             self.state.saradc_cfg = value
+            if os.environ.get("ADCDBG"):
+                sys.__stderr__.write(
+                    "ADCDBG cfg write=0x%08x chnl_en=%d chip=%#x\n"
+                    % (value, (value >> 2) & 1, self.chip_id_value))
+                sys.__stderr__.flush()
             # Only the BK7231(T/U/N/M) SARADC layout uses this model; the
             # 7238/7252/7252N layout differs and is served via 0x802c0c.
-            if (self.chip_id_value == 0x0007231A
-                    and (value & (1 << 2))          # CHNL_EN starts a conversion
-                    and self.state.saradc_pending == 0):
-                self.state.saradc_pending = 32
+            if self.chip_id_value == 0x0007231A:
+                if value & (1 << 2):                # CHNL_EN: start converting
+                    if self.state.saradc_pending == 0:
+                        self.state.saradc_pending = 32
+                else:
+                    # CHNL_EN cleared - the channel is stopped (saradc_pause /
+                    # ddev_close / saradc_ensure_close all end up here), so the
+                    # sample FIFO is flushed with it.
+                    #
+                    # This matters: saradc_isr drains at most data_buff_size
+                    # samples (10 for BK7231N temperature) and then breaks,
+                    # leaving the rest queued. Without flushing on stop, those
+                    # leftovers kept saradc_pending non-zero, so the emulator
+                    # re-asserted the SARADC interrupt forever - an interrupt
+                    # storm that starved the temp_detect thread, filled its
+                    # queue ("temp_detect_send_msg failed") and wedged the boot.
+                    self.state.saradc_pending = 0
 
         # SCTRL_EFUSE_CTRL: EFUSE_OPER_EN (bit 0) self-clears when the efuse
         # operation completes; complete it instantly or sctrl_read_efuse spins
@@ -372,6 +394,27 @@ class BekenEmulator:
         # start a transfer and spins until hardware clears it; report it always
         # complete (bit 31 low) so the wait loop exits.
         if address == 0x00900100:
+            mu.mem_write(address, struct.pack("<I", 0))
+            return
+
+        # Two more XVR "start and wait" registers, same idiom as 0x900100:
+        #
+        #     r2 = 0x80 << 24            ; bit 31
+        #     r1 = [reg]; r2 |= r1; [reg] = r2      ; kick the transaction off
+        #  L: r2 = [reg]; cmp r2, #0; blt L         ; spin while bit 31 stays set
+        #
+        # Found by sampling the PC of a wedged stock-Tuya boot: 96.5% of all
+        # basic blocks were this one loop at 0x8fb88. Unmodelled, the register
+        # simply reads back what the guest wrote - bit 31 included - so the loop
+        # never exits and the whole boot hangs.
+        #
+        # Report the transaction complete and the result zero, exactly as
+        # 0x900100 does. Echoing back the guest's own written bits instead was
+        # tried first and is worse: the RF code re-reads these registers and
+        # treats the low bits as calibration data, so feeding it the command
+        # word it just wrote sends it into a BLE link-layer assert
+        # (lld.c:404) a few steps later.
+        if address == 0x009000F8 or address == 0x009000FC:
             mu.mem_write(address, struct.pack("<I", 0))
             return
 
