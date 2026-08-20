@@ -192,16 +192,38 @@ PWM_FREQ_MAX_HZ = 100000
 def pwm_channels(pwm):
     """[(channel, period, duty, freq_hz, duty_pct)] for plausible channels.
 
-    Implausible periods are dropped rather than shown, because the base layout
-    is inferred and a wrong guess turns an unrelated timer register into a
-    fabricated frequency - which is worse than showing nothing. The raw
-    registers are reported separately either way, so nothing is hidden.
+    Two register layouts exist, and beken378/driver/pwm/pwm.h selects BOTH the
+    base and the layout from the same switch, so they always go together:
+
+      CFG_SOC_NAME == SOC_BK7231      other SOCs
+      PWM_BASE = PWM_NEW_BASE         PWM_BASE = PWM_NEW_BASE + 0x20*4 (+0x80)
+      PWM0_COUNTER = BASE + 2*4       PWM0_END       = BASE + 2*4
+      PWM1_COUNTER = BASE + 4*4       PWM0_DUTY_CYCLE= BASE + 3*4
+        -> stride 8                   PWM1_COUNTER   = BASE + 5*4
+      END is bits 0-15 and DC is        -> stride 12, END and DUTY are
+      bits 16-31 of that ONE word       SEPARATE 32-bit registers
+
+    This function previously used stride 8 together with a separate duty
+    register - a hybrid matching NEITHER layout, which is why decoded channels
+    came out as nonsense. Confirmed against hardware: an OpenBeken image told
+    "PWMFrequency 1400; SetPinRole 9 PWM; SetChannel 1 50" wrote 0x488B (18571
+    = 26 MHz / 1400) at +0xAC and 0x2445 (9285 = 50%) at +0xB0, which is
+    exactly channel 3 under the +0x80 / stride-12 reading.
     """
     base = infer_base(pwm)
     rows = []
+    if not base:
+        # Only the +0x80 / stride-12 layout is confirmed against hardware (see
+        # the 1400 Hz case above). With every write below +0x80 there is no way
+        # to tell an old-layout channel from the timer registers that share
+        # this page: a firmware doing no PWM at all writes 0x173EED80 at +0x08,
+        # whose low 16 bits (0xED80) read back as a perfectly believable 427 Hz
+        # at 9.8% duty. Declining to decode is the honest answer - the raw
+        # registers are still reported, so nothing is hidden.
+        return rows, pwm.get(0, 0), base
     for ch in range(6):
-        period = pwm.get(base + 0x08 + 8 * ch)
-        duty = pwm.get(base + 0x0C + 8 * ch)
+        period = pwm.get(base + 0x08 + 12 * ch)
+        duty = pwm.get(base + 0x0C + 12 * ch)
         if not period:
             continue
         freq = PWM_CLOCK_HZ / period
@@ -210,6 +232,19 @@ def pwm_channels(pwm):
         pct = (100.0 * duty / period) if duty is not None else None
         rows.append((ch, period, duty, freq, pct))
     return rows, pwm.get(base, 0), base
+
+
+def ctl_channels(ctl):
+    """Channels PWM_CTL says are enabled.
+
+    pwm.h gives each channel a 4-bit field in PWM_CTL: PWMn_EN_BIT is
+    1 << (4*n), with int-enable at 4*n+1 and a 2-bit mode at 4*n+2. This is an
+    INDEPENDENT witness to the channel numbering, which is the thing this
+    decoder has historically got wrong - it comes from a different register
+    than the period/duty pair. Confirmed on hardware: driving pin 9 (PWM3) left
+    CTL = 0x1000 (1 << 12) and pin 7 (PWM1) left CTL = 0x10 (1 << 4).
+    """
+    return [n for n in range(6) if ctl & (1 << (4 * n))]
 
 
 # PWM-capable pads, from OpenBeken's HAL_PIN_GetPinNameAlias table.

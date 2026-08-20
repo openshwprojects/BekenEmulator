@@ -119,6 +119,19 @@ def _gpio_html(r):
         # printing the canonical pad regardless would assert things like
         # "PWM3 -> P9" on an image whose actual PWM pads are P6 and P8.
         pads = set(per.get("pwm_pins") or [])
+        # PWM_CTL's enable bits name the active channels from a different
+        # register than the period/duty pair, so agreement between the two is
+        # real corroboration rather than the decode agreeing with itself.
+        import periph as _p
+        ctl_on = _p.ctl_channels(per.get("pwm_ctl") or 0)
+        decoded = [c[0] for c in per["pwm_channels"]]
+        ctl_note = ""
+        if ctl_on:
+            agree = "matches" if sorted(ctl_on) == sorted(decoded) else "DISAGREES with"
+            ctl_note = ('<p class="cfg-note">PWM_CTL = 0x%X enables %s, which %s '
+                        'the channels decoded below.</p>'
+                        % (per.get("pwm_ctl") or 0,
+                           ", ".join("PWM%d" % c for c in ctl_on), agree))
         canon = {0: 6, 1: 7, 2: 8, 3: 9, 4: 24, 5: 26}
         chans = "".join(
             '<tr><td><code>PWM%d</code></td><td>%s</td>'
@@ -130,19 +143,22 @@ def _gpio_html(r):
                ("%.1f%%" % pct) if pct is not None else "-", period)
             for ch, period, _duty, freq, pct in per["pwm_channels"])
         pwm += ("""
-          <div class="cfg-h">PWM channels</div>
+          <div class="cfg-h">PWM channels</div>%s
           <table class="cfg-t"><tr><th>Ch</th><th>Pad</th><th>Freq</th>
           <th>Duty</th><th>Period</th></tr>%s</table>
           <p class="cfg-note">Pads in second function on this image: %s.
           A channel is only paired with a pad when that pad is one of them.</p>"""
-          % (chans, ", ".join("P%d" % p for p in sorted(pads)) or "none"))
+          % (ctl_note, chans, ", ".join("P%d" % p for p in sorted(pads)) or "none"))
     if per["pwm_regs"]:
         base = per.get("pwm_base")
         if per.get("pwm_pins") and not per.get("pwm_channels"):
             note = ("Offsets from 0x802A00. PWM-capable pads ARE in second "
-                    "function here, but no register in this window decodes to "
-                    "a plausible PWM period at either base layout, so no "
-                    "frequency is claimed. The raw writes are shown instead.")
+                    "function here, but every write landed below +0x80. Only "
+                    "the +0x80 / stride-12 layout is confirmed against "
+                    "hardware, and below it the PWM channel registers cannot "
+                    "be told apart from the timer registers sharing this page "
+                    "- so the raw writes are shown and no frequency is "
+                    "claimed.")
         elif not per.get("pwm_pins"):
             note = ("Offsets from 0x802A00. No PWM-capable pad is in second "
                     "function here, so these writes are the FreeRTOS tick - "

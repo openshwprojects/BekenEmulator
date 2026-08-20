@@ -244,6 +244,89 @@ TEST_CASES = [
         "expected_pins": {7: 0x02, 9: None},
     },
     {
+        # The PWM counterpart of the relay cases, and the only test where a
+        # decoded FREQUENCY is known in advance. HAL_PIN_PWM_Start computes
+        # period = 26000000 / freq, so an odd request like 1400 Hz gives
+        # 18571 (0x488B) - a value nothing else in the system produces, which
+        # is what makes a match meaningful rather than coincidental. Duty is
+        # that period scaled by the channel value: 50% -> 9285 (0x2445).
+        #
+        # PWMFrequency must come FIRST: the IOR_PWM branch of
+        # PIN_SetPinRoleForPinIndex reads g_pwmFrequency when it starts the
+        # channel, so setting the frequency afterwards would not be picked up.
+        #
+        # Pin 9 is PWM index 3 (PIN_GetPWMIndexForPinIndex), and the pad goes
+        # to second function (0x48 = GMODE_SECOND_FUNC) rather than being
+        # driven as GPIO - which is the difference this case pins down against
+        # the relay ones.
+        "name": "MathDemo Startup Command: PWM 1400 Hz on pin 9",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_setPinRolePWM1400.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Info:CMD:Channel 1 is 50",
+        ],
+        "expected_pins": {9: 0x48},
+        # 26000000 // 1400 = 18571; 50% of that = 9285.
+        "expected_pwm": {3: (0x488B, 0x2445)},
+    },
+    {
+        # The 1400 Hz case proves the decode is right for ONE channel; this
+        # moves every variable at once - pin 9 -> 7, PWM index 3 -> 1, channel
+        # 1 -> 3, 1400 Hz -> 2500 Hz, 50% -> 25% duty - so a passing result
+        # cannot come from a constant that happens to fit.
+        #
+        # It also discriminates the register STRIDE, which is the thing this
+        # decoder got wrong for a long time. Under the confirmed stride-12
+        # layout, PWM1's period sits at PWM_BASE + 0x08 + 12 = +0x94; under the
+        # stride-8 reading this file used to assume, it would be at +0x90. Only
+        # one of those can produce 0x28A0, so the case fails loudly if the
+        # stride is ever regressed.
+        "name": "MathDemo Startup Command: PWM 2500 Hz on pin 7",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_setPinRolePWM2500.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Info:CMD:Channel 3 is 25",
+        ],
+        "expected_pins": {7: 0x48},
+        # 26000000 // 2500 = 10400 exactly; 25% of that = 2600.
+        "expected_pwm": {1: (0x28A0, 0x0A28)},
+    },
+    {
+        # Two channels live at once, on the two highest PWM pads, at a
+        # frequency an order of magnitude above the other cases.
+        #
+        # What this adds over the 1400/2500 pair:
+        #  - P24 and P26 are PWM indices 4 and 5, the last two, so their period
+        #    registers (+0xB8, +0xC4) sit near the top of the captured window;
+        #    an off-by-one in the stride puts them outside it entirely.
+        #  - the two pads share one frequency but carry DIFFERENT duties
+        #    (10% and 75%), so period and duty cannot be confused for one
+        #    another the way they were when this decoder read the packed
+        #    layout with the wrong stride.
+        #  - PWM_CTL should read 0x110000 - PWM4_EN (1<<16) and PWM5_EN
+        #    (1<<20) together - which is the first multi-channel value the
+        #    CTL cross-check has to handle.
+        "name": "MathDemo Startup Command: PWM 10 kHz on pins 24 and 26",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_setPinRolePWM10000.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Info:CMD:Channel 4 is 10",
+            "Info:CMD:Channel 5 is 75",
+        ],
+        "expected_pins": {24: 0x48, 26: 0x48},
+        # 26000000 // 10000 = 2600; 10% -> 260, 75% -> 1950.
+        "expected_pwm": {4: (0x0A28, 0x0104), 5: (0x0A28, 0x079E)},
+    },
+    {
         "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231U_QIO_1.18.300.bin"),
         # Plaintext image (beken_freertos_sdk layout) - no key.
@@ -755,6 +838,21 @@ DESCRIPTIONS = {
         "The P9 case repeated on a different pin (7) and a different channel (2), with an "
         "assertion that pin 9 stays untouched. Two pins moving independently under command is "
         "what rules out a fixed write landing on a captured index by coincidence.",
+    "MathDemo Startup Command: PWM 1400 Hz on pin 9":
+        "Startup command 'PWMFrequency 1400; SetPinChannel 9 1; SetPinRole 9 PWM; SetChannel 1 50'. "
+        "Asks for a deliberately uncommon 1400 Hz so the expected period (26 MHz / 1400 = 18571) is "
+        "a value nothing else produces, then checks the captured PWM registers decode back to that "
+        "frequency and to 50% duty - verifying the PWM decode, not just the capture.",
+    "MathDemo Startup Command: PWM 2500 Hz on pin 7":
+        "The 1400 Hz case with every variable moved: pin 7 instead of 9, PWM index 1 instead of 3, "
+        "channel 3, 2500 Hz and 25% duty. Because PWM1's period register sits at a different offset "
+        "under the stride-12 layout than it would under stride-8, this case pins down the register "
+        "stride itself rather than just re-confirming one frequency.",
+    "MathDemo Startup Command: PWM 10 kHz on pins 24 and 26":
+        "Two PWM channels driven at once on the highest pads (P24/P26 = PWM4/PWM5) at 10 kHz, with "
+        "different duties on each (10% and 75%). Exercises the top of the captured register window "
+        "and the first multi-channel PWM_CTL value, where an off-by-one in the channel stride would "
+        "push the registers out of range entirely.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
@@ -1224,6 +1322,24 @@ def run_test(test_config):
             print(f"  [PASS] {label} ({detail})")
         else:
             seen = "0x%02X" % got if got is not None else "no write captured"
+            print(f"  [FAIL] {label}, got {seen}")
+            all_passed = False
+        checks.append({"string": label, "found": ok,
+                       "count": 1 if ok else 0, "required": 1})
+
+    # PWM assertions. Same idea as expected_pins: the period is 26 MHz / freq
+    # straight out of HAL_PIN_PWM_Start, and the duty is that period scaled by
+    # the channel value, so both are known before the emulator runs.
+    for ch, (want_period, want_duty) in sorted(
+            (test_config.get("expected_pwm") or {}).items()):
+        chans = {c[0]: c for c in ((periph_data or {}).get("pwm_channels") or [])}
+        got = chans.get(ch)
+        ok = got is not None and got[1] == want_period and got[2] == want_duty
+        label = "PWM%d period = 0x%04X, duty = 0x%04X" % (ch, want_period, want_duty)
+        if ok:
+            print(f"  [PASS] {label} ({got[3]:.1f} Hz, {got[4]:.1f}%)")
+        else:
+            seen = ("period 0x%04X duty %s" % (got[1], got[2])) if got else "channel not decoded"
             print(f"  [FAIL] {label}, got {seen}")
             all_passed = False
         checks.append({"string": label, "found": ok,
