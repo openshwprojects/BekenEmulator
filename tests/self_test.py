@@ -702,6 +702,96 @@ def chip_of(test_config):
     return "BK7231"
 
 
+# Tags shown under each test title in the HTML report. Derived from the case
+# itself rather than hand-maintained, so a new test is tagged the moment it is
+# added. Four groups, rendered in this order:
+#   source  - who wrote the firmware: OpenBeken / Tuya, or CLI for the arg tests
+#   chip    - the silicon the dump came from (BK7231N, BK7238, ...)
+#   state   - pairing state, for stock Tuya dumps that expose it
+#   feature - what the case actually exercises (TuyaMCU, UART1, Flash, ...)
+# A case may set "tags": [...] to add anything this cannot infer.
+TAG_GROUPS = {}   # tag -> group, filled in below
+
+
+def _tag(group, name):
+    TAG_GROUPS[name] = group
+    return name
+
+
+def tags_for(test_config):
+    """Infer the report tags for one test case."""
+    name = test_config["name"]
+    base = os.path.basename(test_config["binary"])
+    args = " ".join(test_config.get("args", []))
+    exp = " ".join(s if isinstance(s, str) else s[0]
+                   for s in test_config.get("expected_strings", []))
+    hay = " ".join((name, base, exp))
+    tags = []
+
+    # --- source -----------------------------------------------------------
+    if name.startswith("CLI:"):
+        tags.append(_tag("source", "CLI"))
+    elif "OpenBK" in base or "mathDemo" in base:
+        tags.append(_tag("source", "OpenBeken"))
+    else:
+        tags.append(_tag("source", "Tuya"))
+
+    # --- chip -------------------------------------------------------------
+    tags.append(_tag("chip", chip_of(test_config)))
+
+    # --- pairing state (stock Tuya dumps only) ----------------------------
+    if "mf_init succ" in exp or "have actived" in exp:
+        tags.append(_tag("state", "paired"))
+    elif "mf_test" in exp:
+        tags.append(_tag("state", "pre-pair"))
+
+    # --- features ---------------------------------------------------------
+    # Each rule keys off what the case ASSERTS, not merely what it passes on the
+    # command line, so a tag means "this test covers it" rather than "this test
+    # happens to touch it".
+    is_obk = "OpenBeken" in tags
+    feat = []
+    if "TuyaMCU" in base or "TuyaMCU" in name or "55 aa 00 00" in exp:
+        feat.append("TuyaMCU")
+    # UART1 only when the test actually asserts traffic on it.
+    if "UART1/MCU" in exp:
+        feat.append("UART1")
+    if "uartSendHex" in hay:
+        feat.append("uartSendHex")
+    if "CFG_InitAndLoad" in exp or "obkStartupCommand" in base:
+        feat.append("OBK config")
+    if any(k in exp for k in ("key_addr", "get key", "get kvs", "kv info")):
+        feat.append("flash/KV")
+    if "idle " in exp or "1s timer" in name:
+        feat.append("timers")
+    # Only the case that genuinely exercises MQTT registration.
+    if "MQTT_RegisterCallback" in exp:
+        feat.append("MQTT")
+    if any(k in exp for k in ("rwble", "STACK INIT", "advertising")):
+        feat.append("BLE")
+    # SARADC is an OpenBeken concern: N/M block in Main_OnEverySecond's
+    # temperature read until the ADC interrupt is modelled. Stock Tuya dumps on
+    # the same silicon never reach that path.
+    if is_obk and ("7231N" in base or "7231M" in base):
+        feat.append("SARADC")
+    if "Float basic" in exp:
+        feat.append("float math")
+    # Crypto only for the cases whose subject IS key handling.
+    if "Invalid -key" in exp or "ARM code" in exp:
+        feat.append("crypto")
+    if "SPI mirror" in name:
+        feat.append("SPI mirror")
+    if "XVR" in name:
+        feat.append("XVR")
+    for f in feat:
+        tags.append(_tag("feature", f))
+
+    for extra in test_config.get("tags", []):
+        if extra not in tags:
+            tags.append(_tag("feature", extra))
+    return tags
+
+
 def _parse_expected(expected):
     """Normalise expected_strings entries to (string, min_count) pairs.
 
@@ -730,6 +820,8 @@ def _result(test_config, passed, elapsed=0.0, insns=None, timed_out=False, outpu
         "binary": binary,
         "binary_name": os.path.basename(binary),
         "chip": chip_of(test_config),
+        "tags": [{"name": t, "group": TAG_GROUPS.get(t, "feature")}
+                 for t in tags_for(test_config)],
         "dump_url": dump_url(binary),
         "args": test_config["args"],
         "passed": passed,

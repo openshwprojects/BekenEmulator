@@ -44,6 +44,20 @@ def _highlight(log_text, found_strings):
     return escaped
 
 
+def _tag_class(tag):
+    """CSS class for a tag pill: colour by group, with the two firmware
+    sources called out separately since that is the first thing you scan for."""
+    name, group = tag["name"], tag.get("group", "feature")
+    if group == "source":
+        return "tag src-" + {"OpenBeken": "obk", "Tuya": "tuya"}.get(name, "cli")
+    return "tag " + {"chip": "chip", "state": "state"}.get(group, "feat")
+
+
+def _tags_html(r):
+    return "".join('<span class="%s">%s</span>' % (_tag_class(t), html.escape(t["name"]))
+                   for t in r.get("tags", []))
+
+
 def _test_card(r):
     ok = r["passed"]
     status_cls = "pass" if ok else "fail"
@@ -78,11 +92,16 @@ def _test_card(r):
     <details class="card {status_cls}">
       <summary>
         <span class="dot"></span>
-        <span class="title">{name}</span>
-        <span class="badges">
-          <span class="badge status">{status_txt}</span>
-          <span class="badge">{secs}{timed_out}</span>
-          <span class="badge muted">{insns}</span>
+        <span class="head">
+          <span class="row1">
+            <span class="title">{name}</span>
+            <span class="badges">
+              <span class="badge status">{status_txt}</span>
+              <span class="badge">{secs}{timed_out}</span>
+              <span class="badge muted">{insns}</span>
+            </span>
+          </span>
+          <span class="tags">{tags}</span>
         </span>
       </summary>
       <div class="body">
@@ -113,6 +132,7 @@ def _test_card(r):
         dump=dump,
         args=args,
         checks="".join(checks_html),
+        tags=_tags_html(r),
         log=_highlight(r.get("output", ""), [c["string"] for c in r["checks"] if c["found"]]),
     )
 
@@ -170,12 +190,18 @@ _PAGE = """<!doctype html>
     --bg:#f6f7f9; --card:#ffffff; --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea;
     --pass:#1a7f37; --fail:#cf222e; --passbg:#dafbe1; --failbg:#ffebe9;
     --accent:#0969da;
+    --t-obk:#0a5ca8;  --t-obk-bg:#dceafb;
+    --t-tuya:#8a5200; --t-tuya-bg:#fdf0d5;
+    --t-feat:#5a3ea8; --t-feat-bg:#ece7fb;
   }}
   @media (prefers-color-scheme: dark) {{
     :root {{
       --bg:#0d1117; --card:#161b22; --fg:#e6edf3; --muted:#8b949e; --line:#30363d;
       --pass:#3fb950; --fail:#f85149; --passbg:#12261a; --failbg:#2b1214;
       --accent:#4493f8;
+      --t-obk:#79b8ff;  --t-obk-bg:#12283f;
+      --t-tuya:#e3b341; --t-tuya-bg:#3a2d12;
+      --t-feat:#b39dfb; --t-feat-bg:#2a2340;
     }}
   }}
   * {{ box-sizing:border-box; }}
@@ -199,7 +225,19 @@ _PAGE = """<!doctype html>
   summary::-webkit-details-marker {{ display:none; }}
   .dot {{ width:10px; height:10px; border-radius:50%; flex:0 0 auto; background:var(--pass); }}
   .card.fail .dot {{ background:var(--fail); }}
-  .title {{ font-weight:600; flex:1; }}
+  .head {{ flex:1; display:flex; flex-direction:column; gap:6px; min-width:0; }}
+  .row1 {{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }}
+  .title {{ font-weight:600; flex:1; min-width:0; }}
+  /* Second row: what the test covers, at a glance. */
+  .tags {{ display:flex; gap:5px; flex-wrap:wrap; }}
+  .tag {{ font-size:10.5px; line-height:1.5; padding:1px 7px; border-radius:4px;
+    font-weight:700; letter-spacing:.02em; white-space:nowrap; border:1px solid transparent; }}
+  .tag.src-obk  {{ background:var(--t-obk-bg);  color:var(--t-obk); }}
+  .tag.src-tuya {{ background:var(--t-tuya-bg); color:var(--t-tuya); }}
+  .tag.src-cli  {{ background:var(--bg); color:var(--muted); border-color:var(--line); }}
+  .tag.chip     {{ background:transparent; color:var(--muted); border-color:var(--line); }}
+  .tag.state    {{ background:var(--passbg); color:var(--pass); }}
+  .tag.feat     {{ background:var(--t-feat-bg); color:var(--t-feat); }}
   .badges {{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }}
   .badge {{ font-size:12px; padding:2px 8px; border-radius:20px; background:var(--bg);
     border:1px solid var(--line); color:var(--muted); white-space:nowrap; }}
