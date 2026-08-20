@@ -567,6 +567,32 @@ TEST_CASES = [
             "read baud rate 9600",
             ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
         ]
+    },
+    {
+        # A SECOND UART protocol on the same path, so the UART1 capture is not
+        # only ever proven with TuyaMCU framing. Startup command
+        # "startDriver BL0942" runs OpenBeken's BL0942 energy-meter driver, which
+        # opens UART1 at 4800 baud (not 9600) and speaks a completely different
+        # wire format - per drv_bl0942.c, write is 0xA8|addr and read is
+        # 0x58|addr, each frame checksum-terminated:
+        #   a8 1d 55 00 00 e5   write reg 0x1D (mode), checksum e5
+        #   a8 19 8f 00 00 af   write reg 0x19,        checksum af
+        #   58 aa               read reg 0xAA = the full measurement packet,
+        #                       then repeated as the driver polls every second.
+        # Nothing here resembles TuyaMCU's 55 AA framing, which is the point.
+        "name": "MathDemo Startup Command: startDriver BL0942 drives the meter UART",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_BL0942.bin"),
+        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "timeout": 240,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Started BL0942.",
+            # Init: the two register writes the driver sends before polling.
+            "[UART1/MCU] a8 1d 55 00 00 e5 a8 19 8f 00 00 af",
+            # Then the repeating full-packet read - proves the poll loop runs.
+            ("[UART1/MCU] 58 aa", REPEATS)
+        ]
     }
 ]
 
@@ -660,6 +686,11 @@ DESCRIPTIONS = {
         "and all metering while the Beken is only the radio, so this covers a different hardware "
         "class from the two thermostat cases. Its KV pair carries a third distinct rotation count "
         "(16), showing the physical flash-addressing model is not tied to one store state.",
+    "MathDemo Startup Command: startDriver BL0942 drives the meter UART":
+        "Runs OpenBeken's BL0942 energy-meter driver from an injected startup command. The driver "
+        "opens UART1 at 4800 baud and speaks the BL0942 register protocol - two init writes "
+        "(0xA8|addr) followed by a repeating full-packet read (0x58 0xAA) - which looks nothing like "
+        "TuyaMCU framing. Proves the UART1 capture path is protocol-agnostic, not tuned to 55 AA.",
     "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats":
         "A stock Tuya ETWF4301 thermostat (SDK 3.1.28) and the first non-OpenBeken image found "
         "that actually drives its MCU. Because this dump was taken after pairing, the SDK skips "
