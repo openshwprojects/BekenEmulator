@@ -35,6 +35,12 @@ class SimulatorState:
         self.last_slow = 0         # insn_count at last ~10000-insn (timer) tick
         self.last_fast = 0         # insn_count at last ~1000-insn (UART) tick
         self.last_emit = 0         # insn_count at last [EMU_INSNS] report line
+        # Peripheral state observed during the run, for the report's GPIO tab.
+        # Both live in MMIO ranges the write hook already covers, and a boot
+        # performs only tens of GPIO writes (a couple of thousand PWM ones),
+        # so recording them costs nothing measurable.
+        self.gpio_cfg = {}         # pin -> last value written to its config reg
+        self.pwm_regs = {}         # register offset -> last value written
 
 class FlashState:
     def __init__(self):
@@ -56,6 +62,7 @@ class BekenEmulator:
     SPI_FLASH_BASE = 0x00200000
     XVR_BASE = 0x00900000
     ACCEL_BASE = 0x00810000
+    PWM_BASE = 0x00802A00
     GPIO_BASE = 0x00802800
     GPIO_END = 0x008028A0
     
@@ -210,6 +217,14 @@ class BekenEmulator:
                 state.last_emit = state.insn_count
                 buf = sys.__stdout__.buffer
                 buf.write(b"\n[EMU_INSNS] %d\n" % state.insn_count)
+                # Peripheral snapshot on the same throttled tick. Emitting it
+                # only at the end would never be seen: the emulator does not
+                # exit on its own, it gets killed. The harness filters these
+                # lines out of the displayed log.
+                for pin in sorted(state.gpio_cfg):
+                    buf.write(b"[EMU_GPIO] %d %08x\n" % (pin, state.gpio_cfg[pin]))
+                for off in sorted(state.pwm_regs):
+                    buf.write(b"[EMU_PWM] %02x %08x\n" % (off, state.pwm_regs[off]))
                 buf.flush()
             if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
                 state.pwm_status |= (1 << 0)
@@ -260,6 +275,18 @@ class BekenEmulator:
         if address == self.ICU_INT_STATUS: self.state.pending_irqs &= ~value
         if address == 0x00802110: self.state.uart1_int_enable = value
         if address == 0x00802210: self.state.uart2_int_enable = value
+
+        # GPIO config registers - one 32-bit word per pin at GPIO_BASE + n*4.
+        # Bit 1 is the driven output level (GCFG_OUTPUT), bit 3 output-enable.
+        if self.GPIO_BASE <= address < self.GPIO_END:
+            self.state.gpio_cfg[(address - self.GPIO_BASE) // 4] = value & 0xFFFFFFFF
+
+        # PWM block. pwm.h places PWM_BASE at either PWM_NEW_BASE (0x802A00)
+        # or PWM_NEW_BASE + 0x80 depending on a build switch, so capture the
+        # whole window and let the report show offsets rather than guess which
+        # layout an image uses. Recorded for the report only.
+        if self.PWM_BASE <= address < self.PWM_BASE + 0x100:
+            self.state.pwm_regs[address - self.PWM_BASE] = value & 0xFFFFFFFF
 
         if address == 0x00802A04:
             w1c_mask = value & 0x3F
@@ -658,4 +685,5 @@ class BekenEmulator:
         elapsed = time.time() - start_time
         print(f"Emulation finished. PC: 0x{pc:08x}, CPSR: 0x{cpsr:08x} (T-bit: {(cpsr & 0x20) >> 5})", flush=True)
         print(f"Time taken: {elapsed:.2f} seconds.")
+
         print("\nDone.")

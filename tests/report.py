@@ -87,6 +87,41 @@ def _tuya_html(r):
                    html.escape(cfg["raw"]), rows, human)
 
 
+def _gpio_html(r):
+    """Third tab: every pin, and whether the firmware touched it."""
+    per = r.get("periph")
+    if not per:
+        return ('<p class="empty">No GPIO or PWM writes were observed during this run.</p>')
+    rows = []
+    for pin, state, detail in per["gpio"]:
+        cls = "set" if state == "set by firmware" else "factory"
+        rows.append('<tr class="%s"><td><code>P%d</code></td><td>%s</td><td>%s</td></tr>'
+                    % (cls, pin, html.escape(state), html.escape(detail)))
+    touched = sum(1 for _, st, _ in per["gpio"] if st != "factory")
+    extra = ""
+    if per["func"]:
+        extra = ('<div class="cfg-h">Function select</div><table class="cfg-t">%s</table>'
+                 % "".join('<tr><td><code>%s</code></td><td><code>%s</code></td></tr>'
+                           % (html.escape(n), html.escape(v)) for n, v in per["func"]))
+    pwm = ""
+    if per["pwm_regs"]:
+        pwm = ("""
+          <div class="cfg-h">PWM registers written</div>
+          <table class="cfg-t">%s</table>
+          <p class="cfg-note">Shown at their observed offsets from 0x802A00.
+          pwm.h places PWM_BASE at either that address or +0x80 depending on a
+          build switch, so which register is PWM_CTL differs per image and is
+          not guessed at here.</p>"""
+          % "".join('<tr><td><code>%s</code></td><td><code>%s</code></td></tr>'
+                    % (html.escape(o), html.escape(v)) for o, v in per["pwm_regs"]))
+    return ('<p class="cfg-note">%d of %d pins configured by firmware; the rest are '
+            'left at their factory (reset) state.</p>'
+            '<div class="cfg-cols"><div class="cfg-col">'
+            '<div class="cfg-h">Pins</div><table class="cfg-t gpio-t">%s</table></div>'
+            '<div class="cfg-col">%s%s</div></div>'
+            % (touched, len(per["gpio"]), "".join(rows), extra, pwm))
+
+
 def _test_card(r):
     ok = r["passed"]
     status_cls = "pass" if ok else "fail"
@@ -146,10 +181,12 @@ def _test_card(r):
         <div class="tabbar">
           <button class="tab-btn active" type="button" data-tab="log">UART / log output</button>
           <button class="tab-btn{tuya_dis}" type="button" data-tab="tuya">Tuya config</button>
+          <button class="tab-btn{gpio_dis}" type="button" data-tab="gpio">GPIO / PWM</button>
           <button class="copy-btn" type="button">Copy</button>
         </div>
         <div class="tab-panel" data-panel="log"><pre class="log">{log}</pre></div>
         <div class="tab-panel hidden" data-panel="tuya">{tuya}</div>
+        <div class="tab-panel hidden" data-panel="gpio">{gpio}</div>
       </div>
     </details>
     """.format(
@@ -166,6 +203,8 @@ def _test_card(r):
         tags=_tags_html(r),
         tuya=_tuya_html(r),
         tuya_dis="" if r.get("tuya_config") else " disabled",
+        gpio=_gpio_html(r),
+        gpio_dis="" if r.get("periph") else " disabled",
         log=_highlight(r.get("output", ""), [c["string"] for c in r["checks"] if c["found"]]),
     )
 
@@ -309,6 +348,9 @@ _PAGE = """<!doctype html>
   .cfg-t {{ width:100%; border-collapse:collapse; font-size:12px; }}
   .cfg-t td {{ padding:2px 6px; border-bottom:1px solid var(--line); vertical-align:top; }}
   .cfg-t td:first-child {{ color:var(--muted); white-space:nowrap; }}
+  .gpio-t tr.factory td {{ opacity:.45; }}
+  .gpio-t tr.set td {{ color:var(--fg); }}
+  .gpio-t tr.set td:nth-child(2) {{ color:var(--pass); font-weight:700; }}
   .log-head .log-title {{ margin:0; }}
   .copy-btn {{ font-size:12px; padding:3px 10px; border-radius:6px; border:1px solid var(--line);
     background:var(--card); color:var(--fg); cursor:pointer; }}

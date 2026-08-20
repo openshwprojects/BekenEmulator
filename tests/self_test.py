@@ -903,6 +903,24 @@ def _parse_expected(expected):
     return out
 
 
+def _periph(lines):
+    """Decode captured [EMU_GPIO]/[EMU_PWM] lines; never breaks a run."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import periph
+        gpio, pwm = periph.parse_lines(lines)
+        if not gpio and not pwm:
+            return None
+        channels, ctl = periph.pwm_channels(pwm)
+        return {"gpio": periph.gpio_table(gpio),
+                "func": periph.func_rows(gpio),
+                "pwm_ctl": ctl,
+                "pwm_channels": channels,
+                "pwm_regs": periph.pwm_registers(pwm)}
+    except Exception:
+        return None
+
+
 def _tuya_config(binary):
     """Best-effort Tuya config extraction; never breaks a test run."""
     try:
@@ -984,10 +1002,14 @@ def run_test(test_config):
     lines = []
     remaining = set(required)          # strings not yet at their required count
     insns_holder = [None]
+    periph_lines = []
     lock = threading.Lock()
 
     def reader():
         for line in proc.stdout:
+            if line.startswith("[EMU_GPIO]") or line.startswith("[EMU_PWM]"):
+                periph_lines.append(line.strip())
+                continue
             if line.startswith("[EMU_INSNS]"):
                 parts = line.split()
                 if len(parts) >= 2 and parts[1].isdigit():
@@ -1067,6 +1089,7 @@ def run_test(test_config):
     result = _result(test_config, passed=all_passed, elapsed=elapsed,
                      insns=insns_holder[0], timed_out=hit_timeout,
                      output=output, checks=checks)
+    result["periph"] = _periph(periph_lines)
 
     if not all_passed:
         print("--- CAPTURED OUTPUT ---")
