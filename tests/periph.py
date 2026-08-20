@@ -84,22 +84,39 @@ def func_rows(gpio):
             if i in FUNC_REGS]
 
 
-# PWM. PWM_CTL at +0x00 carries four bits per channel (enable, interrupt
-# enable, two mode bits). The period/duty register spacing differs between the
-# two layouts pwm.h selects with #if (PWM_BASE is either PWM_NEW_BASE or
-# PWM_NEW_BASE + 0x80), and which one a given image uses has not been
-# confirmed here - so the individual registers are reported at their observed
-# offsets rather than guessed into period/duty pairs.
+# PWM. pwm.h selects PWM_BASE as either PWM_NEW_BASE (0x802A00) or
+# PWM_NEW_BASE + 0x80 via a build switch, so the capture covers both and the
+# layout is inferred from which offsets the firmware actually wrote.
+#
+# In the new layout each channel has a period ("counter") and a duty
+# ("capture") register:
+#     period(n) = PWM_BASE + 0x08 + 8*n      duty(n) = PWM_BASE + 0x0C + 8*n
+#
+# Verified against a real device: a Woox CW bulb wrote period 0x54A2 (21666),
+# and 26 MHz / 21666 = 1200.04 Hz - exactly the pwmhz:1200 its own stored Tuya
+# config declares. Two independent sources agreeing pins the layout down.
+PWM_CLOCK_HZ = 26000000
+
+
+def infer_base(pwm):
+    """Return the offset PWM_BASE sits at within the captured window."""
+    # Writes at or above +0x80 mean the shifted layout is in use.
+    return 0x80 if any(off >= 0x80 for off in pwm) else 0x00
+
+
 def pwm_channels(pwm):
-    """[(channel, enabled, mode)] decoded from PWM_CTL, which is unambiguous."""
-    ctl = pwm.get(0x00, 0)
+    """[(channel, period, duty, freq_hz, duty_pct)] for channels with a period."""
+    base = infer_base(pwm)
     rows = []
     for ch in range(6):
-        base = ch * 4
-        rows.append((ch,
-                     bool(ctl & (1 << base)),
-                     (ctl >> (base + 2)) & 0x03))
-    return rows, ctl
+        period = pwm.get(base + 0x08 + 8 * ch)
+        duty = pwm.get(base + 0x0C + 8 * ch)
+        if not period:
+            continue
+        freq = PWM_CLOCK_HZ / period if period else 0
+        pct = (100.0 * duty / period) if duty is not None else None
+        rows.append((ch, period, duty, freq, pct))
+    return rows, pwm.get(base, 0), base
 
 
 def pwm_registers(pwm):
