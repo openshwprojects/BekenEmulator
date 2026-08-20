@@ -268,7 +268,7 @@ TEST_CASES = [
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7252 chip identity (bk_check_chip_id).
         "args": ["--only-uart", "-chip", "BK7252"],
-        "timeout": 240,
+        "timeout": 480,  # heaviest boots; 240s left too little headroom on a slow CI runner
         "expected_strings": [
             "OpenBK7252, version 1.18.300",
             ", idle ",
@@ -283,7 +283,7 @@ TEST_CASES = [
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252N_QIO_1.18.300.bin"),
         # Plaintext image; needs the BK7252N chip identity (bk_check_chip_id).
         "args": ["--only-uart", "-chip", "BK7252N"],
-        "timeout": 240,
+        "timeout": 480,  # heaviest boots; 240s left too little headroom on a slow CI runner
         "expected_strings": [
             "OpenBK7252N, version 1.18.300",
             ", idle ",
@@ -874,6 +874,16 @@ def _parse_expected(expected):
     return out
 
 
+def _tuya_config(binary):
+    """Best-effort Tuya config extraction; never breaks a test run."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import tuya_config
+        return tuya_config.extract(binary)
+    except Exception:
+        return None
+
+
 def _result(test_config, passed, elapsed=0.0, insns=None, timed_out=False, output="", checks=None):
     """Assemble the structured record the HTML report consumes."""
     binary = test_config["binary"]
@@ -886,6 +896,9 @@ def _result(test_config, passed, elapsed=0.0, insns=None, timed_out=False, outpu
         "binary": binary,
         "binary_name": os.path.basename(binary),
         "chip": chip_of(test_config),
+        # Tuya user_param_key record recovered from the dump, if it keeps
+        # one in plaintext - shown in the report's "Tuya config" tab.
+        "tuya_config": _tuya_config(binary),
         "tags": [{"name": t, "group": TAG_GROUPS.get(t, "feature")}
                  for t in tags_for(test_config)],
         "dump_url": dump_url(binary),

@@ -58,6 +58,35 @@ def _tags_html(r):
                    for t in r.get("tags", []))
 
 
+def _tuya_html(r):
+    """Two columns: the raw stored record, and a plain-language reading of it."""
+    cfg = r.get("tuya_config")
+    if not cfg:
+        return ('<p class="empty">No Tuya <code>user_param_key</code> record found in this dump. '
+                'Newer firmware encrypts its KV storage with a per-device key, so the block is '
+                'only recoverable from images that keep it in plaintext.</p>')
+    rows = "".join(
+        '<tr><td><code>%s</code></td><td><code>%s</code></td></tr>'
+        % (html.escape(k), html.escape(v)) for k, v in cfg["pairs"])
+    human = "".join(
+        '<tr><td>%s</td><td><b>%s</b></td></tr>'
+        % (html.escape(lab), html.escape(str(val))) for lab, val in cfg["human"])
+    return """
+      <p class="cfg-note">Recovered from flash at <code>0x%06X</code> - %d keys.</p>
+      <div class="cfg-cols">
+        <div class="cfg-col">
+          <div class="cfg-h">Raw record</div>
+          <pre class="log cfg-raw">%s</pre>
+          <table class="cfg-t">%s</table>
+        </div>
+        <div class="cfg-col">
+          <div class="cfg-h">Interpretation</div>
+          <table class="cfg-t">%s</table>
+        </div>
+      </div>""" % (cfg["offset"], len(cfg["pairs"]),
+                   html.escape(cfg["raw"]), rows, human)
+
+
 def _test_card(r):
     ok = r["passed"]
     status_cls = "pass" if ok else "fail"
@@ -114,11 +143,13 @@ def _test_card(r):
           <div class="checks-title">Assertions</div>
           <ul>{checks}</ul>
         </div>
-        <div class="log-head">
-          <span class="log-title">UART / log output</span>
+        <div class="tabbar">
+          <button class="tab-btn active" type="button" data-tab="log">UART / log output</button>
+          <button class="tab-btn{tuya_dis}" type="button" data-tab="tuya">Tuya config</button>
           <button class="copy-btn" type="button">Copy</button>
         </div>
-        <pre class="log">{log}</pre>
+        <div class="tab-panel" data-panel="log"><pre class="log">{log}</pre></div>
+        <div class="tab-panel hidden" data-panel="tuya">{tuya}</div>
       </div>
     </details>
     """.format(
@@ -133,6 +164,8 @@ def _test_card(r):
         args=args,
         checks="".join(checks_html),
         tags=_tags_html(r),
+        tuya=_tuya_html(r),
+        tuya_dis="" if r.get("tuya_config") else " disabled",
         log=_highlight(r.get("output", ""), [c["string"] for c in r["checks"] if c["found"]]),
     )
 
@@ -255,6 +288,27 @@ _PAGE = """<!doctype html>
   .checks-title, .log-title {{ font-size:12px; text-transform:uppercase; letter-spacing:.04em;
     color:var(--muted); margin:14px 0 6px; }}
   .log-head {{ display:flex; align-items:center; justify-content:space-between; margin:14px 0 6px; }}
+  .tabbar {{ display:flex; align-items:center; gap:4px; margin:16px 0 0;
+    border-bottom:1px solid var(--line); }}
+  .tab-btn {{ font-size:12px; padding:6px 12px; border:1px solid transparent; border-bottom:none;
+    background:none; color:var(--muted); cursor:pointer; border-radius:6px 6px 0 0; }}
+  .tab-btn:hover:not(.disabled) {{ color:var(--fg); }}
+  .tab-btn.active {{ background:var(--bg); border-color:var(--line); color:var(--fg);
+    font-weight:700; margin-bottom:-1px; }}
+  .tab-btn.disabled {{ opacity:.45; cursor:default; }}
+  .tabbar .copy-btn {{ margin-left:auto; }}
+  .tab-panel {{ padding-top:10px; }}
+  .tab-panel.hidden {{ display:none; }}
+  .empty {{ color:var(--muted); font-size:13px; }}
+  .cfg-note {{ color:var(--muted); font-size:12px; margin:2px 0 10px; }}
+  .cfg-cols {{ display:flex; gap:16px; flex-wrap:wrap; }}
+  .cfg-col {{ flex:1 1 300px; min-width:0; }}
+  .cfg-h {{ font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--muted); margin-bottom:6px; }}
+  .cfg-raw {{ max-height:120px; font-size:11px; }}
+  .cfg-t {{ width:100%; border-collapse:collapse; font-size:12px; }}
+  .cfg-t td {{ padding:2px 6px; border-bottom:1px solid var(--line); vertical-align:top; }}
+  .cfg-t td:first-child {{ color:var(--muted); white-space:nowrap; }}
   .log-head .log-title {{ margin:0; }}
   .copy-btn {{ font-size:12px; padding:3px 10px; border-radius:6px; border:1px solid var(--line);
     background:var(--card); color:var(--fg); cursor:pointer; }}
@@ -305,9 +359,22 @@ _PAGE = """<!doctype html>
 # API where available and falls back to a hidden textarea + execCommand so it
 # also works from a file:// URL.
 _SCRIPT = """<script>
+document.querySelectorAll('.tab-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    if (btn.classList.contains('disabled')) return;
+    var body = btn.closest('.body');
+    body.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    body.querySelectorAll('.tab-panel').forEach(function (p) {
+      p.classList.toggle('hidden', p.getAttribute('data-panel') !== btn.getAttribute('data-tab'));
+    });
+  });
+});
 document.querySelectorAll('.copy-btn').forEach(function (btn) {
   btn.addEventListener('click', function () {
-    var pre = btn.closest('.body').querySelector('pre.log');
+    var body = btn.closest('.body');
+    var vis = body.querySelector('.tab-panel:not(.hidden)');
+    var pre = (vis && vis.querySelector('pre')) || body.querySelector('pre.log');
     if (!pre) return;
     var text = pre.innerText;
     var done = function () {
