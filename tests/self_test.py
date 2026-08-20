@@ -359,6 +359,29 @@ TEST_CASES = [
         "expected_pwm": {4: (0x0A28, 0x0104), 5: (0x0A28, 0x079E)},
     },
     {
+        # The N-family twin of the 1400/2500/10000 Hz cases: the same OBK
+        # startup-command trick on the OpenBK7231N image, whose HAL lands in
+        # the pwm_new block (0x802B00, T1..T4 edge registers) instead of the
+        # T-family period/duty pair. All stock-firmware pwm_new evidence is
+        # bulbs at their shipped frequencies; here WE choose 3700 Hz and a
+        # 40% duty, so the expected registers exist nowhere else:
+        #   T4 = 26000000 / 3700 = 7027 = 0x1B73 (period)
+        #   T1 = 40% of 7027    = 2810 = 0x0AFA (toggle, init level high)
+        # A duty reconstructed by toggle-replay coming out at exactly 40% is
+        # the strongest single check the pwm_new decoder has.
+        "name": "OpenBK7231N Startup Command: PWM 3700 Hz on pin 8 (pwm_new)",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231N_QIO_1.18.300_obkStartupCommand_setPinRolePWM3700.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 240,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Info:CMD:Channel 1 is 40",
+        ],
+        "expected_pins": {8: 0x48},
+        "expected_pwm": {2: (0x1B73, 0x0AFA)},
+    },
+    {
         "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timers",
         "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7231U_QIO_1.18.300.bin"),
         # Plaintext image (beken_freertos_sdk layout) - no key.
@@ -955,6 +978,34 @@ TEST_CASES = [
                          5: (0x6590, 0x0000)},
     },
     {
+        # Completes N-family channel coverage: its config puts the cool
+        # channel on P9, which is pwm_new ch3 (group 1, SUB-CHANNEL 1) - the
+        # one channel Arlec, the Plafon and Gleco all leave idle. Group 1's
+        # CTRL word here (0x80000900) enables only sub 1, so the case also
+        # proves the decoder honours per-sub enable bits rather than decoding
+        # everything with a written period.
+        #
+        # A GU5.3 spotlight on IOT SDK 2.3.3 - the oldest N-family light SDK
+        # in the suite next to the TuyaOS 3.3.x trio.
+        "name": "BK7231N Tuya Feconn MR16 RGBCT Bulb (pwm_new ch3) boots",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_Feconn_MR16_RGBCT_5ch_PWM_1000Hz_1.3.21.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 300,
+        "expected_strings": [
+            "< TUYA IOT SDK V:2.3.3 BS:40.00_PT:2.2_LAN:3.4_CAD:1.0.5_CD:1.0.0 >",
+            "oem_bk7231n_light_ty:1.3.21",
+            # Paired dump: skips manufacturing test at boot.
+            "have actived over 15 min, not enter mf_init",
+        ],
+        "expected_pins": {6: 0x48, 7: 0x48, 9: 0x48, 24: 0x48, 26: 0x48},
+        # All five declared channels at 26 MHz / 1000 = 0x6590; ch2 (P8) is
+        # absent from its config and asserted nowhere.
+        "expected_pwm": {0: (0x6590, 0x0000), 1: (0x6590, 0x0000),
+                         3: (0x6590, 0x0000),
+                         4: (0x6590, 0x0000), 5: (0x6590, 0x0000)},
+    },
+    {
         # Third N-family light, third distinct frequency: 5 kHz -> period
         # 5200 = 0x1450, again exactly what its stored pwmhz:5000 implies.
         # With Arlec at 1000 Hz and the Plafon at 16 kHz, the pwm_new decode
@@ -1100,6 +1151,12 @@ DESCRIPTIONS = {
         "rather than against our arithmetic. Drives P24/P26 (PWM4/PWM5), the high channels no other "
         "real-firmware test covers. Its config maps c_pin:26/w_pin:24, so PWM5 is cold and PWM4 warm; "
         "the captured duties (100% and 0%) show the bulb at full cold white.",
+    "OpenBK7231N Startup Command: PWM 3700 Hz on pin 8 (pwm_new)":
+        "The synthetic ground-truth trick on the BK7231N image: OpenBeken is told to do 3700 Hz at "
+        "40% duty on P8, which its HAL programs through the pwm_new block. Both values were "
+        "predicted before the first run - period 0x1B73 and a 40% toggle at 0x0AFA - and the duty "
+        "is reconstructed by replaying edge toggles, making this the sharpest single check the "
+        "N-family decoder has.",
     "MathDemo Startup Command: AlwaysHigh and AlwaysLow pins":
         "Startup command 'SetPinRole 14 AlwaysHigh; SetPinRole 15 AlwaysLow'. The two fixed-output "
         "roles drive a pin high and low with no channel involved, on plain GPIOs that have no "
@@ -1125,6 +1182,11 @@ DESCRIPTIONS = {
         "the upper half of the channel map, where every bulb clusters on P6/P7/P8. 1000 Hz, "
         "matching its stored pwmhz. Its oem build (strip_ty 1.0.5, Apr 2020) is the oldest light "
         "firmware in the suite.",
+    "BK7231N Tuya Feconn MR16 RGBCT Bulb (pwm_new ch3) boots":
+        "Completes N-family channel coverage: its cool channel sits on P9 = pwm_new ch3, the one "
+        "channel the other three N lights leave idle. Group 1's CTRL enables only sub-channel 1 "
+        "here, so it also proves the decoder honours per-sub enable bits. IOT SDK 2.3.3 - the "
+        "oldest N-family light firmware in the suite.",
     "BK7231N Tuya Gleco Bulb (5ch pwm_new, 5 kHz) boots":
         "Third N-family light at a third frequency: 5 kHz, period 5200 matching its stored "
         "pwmhz:5000. Together with Arlec (1 kHz) and the Plafon (16 kHz), the pwm_new decode is "
