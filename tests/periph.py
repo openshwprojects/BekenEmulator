@@ -179,8 +179,24 @@ def infer_base(pwm):
     return 0x80 if any(off >= 0x80 for off in pwm) else 0x00
 
 
+# A real PWM output lands somewhere between mains-flicker and switching-supply
+# territory. Anything outside this is not a period register being read as one:
+# a firmware doing NO pwm still writes 0x173EED80 (390,000,000 -> 0.067 Hz) into
+# this window for the FreeRTOS tick, and decoding that as a light produced a
+# confident "0.1 Hz" in the report. Verified plausible values sit well inside:
+# a Woox CW bulb uses 0x54A2 -> 1200 Hz, matching its own stored pwmhz:1200.
+PWM_FREQ_MIN_HZ = 20
+PWM_FREQ_MAX_HZ = 100000
+
+
 def pwm_channels(pwm):
-    """[(channel, period, duty, freq_hz, duty_pct)] for channels with a period."""
+    """[(channel, period, duty, freq_hz, duty_pct)] for plausible channels.
+
+    Implausible periods are dropped rather than shown, because the base layout
+    is inferred and a wrong guess turns an unrelated timer register into a
+    fabricated frequency - which is worse than showing nothing. The raw
+    registers are reported separately either way, so nothing is hidden.
+    """
     base = infer_base(pwm)
     rows = []
     for ch in range(6):
@@ -188,7 +204,9 @@ def pwm_channels(pwm):
         duty = pwm.get(base + 0x0C + 8 * ch)
         if not period:
             continue
-        freq = PWM_CLOCK_HZ / period if period else 0
+        freq = PWM_CLOCK_HZ / period
+        if not (PWM_FREQ_MIN_HZ <= freq <= PWM_FREQ_MAX_HZ):
+            continue
         pct = (100.0 * duty / period) if duty is not None else None
         rows.append((ch, period, duty, freq, pct))
     return rows, pwm.get(base, 0), base

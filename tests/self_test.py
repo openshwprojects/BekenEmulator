@@ -207,9 +207,9 @@ TEST_CASES = [
         # PIN_SetupPins() have run at the end of Main_Init_BeforeDelay_Unsafe.
         # Were it the other way round, the role would be stored and then
         # overwritten by the config pass.
-        "name": "MathDemo Startup Command: SetPinRole drives a relay pin",
+        "name": "MathDemo Startup Command: SetPinRole drives relay pin P9",
         "binary": os.path.join(ROOT_DIR, "firmwares",
-                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_setPinRole.bin"),
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_setPinRoleP9.bin"),
         "args": ["--only-uart", "-key", "TUYA"],
         "timeout": 180,
         "expected_strings": [
@@ -223,7 +223,25 @@ TEST_CASES = [
         # DISABLE - gpio_config() writes 0x00 for GMODE_OUTPUT and 0x0C/0x48
         # for the input and second-function modes. gpio_output() then
         # read-modify-writes bit 1 alone, giving 0x02 for a pin driving high.
-        "expected_pins": {9: 0x02},
+        "expected_pins": {9: 0x02, 7: None},
+    },
+    {
+        # The same thing on a different pin and a different channel. One pin
+        # proving out could be a coincidence - some fixed write landing on the
+        # captured index - so this twin moves BOTH the pin (9 -> 7) and the
+        # channel (1 -> 2) and asserts the other pin stays untouched. Passing
+        # both means the capture follows the command, which is the only reading
+        # that supports using these numbers to check the emulator.
+        "name": "MathDemo Startup Command: SetPinRole drives relay pin P7",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_setPinRoleP7.bin"),
+        "args": ["--only-uart", "-key", "TUYA"],
+        "timeout": 180,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Info:CMD:Channel 2 is 1",
+        ],
+        "expected_pins": {7: 0x02, 9: None},
     },
     {
         "name": "OpenBK7231U_QIO_1.18.300 Boot to 1s timers",
@@ -727,12 +745,16 @@ DESCRIPTIONS = {
         "Startup command 'startDriver TuyaMCU'. The driver opens UART1 itself and talks first, "
         "unprompted: the first per-second tick emits a TuyaMCU heartbeat frame "
         "(55 AA 00 00 00 00 FF) with no MCU attached.",
-    "MathDemo Startup Command: SetPinRole drives a relay pin":
+    "MathDemo Startup Command: SetPinRole drives relay pin P9":
         "Startup command 'SetPinChannel 9 1; SetPinRole 9 Rel; SetChannel 1 0; SetChannel 1 1'. "
         "Orders OpenBeken to make pin 9 a relay output bound to channel 1, then switches that "
         "channel on. The only case where the expected GPIO register word is known independently "
         "- from the vendor SDK's own gpio_config()/gpio_output() - so it verifies the emulator's "
         "pin capture rather than merely displaying it.",
+    "MathDemo Startup Command: SetPinRole drives relay pin P7":
+        "The P9 case repeated on a different pin (7) and a different channel (2), with an "
+        "assertion that pin 9 stays untouched. Two pins moving independently under command is "
+        "what rules out a fixed write landing on a captured index by coincidence.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
@@ -1186,12 +1208,20 @@ def run_test(test_config):
     # register value is derived from the vendor SDK's own gpio_config() /
     # gpio_output(), not from whatever the emulator happened to emit. Without
     # it, a break in the capture path renders an empty tab and still "passes".
-    for pin, want in sorted((test_config.get("expected_pins") or {}).items()):
+    for pin, want in sorted((test_config.get("expected_pins") or {}).items(),
+                            key=lambda kv: kv[0]):
         got = (periph_data or {}).get("raw", {}).get(pin)
         ok = got == want
-        label = "GPIO P%d config = 0x%02X" % (pin, want)
+        # want=None asserts the pin was NEVER written. That is the negative
+        # half of the check: it proves the captured pin actually follows the
+        # command rather than the emulator writing some fixed pin regardless.
+        if want is None:
+            label = "GPIO P%d untouched" % pin
+        else:
+            label = "GPIO P%d config = 0x%02X" % (pin, want)
         if ok:
-            print(f"  [PASS] {label} ({_pin_desc(want)})")
+            detail = "no write captured" if want is None else _pin_desc(want)
+            print(f"  [PASS] {label} ({detail})")
         else:
             seen = "0x%02X" % got if got is not None else "no write captured"
             print(f"  [FAIL] {label}, got {seen}")

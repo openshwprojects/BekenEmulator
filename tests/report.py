@@ -114,20 +114,36 @@ def _gpio_html(r):
         # The decoded view is the point of capturing PWM at all: a period of
         # 0x54A2 means nothing, "1200 Hz at 42% duty" is the bulb's actual
         # output. Frequency = 26 MHz / period; duty = duty/period.
+        # The pad column only names a pin when that pin is genuinely in second
+        # function. Channel numbering comes from an inferred base offset, so
+        # printing the canonical pad regardless would assert things like
+        # "PWM3 -> P9" on an image whose actual PWM pads are P6 and P8.
+        pads = set(per.get("pwm_pins") or [])
+        canon = {0: 6, 1: 7, 2: 8, 3: 9, 4: 24, 5: 26}
         chans = "".join(
-            '<tr><td><code>PWM%d</code></td><td><code>P%s</code></td>'
+            '<tr><td><code>PWM%d</code></td><td>%s</td>'
             '<td>%s</td><td>%s</td><td><code>0x%X</code></td></tr>'
-            % (ch, {0: "6", 1: "7", 2: "8", 3: "9", 4: "24", 5: "26"}.get(ch, "?"),
+            % (ch,
+               ("<code>P%d</code>" % canon[ch]) if canon.get(ch) in pads
+               else '<span class="cfg-unk">not identified</span>',
                ("%.1f Hz" % freq) if freq else "-",
                ("%.1f%%" % pct) if pct is not None else "-", period)
             for ch, period, _duty, freq, pct in per["pwm_channels"])
         pwm += ("""
           <div class="cfg-h">PWM channels</div>
-          <table class="cfg-t"><tr><th>Ch</th><th>Pin</th><th>Freq</th>
-          <th>Duty</th><th>Period</th></tr>%s</table>""" % chans)
+          <table class="cfg-t"><tr><th>Ch</th><th>Pad</th><th>Freq</th>
+          <th>Duty</th><th>Period</th></tr>%s</table>
+          <p class="cfg-note">Pads in second function on this image: %s.
+          A channel is only paired with a pad when that pad is one of them.</p>"""
+          % (chans, ", ".join("P%d" % p for p in sorted(pads)) or "none"))
     if per["pwm_regs"]:
         base = per.get("pwm_base")
-        if not per.get("pwm_pins"):
+        if per.get("pwm_pins") and not per.get("pwm_channels"):
+            note = ("Offsets from 0x802A00. PWM-capable pads ARE in second "
+                    "function here, but no register in this window decodes to "
+                    "a plausible PWM period at either base layout, so no "
+                    "frequency is claimed. The raw writes are shown instead.")
+        elif not per.get("pwm_pins"):
             note = ("Offsets from 0x802A00. No PWM-capable pad is in second "
                     "function here, so these writes are the FreeRTOS tick - "
                     "fclk_init() runs a PWM channel in PMODE_TIMER with duty 0 "
@@ -379,6 +395,7 @@ _PAGE = """<!doctype html>
   .fchip.zero {{ opacity:.35; }}
   .fcount {{ font-size:10px; opacity:.8; }}
   .fstatus {{ margin-top:8px; font-size:12px; color:var(--muted); }}
+  .cfg-unk {{ color:var(--muted); font-style:italic; }}
   .card {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
     margin:10px 0; overflow:hidden; }}
   .card.fail {{ border-color:var(--fail); }}
