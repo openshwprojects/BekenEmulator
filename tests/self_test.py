@@ -172,6 +172,29 @@ TEST_CASES = [
         ]
     },
     {
+        # Same UART1 console, but proving OBK evaluates an arithmetic
+        # argument up front. setChannel takes (channel, value); the value
+        # here is the expression "12+28". OBK's command tokenizer resolves
+        # simple math before the setChannel handler runs, so channel 5 is
+        # set to 40 - not rejected as non-numeric, nor truncated to 12. The
+        # channel-change log carries the resolved value, so "changed to 40"
+        # is proof the expression was parsed and evaluated from the injected
+        # UART1 line (something a byte reflector could never produce).
+        "name": "UART1 Command Console: setChannel arg 12+28 evaluated to 40",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_uartConsole.bin"),
+        "args": ["--only-uart", "-key", "TUYA", "--uart1-rx", "setChannel 5 12+28"],
+        "timeout": 300,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            # Config + flag 31 loaded (startup command ran before the console).
+            "Info:CMD:StartupBeforeConsole",
+            # setChannel received "12+28" and OBK evaluated it to 40 before
+            # setting channel 5 - the resolved value shows in the change log.
+            "Info:GEN:CHANNEL_Set channel 5 has changed to 40",
+        ]
+    },
+    {
         # Complement of the case above: the same mathDemo image, but with a
         # hand-crafted mainConfig_t written into the BK_PARTITION_NET_PARAM
         # partition (flash 0x1e1000). This proves the emulated flash controller
@@ -1331,6 +1354,11 @@ DESCRIPTIONS = {
         "callback is up: 'echo UartRxConsoleOK' then 'nosuchcmd_uarttest'. OBK runs the first "
         "(echoing the argument) and rejects the second as unknown (Error:CMD:cmd ... NOT found) - "
         "proof the full RX path works and a real command parser, not a byte reflector, is running.",
+    "UART1 Command Console: setChannel arg 12+28 evaluated to 40":
+        "Proves OBK evaluates a command argument as an expression, over UART1. --uart1-rx injects "
+        "'setChannel 5 12+28'; OBK's tokenizer resolves 12+28 to 40 before the setChannel handler "
+        "runs, so channel 5 is set to 40 - not rejected as non-numeric, nor truncated to 12. The "
+        "'CHANNEL_Set channel 5 has changed to 40' log line carries the resolved value.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
