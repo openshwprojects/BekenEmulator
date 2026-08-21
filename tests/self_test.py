@@ -1230,6 +1230,31 @@ TEST_CASES = [
         ]
     },
     {
+        # Device-class breadth on the flag-reachable 2.x line: a security
+        # alarm / siren (A03CB3S, stock Tuya 2.1.17, from FlashDumps) - a
+        # class the suite did not cover. Like ATORCH/PC321 it wedges on the
+        # XVR busy spins; --xvr-selfclear walks it past both to the TuyaMCU
+        # link, where its raw-form product record (licensed id
+        # ztoh9ka787lzjkpy) is accepted and it advances to working-mode (0x02).
+        "name": "BK7231N Tuya A03CB3S Alarm (SDK 2.1.17) boots past BLE, accepts product",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_A03CB3S_Alarm_TuyaMCU_2.1.17.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--xvr-selfclear", "--tuyamcu",
+                 "--tuyamcu-pid", "ztoh9ka787lzjkpy", "--tuyamcu-raw", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "bk7231n_common_user_config_ty:2.1.17",
+            "mf_init succ",
+            # Past the BLE gate and RF-cal via --xvr-selfclear: reached the
+            # TuyaMCU link and sent a heartbeat.
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query.
+            "55 aa 00 01 00 00 00",
+            # Accepted our raw product record and advanced to working-mode.
+            "55 aa 00 02 00 00 01",
+        ]
+    },
+    {
         # A real single-colour (white-only) PWM bulb, chosen because its own
         # stored Tuya config declares pwmhz:3000 - so the decoded frequency is
         # checked against the DEVICE's own claim rather than against our
@@ -1716,6 +1741,11 @@ DESCRIPTIONS = {
         "--xvr-selfclear walks it past both, through BLE init to the TuyaMCU link, where its "
         "raw-form product record (licensed id gqmmtjclqb7reg5p) is accepted and it advances to "
         "the working-mode query (0x02). Adds a distinct SDK sub-version and device class.",
+    "BK7231N Tuya A03CB3S Alarm (SDK 2.1.17) boots past BLE, accepts product":
+        "Device-class breadth on the flag-reachable 2.x line: a security alarm/siren (A03CB3S, "
+        "stock Tuya 2.1.17, from FlashDumps). Like ATORCH/PC321 it wedges on the XVR busy spins; "
+        "--xvr-selfclear walks it past both to the TuyaMCU link, where its raw-form product record "
+        "(licensed id ztoh9ka787lzjkpy) is accepted and it advances to the working-mode query (0x02).",
     "BK7231N Tuya 10-Gang Wall Switch accepts product, advances to working-mode":
         "Another TuyaOS 3.x TuyaMCU dump for device-class breadth (from FlashDumps): a 10-gang wall "
         "switch on SDK 3.1.28, a multi-relay panel distinct from the meters, sensors and charger "
