@@ -882,21 +882,24 @@ TEST_CASES = [
         #  - that a paired stock-Tuya image boots through to normal operation;
         #  - the UART1 capture path on stock vendor firmware, not just OpenBeken.
         #
-        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py): it
-        # answers the module's frames, so the link is a conversation rather than
-        # a monologue. The heartbeat ACK unblocks the next step - QUERY_PRODUCT
-        # (0x01) - which the device never sends with nothing on the wire.
-        # Verified A/B over a shared EMULATED-INSTRUCTION budget (wall-clock
-        # comparison flakes; the frame lands near the cut-off):
-        #    with peer: heartbeat @19.2M insns, QUERY_PRODUCT @20.2M
-        #    without  : heartbeat @19.2M insns, no 0x01 through 43.2M
-        # Only one heartbeat is asserted, not a repeat: once the peer answers,
-        # the device advances into the query loop instead of idling on
-        # heartbeats, so progress through the handshake is the liveness signal.
+        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py) and,
+        # like the real MCU wired to this thermostat, answers in the form
+        # TuyaOS 3.x expects: --tuyamcu-raw replies to the product query with
+        # the raw 16-byte product id + short version (not JSON), and
+        # --tuyamcu-pid gives the device's OWN licensed id, recovered from its
+        # gw_bi KV ('pk':'i3k1tsas1esbewba'). With the right form and id the
+        # device accepts the record (its stored product_key matches our input)
+        # and advances into the working-mode query (0x02) and Wi-Fi link setup
+        # - far past the heartbeat loop it idles in with nothing attached. The
+        # heartbeat is asserted once, not repeated: once the peer answers the
+        # device advances instead of idling, so handshake progress is the
+        # liveness signal. (A/B over a shared instruction budget: with peer,
+        # heartbeat @19.2M / QUERY_PRODUCT @20.2M; without, no 0x01 by 43.2M.)
         "name": "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_Ettroit_ETWF4301_Thermostat_TuyaMCU_3.1.28.bin"),
-        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu",
+                 "--tuyamcu-pid", "i3k1tsas1esbewba", "--tuyamcu-raw", "-key", "TUYA"],
         # The first frame lands only after the SDK reaches normal operation
         # (~3-4 min here); streaming stops as soon as the required count is seen.
         "timeout": 420,
@@ -908,14 +911,16 @@ TEST_CASES = [
             # Physical flash addressing: BOTH kv copies valid, counts matching.
             "current kv info, addr: 1ed000, cnt: 97, is valid: 0",
             "mirror kv info, addr: 1cf000, cnt: 97, is valid: 0",
-            # TuyaMCU heartbeat (55 AA ver=00 cmd=00 len=0000 chk=FF), repeated -
-            # proves the MCU link keeps running, not just starts.
+            # The MCU link is up and the module talks first (heartbeat).
             "[UART1/MCU] 55 aa 00 00 00 00 ff",
             # Peer-unblocked: the product query, never sent without a peer.
             "55 aa 00 01 00 00 00",
-            # And this SDK parsed our 36-byte reply before rejecting it on
-            # length - proof the injected UART1 RX reaches stock firmware.
-            "prod len = 36",
+            # The device ACCEPTED our raw product record - its stored key
+            # matched the id we sent (JSON is rejected on length; raw is not).
+            "gw_cntl->gw_if.product_key:i3k1tsas1esbewba, input:i3k1tsas1esbewba",
+            # ...and advances to the working-mode query (0x02): real forward
+            # progress past the product stage, into Wi-Fi link setup.
+            "55 aa 00 02 00 00 01",
         ]
     },
     {
