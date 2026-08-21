@@ -279,11 +279,16 @@ TEST_CASES = [
         # is a conversation: it answers the heartbeat, the product query and
         # the working-mode query. OpenBeken accepts the product record and
         # completes the handshake, which no stock TuyaOS image here does.
+        # It goes one step further: it sends QUERY_STATE (0x08), and
+        # --tuyamcu-dp gives the MCU two data points to report back (DP 1 =
+        # bool 1, DP 2 = value 100). OBK parses those 0x07 reports with the
+        # exact values, exercising the data-point path end to end.
         "name": "MathDemo Startup Command: startDriver TuyaMCU sends heartbeat",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_tuyaMCU.bin"),
-        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
-        "timeout": 240,
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu",
+                 "--tuyamcu-dp", "1:bool:1", "--tuyamcu-dp", "2:value:100", "-key", "TUYA"],
+        "timeout": 300,
         "expected_strings": [
             "CFG_InitAndLoad: Correct config has been loaded",
             "Started TuyaMCU.",
@@ -294,6 +299,12 @@ TEST_CASES = [
             "cmd 1 (QueryProductInformation)",
             'received {"p":"bekenemulator000","v":"1.0.0"}',
             "cmd 2 (MCUconf)",
+            # It then queries state (0x08); the MCU answers with the two DPs
+            # from --tuyamcu-dp, and OBK parses each 0x07 report exactly.
+            "ParseState: id 1 type 1-bool",
+            "ParseState: byte 1",
+            "ParseState: id 2 type 2-val",
+            "ParseState: int32 100",
         ]
     },
     {
