@@ -14,6 +14,14 @@ def parse_args():
     parser.add_argument("--only-uart", action="store_true", help="Only print UART output (suppress MMIO/Trace/Info logs)")
     parser.add_argument("--with-boot", action="store_true", help="Start execution from bootloader (0x00000000) instead of app (0x10000)")
     parser.add_argument("--uart1-hex", action="store_true", help="Show UART1 (TuyaMCU link) as tagged hex; UART2 stays text log")
+    parser.add_argument("--uart1-rx", dest="uart1_rx", default=None, metavar="TEXT",
+                        help="Feed TEXT into UART1's receive FIFO (a CRLF is appended). With OBK's "
+                             "UART command console enabled (flag 31), e.g. --uart1-rx \"echo hello\" "
+                             "types that command in. Use \\n / \\r for explicit line endings.")
+    parser.add_argument("--uart1-rx-delay", dest="uart1_rx_delay", type=int, default=2_000_000,
+                        metavar="INSNS",
+                        help="Hold the --uart1-rx bytes until this many instructions have run, so the "
+                             "firmware has registered its console RX callback first (default 2000000).")
     parser.add_argument("-key", "--key", dest="key", default=None, metavar="KEY",
                         help="Firmware decryption key: a known name (%s), 32 hex chars, or base64 of 16 bytes. "
                              "Omit for plaintext images (no decryption)." % ", ".join(sorted(KNOWN_KEYS)))
@@ -64,7 +72,15 @@ def main():
         else:
             print(f"Loaded 'app' payload, size: {len(app)} bytes")
 
-    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data)
+    uart1_rx = b""
+    if args.uart1_rx is not None:
+        # Let \n and \r in the argument mean real line endings; default to CRLF.
+        text = args.uart1_rx.encode("latin-1").decode("unicode_escape")
+        if not text.endswith(("\n", "\r")):
+            text += "\r\n"
+        uart1_rx = text.encode("latin-1", "replace")
+
+    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data, uart1_rx=uart1_rx, uart1_rx_delay=args.uart1_rx_delay)
     emu.setup()
     emu.run()
 

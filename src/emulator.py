@@ -95,13 +95,31 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000):
         self.raw_flash = raw_flash
         self.bootloader = bootloader
         self.app = app
         self.with_boot = with_boot
         self.only_uart = only_uart
         self.uart1_hex = uart1_hex
+        # Bytes to feed into UART1's receive FIFO, as if a host typed them. The
+        # firmware only drains this once it has enabled UART1 RX (OBK does that
+        # in CMD_UARTConsole_Init when OBK_FLAG_CMD_ACCEPT_UART_COMMANDS is set),
+        # so queued bytes simply wait until the console is up. Reads of the RX
+        # FIFO port dequeue from here; the FIFO status reports "data ready" while
+        # it is non-empty, and the existing UART1 RX interrupt drives the ISR
+        # that copies these into OBK's command ring buffer.
+        self.uart1_rx = bytearray(uart1_rx)
+        # Hold the RX bytes back until the boot has run this many instructions.
+        # OBK enables UART1 RX very early (~140k insns, for the Wi-Fi/early UART
+        # path) but only registers its console receive callback about a million
+        # instructions later, when CMD_Init_Delayed runs. Delivering bytes in
+        # that window is pointless: the UART ISR, finding no callback, drains
+        # the FIFO and throws them away. Waiting also matches reality - a human
+        # types a command after the device has finished booting, not during its
+        # UART init. Tunable; the default clears the observed console-init point
+        # with margin.
+        self.uart1_rx_delay = uart1_rx_delay
         self._uart_src = None   # last UART shown, for interleaving text/hex
         # When EMU_REPORT is set (the self-test harness does this), periodically
         # emit the approximate executed-instruction count on a distinct
@@ -172,6 +190,10 @@ class BekenEmulator:
         end = min(start + size, len(buf))
         if start < end:
             buf[start:end] = b"\xff" * (end - start)
+
+    def _rx_active(self):
+        """True while queued UART1 RX bytes should be delivered to the guest."""
+        return bool(self.uart1_rx) and self.state.insn_count >= self.uart1_rx_delay
 
     def _uart_write(self, data):
         """Emit UART bytes verbatim.
@@ -298,9 +320,16 @@ class BekenEmulator:
         # Fast tick (~every 1000 insns): UART RX/TX and SARADC interrupts.
         if state.insn_count - state.last_fast >= 1000:
             state.last_fast = state.insn_count
-            if (state.uart1_int_enable & 0x01) and (state.icu_int_enable & (1 << 0)):
-                state.pending_irqs |= (1 << 0)
-                self.trigger_irq()
+            # UART1 interrupt: the firmware's TX path arms bit 0
+            # (TX_FIFO_NEED_WRITE_EN); the RX console arms bit 1
+            # (RX_FIFO_NEED_READ_EN) / bit 6 (RX_STOP_END_EN). Fire for TX
+            # always-ready, and for RX only while we actually have queued bytes
+            # to deliver - otherwise a spurious RX interrupt storm.
+            if state.icu_int_enable & (1 << 0):
+                rx_pending = self._rx_active() and (state.uart1_int_enable & 0x42)
+                if (state.uart1_int_enable & 0x01) or rx_pending:
+                    state.pending_irqs |= (1 << 0)
+                    self.trigger_irq()
             if (state.uart2_int_enable & 0x01) and (state.icu_int_enable & (1 << 1)):
                 state.pending_irqs |= (1 << 1)
                 self.trigger_irq()
@@ -608,8 +637,36 @@ class BekenEmulator:
             mu.mem_write(address, struct.pack("<I", self.state.uart2_int_enable))
             return
 
+        if address == 0x00802114:
+            # UART1 interrupt-status. The RX ISR reads this to decide whether to
+            # drain the FIFO; report RX_FIFO_NEED_READ_STA (1) and
+            # RX_STOP_END_STA (6) exactly while we have queued RX bytes, so the
+            # ISR reads them and then stops. Reads are self-clearing here.
+            sta = ((1 << 1) | (1 << 6)) if self._rx_active() else 0
+            mu.mem_write(address, struct.pack("<I", sta))
+            return
+
+        if address == self.UART1_FIFO_PORT and self._rx_active():
+            # RX path: hand the firmware the next queued byte. (The write side of
+            # this same address, TX, is in the write hook.) Only intercept the
+            # read when we actually have RX bytes, so a normal read still returns
+            # the mapped value otherwise. Received data sits in bits [15:8] of
+            # the FIFO port (UART_RX_FIFO_DOUT_POSI = 8) - the firmware reads it
+            # as (reg >> 8) & 0xFF - so the byte is shifted up here. TX, in
+            # contrast, is bits [7:0].
+            b = self.uart1_rx.pop(0)
+            mu.mem_write(address, struct.pack("<I", (b & 0xFF) << 8))
+            return
+
         if address == self.UART1_FIFO_STATUS or address == self.UART2_FIFO_STATUS:
-            mu.mem_write(address, struct.pack("<I", 1 << 17 | 1 << 19 | 1 << 20))
+            # TX bits: TX_FIFO_EMPTY (17), FIFO_WR_READY (20) - always ready.
+            status = (1 << 17) | (1 << 20)
+            if address == self.UART1_FIFO_STATUS and self._rx_active():
+                # RX pending: FIFO_RD_READY (21) set, RX_FIFO_EMPTY (19) clear.
+                status |= (1 << 21)
+            else:
+                status |= (1 << 19)   # RX_FIFO_EMPTY: nothing to receive
+            mu.mem_write(address, struct.pack("<I", status))
             return
 
         if address == 0x00803008:

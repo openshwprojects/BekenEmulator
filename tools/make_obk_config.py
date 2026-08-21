@@ -38,6 +38,14 @@ CONFIG_ADDR_N = 0x1D1000        # BK7231N/M family
 CONFIG_SIZE = 3584              # MAGIC_CONFIG_SIZE_V4 == sizeof(mainConfig_t)
 CFG_VERSION = 5                 # MAIN_CFG_VERSION
 CMDLINE_OFF = 0x5E0             # offsetof(mainConfig_t, initCommandLine)
+# mainConfig_t stores the 64 OBK feature flags as two uint32s: genericFlags
+# (flags 0..31) at offset 0x08 and genericFlags2 (flags 32..63) at 0x0C. Both
+# sit inside the CRC-covered range [4:3584], so the crc is recomputed after
+# setting any. Flag 31 (OBK_FLAG_CMD_ACCEPT_UART_COMMANDS) turns UART1 into a
+# command console at boot - the console is brought up in CMD_Init_Delayed,
+# which reads the flag straight from the persisted config, so it must be set
+# HERE rather than by a startup command (that runs too late for this boot).
+FLAGS_OFF = 0x08
 CMDLINE_MAX = 1568              # sizeof(initCommandLine)
 SECTOR_SIZE = 4096              # flash sector; images grow to a whole sector
 
@@ -61,15 +69,28 @@ def tiny_crc8_signed(data):
     return crc & 0xFF
 
 
-def build_config(startup_command):
-    """Build a 3584-byte mainConfig_t carrying the given startup command."""
+def build_config(startup_command, flags=()):
+    """Build a 3584-byte mainConfig_t with the given startup command and flags.
+
+    flags is an iterable of OBK flag bit numbers (0..63) to set.
+    """
     cmd = startup_command.encode("ascii")
     if len(cmd) >= CMDLINE_MAX:
         raise ValueError("startup command too long (max %d bytes)" % (CMDLINE_MAX - 1))
 
+    generic0 = generic1 = 0
+    for f in flags:
+        if not 0 <= f <= 63:
+            raise ValueError("flag out of range 0..63: %d" % f)
+        if f < 32:
+            generic0 |= 1 << f
+        else:
+            generic1 |= 1 << (f - 32)
+
     cfg = bytearray(CONFIG_SIZE)
     cfg[0:3] = b"CFG"
     cfg[4:8] = struct.pack("<i", CFG_VERSION)
+    cfg[FLAGS_OFF:FLAGS_OFF + 8] = struct.pack("<II", generic0, generic1)
     cfg[CMDLINE_OFF:CMDLINE_OFF + len(cmd)] = cmd
     cfg[3] = tiny_crc8_signed(cfg[4:CONFIG_SIZE])
     return bytes(cfg)
@@ -135,7 +156,7 @@ def patch_striped(raw, stripped_addr, payload, offset):
     return bytes(out)
 
 
-def inject(raw, startup_command, addr=CONFIG_ADDR):
+def inject(raw, startup_command, addr=CONFIG_ADDR, flags=()):
     """Return a copy of raw carrying a valid config at PHYSICAL offset addr.
 
     No CRC re-striping: the firmware reads this partition through the flash
@@ -143,7 +164,7 @@ def inject(raw, startup_command, addr=CONFIG_ADDR):
     that offset. The image is padded with erased flash if it is too short (an
     app-only image ends well before the config partition).
     """
-    cfg = build_config(startup_command)
+    cfg = build_config(startup_command, flags)
     out = bytearray(raw)
     end = addr + CONFIG_SIZE
     if len(out) < end:
@@ -164,6 +185,10 @@ def main():
     parser.add_argument("--addr", default=None,
                         help="Physical config address. Default: 0x1E1000, or "
                              "0x1D1000 when the filename looks like a BK7231N/M image.")
+    parser.add_argument("--flag", type=int, action="append", default=[],
+                        metavar="N", dest="flags",
+                        help="Set OBK config flag bit N (0..63). Repeatable. "
+                             "E.g. --flag 31 enables the UART1 command console.")
     args = parser.parse_args()
 
     with open(args.input, "rb") as f:
@@ -175,7 +200,7 @@ def main():
         name = os.path.basename(args.input).upper()
         addr = CONFIG_ADDR_N if ("7231N" in name or "7231M" in name) else CONFIG_ADDR
 
-    patched, addr, cfg = inject(raw, args.command, addr)
+    patched, addr, cfg = inject(raw, args.command, addr, args.flags)
 
     with open(args.output, "wb") as f:
         f.write(patched)
@@ -184,6 +209,8 @@ def main():
     print("  config addr   : 0x%06X (physical)" % addr)
     print("  config crc    : 0x%02x" % cfg[3])
     print("  startup cmd   : %s" % args.command)
+    if args.flags:
+        print("  flags set     : %s" % ", ".join(str(f) for f in args.flags))
 
 
 if __name__ == "__main__":

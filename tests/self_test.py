@@ -133,6 +133,45 @@ TEST_CASES = [
         ]
     },
     {
+        # Bidirectional UART1: commands typed IN over the MCU/programming port
+        # and executed - the receive counterpart of the uartSendHex case. Two
+        # pieces make it work:
+        #  - the injected config sets OBK flag 31
+        #    (OBK_FLAG_CMD_ACCEPT_UART_COMMANDS), which brings up a command
+        #    console on UART1 at boot. That flag lives in genericFlags at config
+        #    offset 0x08 and is set by make_obk_config.py --flag 31.
+        #  - --uart1-rx feeds two newline-separated lines into UART1's receive
+        #    FIFO: "echo UartRxConsoleOK" then "nosuchcmd_uarttest". The emulator
+        #    holds those bytes until the boot has run far enough that OBK has
+        #    registered its console RX callback (it enables UART1 RX ~1M
+        #    instructions before that, and the ISR discards RX with no callback),
+        #    then delivers them via the RX FIFO + RX interrupt.
+        # The console parses each line and runs it: the first is a valid command,
+        # so echo logs its argument; the second is not a command, so OBK's
+        # dispatcher looks it up, misses, and reports it NOT found. Together they
+        # prove the whole receive path (FIFO, status, RX interrupt, ISR, ring
+        # buffer, console) works end to end, and that a real parser - not a byte
+        # reflector - runs: it accepts one line and rejects the next.
+        "name": "UART1 Command Console: echo runs, unknown command rejected",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_uartConsole.bin"),
+        "args": ["--only-uart", "-key", "TUYA", "--uart1-rx",
+                 "echo UartRxConsoleOK\nnosuchcmd_uarttest"],
+        "timeout": 300,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            # Startup command ran (config + flags parsed) before the console.
+            "Info:CMD:StartupBeforeConsole",
+            # First UART1 line: a valid command - echo logs its argument.
+            "Info:CMD:UartRxConsoleOK",
+            # Second UART1 line, on its own newline: NOT a command, so OBK's
+            # dispatcher looks it up, misses, and complains. Proves the console
+            # kept reading past the first line and that a real parser (not a
+            # byte reflector) runs - it accepts one line and rejects the next.
+            "Error:CMD:cmd nosuchcmd_uarttest NOT found",
+        ]
+    },
+    {
         # Complement of the case above: the same mathDemo image, but with a
         # hand-crafted mainConfig_t written into the BK_PARTITION_NET_PARAM
         # partition (flash 0x1e1000). This proves the emulated flash controller
@@ -1285,6 +1324,13 @@ DESCRIPTIONS = {
         "startup command: berry print(\"Hello \" + str(5+2*2)). Exercises the embedded VM end to "
         "end - arithmetic precedence (=9), str(), string concatenation and print() - which surfaces "
         "as Info:BERRY:Hello 9.",
+    "UART1 Command Console: echo runs, unknown command rejected":
+        "Bidirectional UART1 - the receive counterpart of the uartSendHex case. The injected config "
+        "sets OBK flag 31 (OBK_FLAG_CMD_ACCEPT_UART_COMMANDS), starting a command console on UART1. "
+        "--uart1-rx feeds two newline-separated lines into the receive FIFO once the console's RX "
+        "callback is up: 'echo UartRxConsoleOK' then 'nosuchcmd_uarttest'. OBK runs the first "
+        "(echoing the argument) and rejects the second as unknown (Error:CMD:cmd ... NOT found) - "
+        "proof the full RX path works and a real command parser, not a byte reflector, is running.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",
