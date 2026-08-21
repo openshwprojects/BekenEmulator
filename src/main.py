@@ -27,6 +27,10 @@ def parse_args():
                         help="Attach a simulated TuyaMCU MCU to UART1: answer the firmware's heartbeat, "
                              "product-info, working-mode and query-state frames so a TuyaMCU dump walks "
                              "past its heartbeat loop instead of stalling with nothing on the wire.")
+    parser.add_argument("--tuyamcu-pid", dest="tuyamcu_pid", default=None, metavar="PID",
+                        help="Product id the simulated MCU reports for a product-info (0x01) query. "
+                             "Stock TuyaOS rejects a mismatch, so pass the device's real 16-char PID "
+                             "(often recoverable from its flash) to get it past the product query.")
     parser.add_argument("-key", "--key", dest="key", default=None, metavar="KEY",
                         help="Firmware decryption key: a known name (%s), 32 hex chars, or base64 of 16 bytes. "
                              "Omit for plaintext images (no decryption)." % ", ".join(sorted(KNOWN_KEYS)))
@@ -93,7 +97,7 @@ def main():
     else:
         rx_delay = 0 if args.tuyamcu else 2_000_000
 
-    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data, uart1_rx=uart1_rx, uart1_rx_delay=rx_delay, tuyamcu_enabled=args.tuyamcu)
+    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data, uart1_rx=uart1_rx, uart1_rx_delay=rx_delay, tuyamcu_enabled=args.tuyamcu, tuyamcu_pid=args.tuyamcu_pid)
     emu.setup()
     emu.run()
 

@@ -959,6 +959,32 @@ TEST_CASES = [
         ]
     },
     {
+        # The heartbeat case above is the baseline with nothing on UART1:
+        # this stock-TuyaOS meter just repeats heartbeats forever. Attach
+        # the simulated MCU (--tuyamcu) and it advances one step - the
+        # heartbeat ACK unblocks it and it sends QUERY_PRODUCT (0x01), which
+        # it NEVER sends with nothing on the wire. It does not finish the
+        # handshake: stock TuyaOS rejects the product-info reply on its
+        # length ("prod len = 36", logged before any product-key check) and
+        # loops on 0x01 - so QUERY_PRODUCT is the honest milestone asserted
+        # here, and no more. (OpenBeken accepts the reply and completes the
+        # whole handshake - see the "TuyaMCU: simulated MCU answers" case.)
+        "name": "TuyaMCU: PJ1103C reaches QUERY_PRODUCT once the MCU answers",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_PJ1103C_DualClampPowerMeter_TuyaMCU_TuyaOS_3.11.12.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "mf_init succ",
+            # Baseline: it still sends a heartbeat (as in the case above)...
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # ...and with the MCU answering it advances to the product query.
+            # That 0x01 frame is the step the peer unlocks; stock TuyaOS then
+            # loops here (it rejects our product reply - see the comment).
+            "55 aa 00 01 00 00 00",
+        ]
+    },
+    {
         # A SECOND UART protocol on the same path, so the UART1 capture is not
         # only ever proven with TuyaMCU framing. Startup command
         # "startDriver BL0942" runs OpenBeken's BL0942 energy-meter driver, which
@@ -1480,6 +1506,13 @@ DESCRIPTIONS = {
         "and all metering while the Beken is only the radio, so this covers a different hardware "
         "class from the two thermostat cases. Its KV pair carries a third distinct rotation count "
         "(16), showing the physical flash-addressing model is not tied to one store state.",
+    "TuyaMCU: PJ1103C reaches QUERY_PRODUCT once the MCU answers":
+        "The same PJ1103C stock-TuyaOS meter as the heartbeat case, now with --tuyamcu attaching "
+        "the simulated MCU. Its heartbeat ACK unblocks the module one step: it sends QUERY_PRODUCT "
+        "(0x01), which it never does with nothing on the wire. It does NOT finish the handshake - "
+        "stock TuyaOS rejects the product-info reply on length ('prod len = 36') and loops on 0x01 "
+        "- so QUERY_PRODUCT is the milestone asserted here. OpenBeken, by contrast, completes the "
+        "full handshake.",
     "MathDemo Startup Command: startDriver BL0942 drives the meter UART":
         "Runs OpenBeken's BL0942 energy-meter driver from an injected startup command. The driver "
         "opens UART1 at 4800 baud and speaks the BL0942 register protocol - two init writes "

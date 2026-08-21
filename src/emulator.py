@@ -110,7 +110,7 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None):
         self.raw_flash = raw_flash
         self.bootloader = bootloader
         self.app = app
@@ -141,7 +141,15 @@ class BekenEmulator:
         # interrupt path that carries a typed console command also carries an
         # MCU's answers. This is what lets a TuyaMCU dump advance past its
         # heartbeat loop (which stalls forever with nothing attached).
-        self.tuyamcu = _tuyamcu.TuyaMCUSlave() if tuyamcu_enabled else None
+        # A real Tuya module compares the product key the MCU reports against
+        # the one in its own license and rejects a mismatch (stock TuyaOS logs
+        # "prod len = .." and re-queries forever), so tuyamcu_pid lets the peer
+        # answer with the device's actual 16-char product id.
+        if tuyamcu_enabled:
+            self.tuyamcu = (_tuyamcu.TuyaMCUSlave(product_key=tuyamcu_pid)
+                            if tuyamcu_pid else _tuyamcu.TuyaMCUSlave())
+        else:
+            self.tuyamcu = None
         self._uart_src = None   # last UART shown, for interleaving text/hex
         # When EMU_REPORT is set (the self-test harness does this), periodically
         # emit the approximate executed-instruction count on a distinct
