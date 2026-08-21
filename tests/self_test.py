@@ -195,6 +195,30 @@ TEST_CASES = [
         ]
     },
     {
+        # Closes the multi-command loop: a plain console line runs as ONE
+        # command (OBK does not split on ';' - the adversarial check earlier
+        # saw "echo A; echo B" echo the whole "A; echo B" as one argument).
+        # backlog is the mechanism that splits a line on ';' and runs each
+        # piece. Injected over UART1, "backlog echo BacklogOne; echo
+        # BacklogTwo" runs BOTH echoes, so both arguments come back - proof
+        # the console parses and dispatches multiple commands from one
+        # received line.
+        "name": "UART1 Command Console: backlog runs two commands from one line",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_uartConsole.bin"),
+        "args": ["--only-uart", "-key", "TUYA", "--uart1-rx",
+                 "backlog echo BacklogOne; echo BacklogTwo"],
+        "timeout": 300,
+        "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
+            "Info:CMD:StartupBeforeConsole",
+            # backlog split the line on ';' and ran the first echo...
+            "Info:CMD:BacklogOne",
+            # ...and the second, from the same injected UART1 line.
+            "Info:CMD:BacklogTwo",
+        ]
+    },
+    {
         # Complement of the case above: the same mathDemo image, but with a
         # hand-crafted mainConfig_t written into the BK_PARTITION_NET_PARAM
         # partition (flash 0x1e1000). This proves the emulated flash controller
@@ -259,6 +283,37 @@ TEST_CASES = [
             "CFG_InitAndLoad: Correct config has been loaded",
             "Started TuyaMCU.",
             "[UART1/MCU] 55 aa 00 00 00 00 ff"
+        ]
+    },
+    {
+        # The heartbeat case above proves the module TALKS; this proves it
+        # can hold a full CONVERSATION. --tuyamcu attaches src/tuyamcu.py's
+        # simulated MCU: every TuyaMCU frame the firmware transmits on UART1
+        # is fed to that peer, and its reply is queued back onto UART1 RX
+        # (the same FIFO + RX-interrupt path a typed console command uses).
+        # So the module walks its whole startup handshake instead of looping
+        # on heartbeats:
+        #   module -> HEARTBEAT,       MCU -> ACK
+        #   module -> QUERY_PRODUCT,   MCU -> {"p":"...","v":"1.0.0"}
+        #   module -> MCU_CONF,        MCU -> (working mode)
+        #   module -> QUERY_STATE
+        # The asserted lines are the firmware's OWN TuyaMCU log: it received,
+        # checksum-validated and JSON-parsed the exact product record the sim
+        # sent - the whole round trip proven from the firmware side. The
+        # conversation also shows, both directions, in the report's UART1 tab.
+        "name": "TuyaMCU: simulated MCU answers, module completes handshake",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_tuyaMCU.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
+        "timeout": 240,
+        "expected_strings": [
+            "Started TuyaMCU.",
+            # Module advanced past heartbeat and the MCU's product reply arrived...
+            "cmd 1 (QueryProductInformation)",
+            # ...and the firmware parsed the exact JSON the simulated MCU sent.
+            'received {"p":"bekenemulator000","v":"1.0.0"}',
+            # ...then went on to the working-mode query and got that reply too.
+            "cmd 2 (MCUconf)",
         ]
     },
     {
@@ -1262,6 +1317,13 @@ DESCRIPTIONS = {
         "Startup command 'startDriver TuyaMCU'. The driver opens UART1 itself and talks first, "
         "unprompted: the first per-second tick emits a TuyaMCU heartbeat frame "
         "(55 AA 00 00 00 00 FF) with no MCU attached.",
+    "TuyaMCU: simulated MCU answers, module completes handshake":
+        "The full two-way TuyaMCU conversation. --tuyamcu attaches src/tuyamcu.py's simulated MCU "
+        "to UART1: it answers the module's heartbeat, product-info, working-mode and query-state "
+        "frames, so the firmware walks its whole startup handshake instead of looping on "
+        "heartbeats. The asserted lines are the firmware's own log - it received, checksum-"
+        "validated and JSON-parsed the exact product record the sim sent. Both directions of the "
+        "exchange show in the UART1 tab.",
     "MathDemo Startup Command: SetPinRole drives relay pin P9":
         "Startup command 'SetPinChannel 9 1; SetPinRole 9 Rel; SetChannel 1 0; SetChannel 1 1'. "
         "Orders OpenBeken to make pin 9 a relay output bound to channel 1, then switches that "
@@ -1359,6 +1421,12 @@ DESCRIPTIONS = {
         "'setChannel 5 12+28'; OBK's tokenizer resolves 12+28 to 40 before the setChannel handler "
         "runs, so channel 5 is set to 40 - not rejected as non-numeric, nor truncated to 12. The "
         "'CHANNEL_Set channel 5 has changed to 40' log line carries the resolved value.",
+    "UART1 Command Console: backlog runs two commands from one line":
+        "Closes the multi-command loop over UART1. A plain console line is one command (OBK does "
+        "not split on ';'), so multiple commands need the backlog prefix. --uart1-rx injects "
+        "'backlog echo BacklogOne; echo BacklogTwo'; backlog splits on ';' and runs both echoes, "
+        "so both arguments come back - proof the console parses and dispatches several commands "
+        "from one received line.",
     "OpenBK7231U_QIO_1.18.300 Boot to 1s timers":
         "OpenBeken on the BK7231U variant from a plaintext (no-key) image, booting through to the "
         "per-second timer - confirms the shared BK7231 model and the no-decrypt path.",

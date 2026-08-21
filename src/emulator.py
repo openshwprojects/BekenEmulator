@@ -6,6 +6,14 @@ import time
 from unicorn import *
 from unicorn.arm_const import *
 
+# TuyaMCU MCU-peer simulator (optional). Imported defensively so emulator.py
+# works whether it is loaded as src.emulator (via main.py) or as a top-level
+# module with src/ on the path.
+try:
+    from . import tuyamcu as _tuyamcu
+except ImportError:
+    import tuyamcu as _tuyamcu
+
 # Known chip identities served from the SCTRL id registers (0x00800000 chip
 # id, 0x00800004 device id), selectable with --chip. Values extracted from
 # each OpenBeken firmware's bk_check_chip_id (which hangs forever on a
@@ -102,7 +110,7 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False):
         self.raw_flash = raw_flash
         self.bootloader = bootloader
         self.app = app
@@ -127,6 +135,13 @@ class BekenEmulator:
         # UART init. Tunable; the default clears the observed console-init point
         # with margin.
         self.uart1_rx_delay = uart1_rx_delay
+        # Optional simulated MCU on the other end of UART1. When enabled, every
+        # TuyaMCU frame the firmware transmits is fed to this peer, and its
+        # replies are appended to uart1_rx above - so the same RX FIFO / RX
+        # interrupt path that carries a typed console command also carries an
+        # MCU's answers. This is what lets a TuyaMCU dump advance past its
+        # heartbeat loop (which stalls forever with nothing attached).
+        self.tuyamcu = _tuyamcu.TuyaMCUSlave() if tuyamcu_enabled else None
         self._uart_src = None   # last UART shown, for interleaving text/hex
         # When EMU_REPORT is set (the self-test harness does this), periodically
         # emit the approximate executed-instruction count on a distinct
@@ -404,6 +419,13 @@ class BekenEmulator:
         if address == self.UART1_FIFO_PORT:
             if self._emit_insns:
                 self.state.uart1_events.append((self.state.insn_count, 'T', value & 0xFF))
+            if self.tuyamcu is not None:
+                # Feed this transmitted byte to the simulated MCU; when it has a
+                # whole frame it answers, and the answer is queued for the guest
+                # to read back over UART1 RX (delivered by the RX interrupt path).
+                reply = self.tuyamcu.react_stream(bytes([value & 0xFF]))
+                if reply:
+                    self.uart1_rx += reply
             if self.uart1_hex:
                 if self._uart_src != 'u1':
                     self._uart_write(b'\n[UART1/MCU] ')

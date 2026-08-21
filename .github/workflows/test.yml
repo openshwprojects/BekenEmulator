@@ -34,6 +34,9 @@ jobs:
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+    - name: TuyaMCU protocol unit self-tests (no firmware)
+      run: python src/tuyamcu.py
+
     - name: Run self tests (also writes report/index.html)
       id: tests
       run: |
