@@ -1111,6 +1111,35 @@ TEST_CASES = [
     }
 ,
     {
+        # An extra TuyaOS 3.x TuyaMCU dump for breadth: an EV charger (Afyeev
+        # GD4301, added from FlashDumps), a device CLASS the suite did not
+        # cover, on the SDK 3.1.17 line. Like the other 3.x dumps it wants the
+        # raw product form, so --tuyamcu-raw plus its own licensed id (from the
+        # gw_bi KV 'pk', which the dump filename also records: dsmsam7xpb3ht7rl)
+        # get it past the product query: it accepts the record (stored
+        # product_key matches our input), updates its product id, sends the
+        # working-mode query (0x02) and moves into Wi-Fi link setup - the full
+        # stock-TuyaMCU advance, on one more device class and SDK point.
+        "name": "BK7231N Tuya Afyeev GD4301 EV Charger accepts product, advances to working-mode",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_Afyeev_GD4301_EVCharger_TuyaMCU_3.1.17.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu",
+                 "--tuyamcu-pid", "dsmsam7xpb3ht7rl", "--tuyamcu-raw", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "bk7231n_common_user_config_ty:3.1.17",
+            "mf_init succ",
+            # The MCU link is up and the module talks first (heartbeat).
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # Accepted our raw product record - stored key matched our input.
+            "gw_cntl->gw_if.product_key:dsmsam7xpb3ht7rl, input:dsmsam7xpb3ht7rl",
+            # ...and advances to the working-mode query (0x02).
+            "55 aa 00 02 00 00 01",
+        ]
+    },
+    {
         # A real single-colour (white-only) PWM bulb, chosen because its own
         # stored Tuya config declares pwmhz:3000 - so the decoded frequency is
         # checked against the DEVICE's own claim rather than against our
@@ -1578,6 +1607,12 @@ DESCRIPTIONS = {
         "It is the flash-write guard: the device persists a 4K sector during start-up, and while "
         "page-program and sector-erase opcodes were ignored it failed its own read-back verify and "
         "rebooted in a loop. With writes implemented it reaches normal operation and drives its MCU.",
+    "BK7231N Tuya Afyeev GD4301 EV Charger accepts product, advances to working-mode":
+        "An extra TuyaOS 3.x TuyaMCU dump for breadth (from FlashDumps): an EV charger, a device "
+        "class the suite did not previously cover, on SDK 3.1.17. With --tuyamcu-raw and its "
+        "licensed id (dsmsam7xpb3ht7rl) the simulated MCU answers in the raw form this SDK line "
+        "wants, so the device accepts the product record (stored key matches our input), updates "
+        "its product id, and advances to the working-mode query (0x02) and Wi-Fi link setup.",
     "BK7231N Tuya Arlec RGB Strip (PWM light, TuyaOS 3.3.44) boots":
         "A paired RGB LED strip driven by hardware PWM straight from the Beken - cool on P6, warm "
         "on P8 at 1000 Hz - rather than by an external MCU, so unlike the other stock-Tuya cases it "
