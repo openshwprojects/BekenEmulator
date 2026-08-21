@@ -110,7 +110,14 @@ class BekenEmulator:
         # existing slow tick, so it never touches the per-block hot path.
         self._emit_insns = bool(os.environ.get("EMU_REPORT"))
         self.chip_id_value, self.device_id_value = chip_identity or CHIP_FAMILIES["BK7231"]
-        
+        # BK7252 (BK7221U silicon, the A9-style WiFi cameras) is the odd one
+        # out of the Beken family: it has external SDRAM at 0x00900000, and its
+        # RT-Thread firmware puts the whole system heap there
+        # (rt_system_heap_init(RT_HW_SDRAM_BEGIN=0x900000, +256K)). On every
+        # other supported chip 0x900000 is the XVR register block instead. So
+        # this flag switches that window between "RAM" and "XVR registers".
+        self.is_bk7252 = (self.chip_id_value == CHIP_FAMILIES["BK7252"][0])
+
         self.state = SimulatorState()
         self.flash_state = FlashState()
         # The unstripped dump. Flash reads are normally served from the
@@ -684,10 +691,16 @@ class BekenEmulator:
         self.mu.mem_map(self.SPI_FLASH_BASE, spi_flash_size)
         self.mu.mem_write(self.SPI_FLASH_BASE, self.raw_flash[:spi_flash_size])
 
-        # BK7238/BK7252N XVR (RF transceiver) register block. Not in the main
-        # MMIO window; map and hook it so the RF-init transaction trigger at
-        # 0x900100 can be modelled as always-complete (see hook_mem_read_mmio).
-        self.mu.mem_map(self.XVR_BASE, 0x1000)
+        # The 0x00900000 window. On BK7252 this is external SDRAM holding the
+        # RT-Thread heap, so back it with 256K of real RAM and DO NOT install
+        # the XVR register hooks below (they would answer heap reads with fake
+        # register values and wreck the free list). On every other chip it is
+        # the XVR (RF transceiver) register block: map one page and hook it so
+        # the 0x900100 transaction trigger reads back as always-complete.
+        if self.is_bk7252:
+            self.mu.mem_map(self.XVR_BASE, 0x40000)  # 256K SDRAM (heap)
+        else:
+            self.mu.mem_map(self.XVR_BASE, 0x1000)
         # Accelerator block just past the main MMIO window (0x810000); mapped
         # and hooked so the 0x81001c transaction trigger can be served.
         self.mu.mem_map(self.ACCEL_BASE, 0x1000)
@@ -696,8 +709,9 @@ class BekenEmulator:
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.MMIO_BASE, end=self.MMIO_BASE + self.MMIO_SIZE)
         self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.PERIPH_BASE, end=self.PERIPH_BASE + self.PERIPH_SIZE)
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.PERIPH_BASE, end=self.PERIPH_BASE + self.PERIPH_SIZE)
-        self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.XVR_BASE, end=self.XVR_BASE + 0x1000)
-        self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.XVR_BASE, end=self.XVR_BASE + 0x1000)
+        if not self.is_bk7252:
+            self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.XVR_BASE, end=self.XVR_BASE + 0x1000)
+            self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.XVR_BASE, end=self.XVR_BASE + 0x1000)
         self.mu.hook_add(UC_HOOK_MEM_WRITE, self.hook_mem_write_mmio, begin=self.ACCEL_BASE, end=self.ACCEL_BASE + 0x1000)
         self.mu.hook_add(UC_HOOK_MEM_READ, self.hook_mem_read_mmio, begin=self.ACCEL_BASE, end=self.ACCEL_BASE + 0x1000)
         self.mu.hook_add(UC_HOOK_MEM_UNMAPPED, self.hook_unmapped)
