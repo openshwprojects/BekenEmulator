@@ -1140,6 +1140,36 @@ TEST_CASES = [
         ]
     },
     {
+        # One more TuyaOS 3.x TuyaMCU dump for device-class breadth: a
+        # 10-gang wall switch (from FlashDumps, SDK 3.1.28) - a multi-relay
+        # switch panel, a class distinct from the meters, sensors, charger
+        # and thermostats already here. Same raw-form handshake as the other
+        # 3.x dumps: --tuyamcu-raw + its licensed id (ni2ztksbndubd9rf) get
+        # it past the product query; it accepts the record (stored
+        # product_key matches our input), updates its product id, sends the
+        # working-mode query (0x02) and moves into Wi-Fi link setup.
+        "name": "BK7231N Tuya 10-Gang Wall Switch accepts product, advances to working-mode",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_10Gang_WallSwitch_TuyaMCU_3.1.28.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu",
+                 "--tuyamcu-pid", "ni2ztksbndubd9rf", "--tuyamcu-raw", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "bk7231n_common_user_config_ty:3.1.28",
+            # Paired: skips manufacturing test.
+            "have actived over 15 min, not enter mf_init",
+            "mf_init succ",
+            # The MCU link is up and the module talks first (heartbeat).
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # Accepted our raw product record - stored key matched our input.
+            "gw_cntl->gw_if.product_key:ni2ztksbndubd9rf, input:ni2ztksbndubd9rf",
+            # ...and advances to the working-mode query (0x02).
+            "55 aa 00 02 00 00 01",
+        ]
+    },
+    {
         # A real single-colour (white-only) PWM bulb, chosen because its own
         # stored Tuya config declares pwmhz:3000 - so the decoded frequency is
         # checked against the DEVICE's own claim rather than against our
@@ -1613,6 +1643,12 @@ DESCRIPTIONS = {
         "licensed id (dsmsam7xpb3ht7rl) the simulated MCU answers in the raw form this SDK line "
         "wants, so the device accepts the product record (stored key matches our input), updates "
         "its product id, and advances to the working-mode query (0x02) and Wi-Fi link setup.",
+    "BK7231N Tuya 10-Gang Wall Switch accepts product, advances to working-mode":
+        "Another TuyaOS 3.x TuyaMCU dump for device-class breadth (from FlashDumps): a 10-gang wall "
+        "switch on SDK 3.1.28, a multi-relay panel distinct from the meters, sensors and charger "
+        "already covered. With --tuyamcu-raw and its licensed id (ni2ztksbndubd9rf) it accepts the "
+        "raw product record (stored key matches our input), updates its product id, and advances to "
+        "the working-mode query (0x02) and Wi-Fi link setup.",
     "BK7231N Tuya Arlec RGB Strip (PWM light, TuyaOS 3.3.44) boots":
         "A paired RGB LED strip driven by hardware PWM straight from the Beken - cool on P6, warm "
         "on P8 at 1000 Hz - rather than by an external MCU, so unlike the other stock-Tuya cases it "
