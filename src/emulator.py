@@ -110,7 +110,7 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False):
         self.raw_flash = raw_flash
         self.bootloader = bootloader
         self.app = app
@@ -142,12 +142,19 @@ class BekenEmulator:
         # MCU's answers. This is what lets a TuyaMCU dump advance past its
         # heartbeat loop (which stalls forever with nothing attached).
         # A real Tuya module compares the product key the MCU reports against
-        # the one in its own license and rejects a mismatch (stock TuyaOS logs
-        # "prod len = .." and re-queries forever), so tuyamcu_pid lets the peer
-        # answer with the device's actual 16-char product id.
+        # the one in its own license and rejects a mismatch, so tuyamcu_pid lets
+        # the peer answer with the device's actual 16-char product id. TuyaOS
+        # 3.x additionally wants that id as a raw 16-byte payload rather than
+        # JSON (it rejects other lengths with "prod len = .."), which tuyamcu_raw
+        # selects - the caller knows which form a given dump expects, exactly as
+        # the real MCU wired to it would.
         if tuyamcu_enabled:
-            self.tuyamcu = (_tuyamcu.TuyaMCUSlave(product_key=tuyamcu_pid)
-                            if tuyamcu_pid else _tuyamcu.TuyaMCUSlave())
+            kw = {}
+            if tuyamcu_pid:
+                kw["product_key"] = tuyamcu_pid
+            if tuyamcu_raw:
+                kw["raw_product"] = True
+            self.tuyamcu = _tuyamcu.TuyaMCUSlave(**kw)
         else:
             self.tuyamcu = None
         self._uart_src = None   # last UART shown, for interleaving text/hex
@@ -605,14 +612,22 @@ class BekenEmulator:
             mu.mem_write(address, struct.pack("<I", 0))
             return
 
-        # NOTE: 0x9000F8 / 0x9000FC were briefly modelled here as
-        # "transaction complete, result 0", to break a spin loop in one
-        # stock-Tuya dump. Reverted: it never actually made that device
-        # boot (it just moved the stall to a BLE link-layer assert) and
-        # it BROKE three dumps that previously worked - TempHum, Plug and
-        # zmai90 all hung at "ty bt sdk init finish" and never reached
-        # their protected-key read. Whatever those registers carry, the
-        # BLE/RF init needs something other than zero.
+        # NOTE: do NOT serve 0x9000F8 (XVR RF-operation register). The ATORCH
+        # AT4P energy meter (stock Tuya SDK 2.1.17) spins on it at app PC
+        # 0x00093A04 during RF init - it sets bit 31 to start an operation and
+        # waits for hardware to clear it:
+        #     ldr r1,[r3]; orr r2,r1,#0x80000000; str r2,[r3]   ; set bit 31
+        #     ldr r2,[r3]; cmp r2,#0; blt .-                    ; wait bit31==0
+        # Modelling bit 31 as self-clearing looks right but is a net loss, both
+        # measured, not guessed:
+        #   * even clearing ONLY bit 31 (keeping every other bit) still hangs
+        #     TempHum, Plug and zmai90 in BLE init - they never reach their
+        #     protected-key read (an earlier attempt that zeroed the whole
+        #     register broke them the same way);
+        #   * and it buys ATORCH nothing: past this spin it only reaches
+        #     ble_appm_send_gapm_reset_cmd and stalls on a BLE link-layer reset
+        #     the emulator does not model. ATORCH is BLE-gated, not RF-gated.
+        # 0x9000FC is likewise left alone.
 
         # Accelerator block just past the main MMIO window (0x810000) - a
         # crypto/hash engine used by original Tuya firmware during TCP/IP init.

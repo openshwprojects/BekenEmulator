@@ -154,15 +154,34 @@ class TuyaMCUSlave:
     module. react_stream(data) parses raw bytes and reacts to each frame.
     """
 
-    def __init__(self, product_key="bekenemulator000", version="1.0.0", dps=None):
+    def __init__(self, product_key="bekenemulator000", version="1.0.0", dps=None,
+                 raw_product=False):
         # product_key: the 16-char Tuya product id reported for a 0x01 query.
+        # raw_product: product-info wire form. False -> JSON {"p":..,"v":..},
+        #   which OpenBeken and older Tuya SDKs (e.g. 1.1.71) accept. True ->
+        #   the raw 16-byte id + short version that TuyaOS 3.x wants (see
+        #   _raw_product). The caller picks this per dump; it is NOT inferred,
+        #   so a device is only ever sent the form it expects.
         # dps: {dp_id: (dp_type, value)} reported in response to a 0x08 query.
         self.product_key = product_key
         self.version = version
+        self.raw_product = raw_product
         self.dps = dict(dps or {})
         self.parser = TuyaMCUParser()
         self.heartbeats = 0
         self.seen = []               # cmd bytes reacted to, for assertions
+
+    def _raw_product(self):
+        """Raw product-info payload for the TuyaOS 3.x wire form: the 16-byte
+        product id followed by a short version, 16..24 bytes total.
+
+        Verified against TuyaOS 3.11.12: its 0x01 handler rejects anything whose
+        payload length is outside [16,24] ("prod len = N") and otherwise copies
+        the first 16 bytes verbatim into gw_if.product_key. So the id must be
+        exactly 16 bytes and match the module's own licensed product id.
+        """
+        pid = self.product_key.encode("ascii")[:16].ljust(16, b"\x00")
+        return pid + self.version.encode("ascii")[:8]
 
     def react(self, frame):
         if not frame.valid:
@@ -177,6 +196,13 @@ class TuyaMCUSlave:
             self.heartbeats += 1
             return [build_frame(CMD_HEARTBEAT, bytes([state]))]
         if c == CMD_QUERY_PRODUCT:
+            if self.raw_product:
+                # TuyaOS 3.x wire form: raw 16-byte id + short version. A real
+                # MCU paired with such a device knows this upfront, so the
+                # caller sets raw_product for those dumps rather than probing.
+                return [build_frame(CMD_QUERY_PRODUCT, self._raw_product())]
+            # JSON product record - what OpenBeken and older Tuya SDKs (e.g.
+            # 1.1.71, the TMWF02 fan switch) accept.
             js = '{"p":"%s","v":"%s"}' % (self.product_key, self.version)
             return [build_frame(CMD_QUERY_PRODUCT, js.encode("ascii"))]
         if c == CMD_MCU_CONF:
@@ -279,6 +305,16 @@ def _run_selftests():
           and b'"p":"keyabcdefgh12345"' in f[0].payload
           and b'"v":"1.0.0"' in f[0].payload,
           "query-product -> valid 0x01 JSON with product key and version")
+
+    # a slave told upfront to use the raw form (TuyaOS 3.x) answers 0x01 with
+    # the 16-byte id + short version, 16..24 bytes total, from the first query.
+    rawmcu = TuyaMCUSlave(product_key="keyabcdefgh12345", raw_product=True)
+    rf = TuyaMCUParser().feed(b"".join(rawmcu.react(Frame(0x00, CMD_QUERY_PRODUCT, b""))))
+    check(len(rf) == 1 and rf[0].cmd == CMD_QUERY_PRODUCT and rf[0].valid
+          and 16 <= len(rf[0].payload) <= 24
+          and rf[0].payload[:16] == b"keyabcdefgh12345"
+          and rf[0].payload[16:] == b"1.0.0",
+          "raw_product slave -> raw 16-byte id + version (16..24 bytes)")
 
     # working-mode query -> 0x02 (empty payload here).
     r, f = one(CMD_MCU_CONF)
