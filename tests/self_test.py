@@ -1203,6 +1203,33 @@ TEST_CASES = [
         ]
     },
     {
+        # A second XVR-selfclear dump on a different 2.x sub-version: the
+        # PC321 3-phase power meter (stock Tuya 2.0.2, from FlashDumps). Like
+        # ATORCH it wedges on the 0x9000F8 / 0x900000 busy spins;
+        # --xvr-selfclear walks it past both, through BLE init to the TuyaMCU
+        # link, where its raw-form product record (licensed id
+        # gqmmtjclqb7reg5p) is accepted and it advances to the working-mode
+        # query (0x02). Adds SDK 2.0.2 (vs ATORCH's 2.1.17) and a distinct
+        # device class (3-phase metering).
+        "name": "BK7231N Tuya PC321 3-Phase Meter (SDK 2.0.2) boots past BLE, accepts product",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_PC321_3PhaseMeter_TuyaMCU_2.0.2.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--xvr-selfclear", "--tuyamcu",
+                 "--tuyamcu-pid", "gqmmtjclqb7reg5p", "--tuyamcu-raw", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "bk7231n_common_user_config_ty:2.0.2",
+            "mf_init succ",
+            # Past the BLE gate and RF-cal via --xvr-selfclear: reached the
+            # TuyaMCU link and sent a heartbeat.
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query.
+            "55 aa 00 01 00 00 00",
+            # Accepted our raw product record and advanced to working-mode.
+            "55 aa 00 02 00 00 01",
+        ]
+    },
+    {
         # A real single-colour (white-only) PWM bulb, chosen because its own
         # stored Tuya config declares pwmhz:3000 - so the decoded frequency is
         # checked against the DEVICE's own claim rather than against our
@@ -1683,6 +1710,12 @@ DESCRIPTIONS = {
         "self-clearing, walking it past both spins to the TuyaMCU link, where it runs the raw-form "
         "handshake with its licensed id (tjtigg991kvoiiqi) and advances to the working-mode query "
         "(0x02). The flag is opt-in because other dumps use 0x9000F8 the opposite way.",
+    "BK7231N Tuya PC321 3-Phase Meter (SDK 2.0.2) boots past BLE, accepts product":
+        "A second 2.x dump, on SDK 2.0.2 (vs ATORCH's 2.1.17): the PC321 3-phase power meter "
+        "(from FlashDumps). Like ATORCH it wedges on the XVR busy spins (0x9000F8, 0x900000); "
+        "--xvr-selfclear walks it past both, through BLE init to the TuyaMCU link, where its "
+        "raw-form product record (licensed id gqmmtjclqb7reg5p) is accepted and it advances to "
+        "the working-mode query (0x02). Adds a distinct SDK sub-version and device class.",
     "BK7231N Tuya 10-Gang Wall Switch accepts product, advances to working-mode":
         "Another TuyaOS 3.x TuyaMCU dump for device-class breadth (from FlashDumps): a 10-gang wall "
         "switch on SDK 3.1.28, a multi-relay panel distinct from the meters, sensors and charger "
