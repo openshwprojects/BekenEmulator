@@ -35,6 +35,11 @@ def parse_args():
                         help="Reply to the product-info query with the raw 16-byte PID + short version "
                              "(TuyaOS 3.x wire form) instead of JSON. Use for TuyaOS 3.x dumps; leave "
                              "off for OpenBeken and older SDKs (1.1.71) that expect the JSON record.")
+    parser.add_argument("--xvr-selfclear", dest="xvr_selfclear", action="store_true",
+                        help="Model the XVR RF/BLE busy bits (0x9000F8 RF-cal, 0x900000 BLE llm_init) "
+                             "as self-clearing, so stock Tuya SDK 2.x dumps (ATORCH 2.1.17, PC321 "
+                             "2.0.2, ...) boot past their RF and BLE init spins to the TuyaMCU link. "
+                             "Opt-in: it breaks dumps that do real BLE init, so only enable per dump.")
     parser.add_argument("-key", "--key", dest="key", default=None, metavar="KEY",
                         help="Firmware decryption key: a known name (%s), 32 hex chars, or base64 of 16 bytes. "
                              "Omit for plaintext images (no decryption)." % ", ".join(sorted(KNOWN_KEYS)))
@@ -101,7 +106,7 @@ def main():
     else:
         rx_delay = 0 if args.tuyamcu else 2_000_000
 
-    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data, uart1_rx=uart1_rx, uart1_rx_delay=rx_delay, tuyamcu_enabled=args.tuyamcu, tuyamcu_pid=args.tuyamcu_pid, tuyamcu_raw=args.tuyamcu_raw)
+    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data, uart1_rx=uart1_rx, uart1_rx_delay=rx_delay, tuyamcu_enabled=args.tuyamcu, tuyamcu_pid=args.tuyamcu_pid, tuyamcu_raw=args.tuyamcu_raw, xvr_selfclear=args.xvr_selfclear)
     emu.setup()
     emu.run()
 

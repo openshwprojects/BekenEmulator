@@ -1170,6 +1170,39 @@ TEST_CASES = [
         ]
     },
     {
+        # The 2.x SDK generation, finally reachable. The ATORCH AT4P energy
+        # meter (stock Tuya 2.1.17) wedges TWICE in RF/BLE init, on the XVR
+        # busy-bit spins at 0x9000F8 (RF-cal) and 0x900000 (BLE llm_init) -
+        # both the 'set bit 31, wait for hardware to clear it' pattern (see
+        # the read hook and scratch/ble_stall.py). --xvr-selfclear models
+        # those bits as self-clearing, which walks it past both spins, through
+        # BLE init and mf_init to the TuyaMCU link. From there it runs the
+        # raw-form handshake like the 3.x dumps: --tuyamcu-raw + its licensed
+        # id (tjtigg991kvoiiqi) -> it accepts the product record and advances
+        # to the working-mode query (0x02). Only 2.x dump in the suite. The
+        # flag is opt-in precisely because other dumps use 0x9000F8 the
+        # OPPOSITE way (they need bit 31 to stay set - see the read hook), so
+        # nothing else is affected. BLE+RF init makes this a heavier boot,
+        # hence the generous timeout.
+        "name": "BK7231N Tuya ATORCH AT4P Meter (SDK 2.1.17) boots past BLE, accepts product",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_ATORCH_AT4P_EnergyMeter_TuyaMCU_2.1.17.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--xvr-selfclear", "--tuyamcu",
+                 "--tuyamcu-pid", "tjtigg991kvoiiqi", "--tuyamcu-raw", "-key", "TUYA"],
+        "timeout": 420,
+        "expected_strings": [
+            "bk7231n_common_user_config_ty:2.1.17",
+            "mf_init succ",
+            # Past the BLE gate and RF-cal (the point of --xvr-selfclear): it
+            # reached the TuyaMCU link and sent a heartbeat.
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # Accepted our raw product record and advanced to working-mode.
+            "55 aa 00 02 00 00 01",
+        ]
+    },
+    {
         # A real single-colour (white-only) PWM bulb, chosen because its own
         # stored Tuya config declares pwmhz:3000 - so the decoded frequency is
         # checked against the DEVICE's own claim rather than against our
@@ -1643,6 +1676,13 @@ DESCRIPTIONS = {
         "licensed id (dsmsam7xpb3ht7rl) the simulated MCU answers in the raw form this SDK line "
         "wants, so the device accepts the product record (stored key matches our input), updates "
         "its product id, and advances to the working-mode query (0x02) and Wi-Fi link setup.",
+    "BK7231N Tuya ATORCH AT4P Meter (SDK 2.1.17) boots past BLE, accepts product":
+        "The 2.x SDK generation, reachable only with --xvr-selfclear. This ATORCH energy meter "
+        "(stock Tuya 2.1.17) wedges twice in RF/BLE init on the XVR busy-bit spins at 0x9000F8 and "
+        "0x900000 (both 'set bit 31, wait for it to clear'). --xvr-selfclear models those bits as "
+        "self-clearing, walking it past both spins to the TuyaMCU link, where it runs the raw-form "
+        "handshake with its licensed id (tjtigg991kvoiiqi) and advances to the working-mode query "
+        "(0x02). The flag is opt-in because other dumps use 0x9000F8 the opposite way.",
     "BK7231N Tuya 10-Gang Wall Switch accepts product, advances to working-mode":
         "Another TuyaOS 3.x TuyaMCU dump for device-class breadth (from FlashDumps): a 10-gang wall "
         "switch on SDK 3.1.28, a multi-relay panel distinct from the meters, sensors and charger "

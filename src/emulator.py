@@ -67,6 +67,10 @@ class SimulatorState:
         # as gpio/pwm below and filtered out of the log by the harness. Only
         # populated when EMU_REPORT is set, so a normal run pays nothing.
         self.uart1_events = []
+        # XVR RF/BLE busy registers (0x9000F8, 0x900000) the firmware has armed
+        # by writing bit 31; the next read of an armed one reports the bit clear
+        # ("op done") and disarms. Only used under the opt-in --xvr-selfclear.
+        self.xvr_armed = set()
 
 class FlashState:
     def __init__(self):
@@ -110,8 +114,9 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False):
         self.raw_flash = raw_flash
+        self.xvr_selfclear = xvr_selfclear
         self.bootloader = bootloader
         self.app = app
         self.with_boot = with_boot
@@ -387,6 +392,10 @@ class BekenEmulator:
         if address == self.ICU_INT_STATUS: self.state.pending_irqs &= ~value
         if address == 0x00802110: self.state.uart1_int_enable = value
         if address == 0x00802210: self.state.uart2_int_enable = value
+        # Arm the XVR RF/BLE busy self-clear (opt-in) when the firmware sets bit
+        # 31 to start an operation. The write still lands in mapped memory.
+        if self.xvr_selfclear and address in (0x009000f8, 0x00900000) and (value & 0x80000000):
+            self.state.xvr_armed.add(address)
 
         # GPIO config registers - one 32-bit word per pin at GPIO_BASE + n*4.
         # Bit 1 is the driven output level (GCFG_OUTPUT), bit 3 output-enable.
@@ -612,22 +621,25 @@ class BekenEmulator:
             mu.mem_write(address, struct.pack("<I", 0))
             return
 
-        # NOTE: do NOT serve 0x9000F8 (XVR RF-operation register). The ATORCH
-        # AT4P energy meter (stock Tuya SDK 2.1.17) spins on it at app PC
-        # 0x00093A04 during RF init - it sets bit 31 to start an operation and
-        # waits for hardware to clear it:
-        #     ldr r1,[r3]; orr r2,r1,#0x80000000; str r2,[r3]   ; set bit 31
-        #     ldr r2,[r3]; cmp r2,#0; blt .-                    ; wait bit31==0
-        # Modelling bit 31 as self-clearing looks right but is a net loss, both
-        # measured, not guessed:
-        #   * even clearing ONLY bit 31 (keeping every other bit) still hangs
-        #     TempHum, Plug and zmai90 in BLE init - they never reach their
-        #     protected-key read (an earlier attempt that zeroed the whole
-        #     register broke them the same way);
-        #   * and it buys ATORCH nothing: past this spin it only reaches
-        #     ble_appm_send_gapm_reset_cmd and stalls on a BLE link-layer reset
-        #     the emulator does not model. ATORCH is BLE-gated, not RF-gated.
-        # 0x9000FC is likewise left alone.
+        # XVR RF/BLE busy registers 0x9000F8 (RF-cal) and 0x900000 (BLE
+        # llm_init). Both use the identical "set bit 31, spin until hardware
+        # clears it" busy pattern, at app PCs ~0x93F1C and ~0x93BD0:
+        #     ldr r1,[r]; orr r2,r1,#0x80000000; str r2,[r]   ; set bit 31
+        #     ldr r2,[r]; <test bit 31>; branch-if-still-set  ; wait bit31==0
+        # Serving them is OPT-IN (--xvr-selfclear), NOT default: dumps that do
+        # real BLE init (TempHum/Plug/zmai90) also write and read bit 31 here but
+        # for the OPPOSITE meaning and hang if it is cleared - the two uses are
+        # irreconcilable, so a per-dump flag is the only safe way. When set,
+        # model bit 31 as self-clearing, and only after the firmware itself set
+        # it (state.xvr_armed). Measured to walk the stock 2.x / ATORCH (2.1.17)
+        # RF and BLE init past BOTH spins all the way to the TuyaMCU link.
+        # Disassembly + measurements: scratch/ble_stall.py, scratch/ble_crack.py.
+        if self.xvr_selfclear and address in (0x009000f8, 0x00900000):
+            if address in self.state.xvr_armed:
+                self.state.xvr_armed.discard(address)
+                cur = struct.unpack("<I", mu.mem_read(address, 4))[0]
+                mu.mem_write(address, struct.pack("<I", cur & ~0x80000000))
+            return
 
         # Accelerator block just past the main MMIO window (0x810000) - a
         # crypto/hash engine used by original Tuya firmware during TCP/IP init.
