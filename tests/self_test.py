@@ -274,45 +274,25 @@ TEST_CASES = [
         # TuyaMCU_SendCommandWithData: 55 AA <ver 00> <cmd> <lenHi> <lenLo>
         # <checksum>, checksum = 0xFF + cmd + lenHi + lenLo = 0xFF for a
         # zero-length heartbeat.
+        #
+        # A simulated MCU is attached (--tuyamcu, src/tuyamcu.py) so the link
+        # is a conversation: it answers the heartbeat, the product query and
+        # the working-mode query. OpenBeken accepts the product record and
+        # completes the handshake, which no stock TuyaOS image here does.
         "name": "MathDemo Startup Command: startDriver TuyaMCU sends heartbeat",
-        "binary": os.path.join(ROOT_DIR, "firmwares",
-                               "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_tuyaMCU.bin"),
-        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
-        "timeout": 240,
-        "expected_strings": [
-            "CFG_InitAndLoad: Correct config has been loaded",
-            "Started TuyaMCU.",
-            "[UART1/MCU] 55 aa 00 00 00 00 ff"
-        ]
-    },
-    {
-        # The heartbeat case above proves the module TALKS; this proves it
-        # can hold a full CONVERSATION. --tuyamcu attaches src/tuyamcu.py's
-        # simulated MCU: every TuyaMCU frame the firmware transmits on UART1
-        # is fed to that peer, and its reply is queued back onto UART1 RX
-        # (the same FIFO + RX-interrupt path a typed console command uses).
-        # So the module walks its whole startup handshake instead of looping
-        # on heartbeats:
-        #   module -> HEARTBEAT,       MCU -> ACK
-        #   module -> QUERY_PRODUCT,   MCU -> {"p":"...","v":"1.0.0"}
-        #   module -> MCU_CONF,        MCU -> (working mode)
-        #   module -> QUERY_STATE
-        # The asserted lines are the firmware's OWN TuyaMCU log: it received,
-        # checksum-validated and JSON-parsed the exact product record the sim
-        # sent - the whole round trip proven from the firmware side. The
-        # conversation also shows, both directions, in the report's UART1 tab.
-        "name": "TuyaMCU: simulated MCU answers, module completes handshake",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_tuyaMCU.bin"),
         "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
         "timeout": 240,
         "expected_strings": [
+            "CFG_InitAndLoad: Correct config has been loaded",
             "Started TuyaMCU.",
-            # Module advanced past heartbeat and the MCU's product reply arrived...
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # With the simulated MCU answering, OpenBeken runs the WHOLE
+            # handshake - unlike the stock images, it accepts the product
+            # record and goes on to the working-mode query.
             "cmd 1 (QueryProductInformation)",
-            # ...and the firmware parsed the exact JSON the simulated MCU sent.
             'received {"p":"bekenemulator000","v":"1.0.0"}',
-            # ...then went on to the working-mode query and got that reply too.
             "cmd 2 (MCUconf)",
         ]
     },
@@ -744,11 +724,26 @@ TEST_CASES = [
         # stall - BLE stack bring-up and BLE-netcfg advertising - so this case
         # guards the 0x810000 / 0x81001c accelerator model. -key TUYA, and it is
         # the deepest-booting original-Tuya dump in the suite.
+        #
+        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py): it
+        # answers the module's frames, so the link is a conversation rather than
+        # a monologue. The heartbeat ACK unblocks the next step - QUERY_PRODUCT
+        # (0x01) - which the device never sends with nothing on the wire.
+        # Verified A/B over a shared EMULATED-INSTRUCTION budget (wall-clock
+        # comparison flakes; the frame lands near the cut-off):
+        #    with peer: heartbeat @18.4M insns, 0x01 @18.9M, 0x02 @19.1M
+        #    without  : heartbeat @18.4M insns, no 0x01 through 30.9M
+        # Only one heartbeat is asserted, not a repeat: once the peer answers,
+        # the device advances into the query loop instead of idling on
+        # heartbeats, so progress through the handshake is the liveness signal.
+        # This 1.1.71 SDK is the only stock image that ACCEPTS our product
+        # record (no 'prod len' rejection) and advances again, to the
+        # working-mode query MCU_CONF (0x02) - the furthest any stock dump gets.
         "name": "Tuya TMWF02 TuyaMCU Boots past crypto accel",
         "binary": os.path.join(ROOT_DIR, "firmwares", "BK7231T_Tuya_TMWF02_Fan_Switch_TuyaMCU_1.1.71.bin"),
         # --uart1-hex keeps any TuyaMCU 55AA bytes off the UART2 log stream the
         # markers match, and exercises the dual-UART feature.
-        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
         "timeout": 300,
         "expected_strings": [
             "Initializing TCP/IP stack",
@@ -756,7 +751,13 @@ TEST_CASES = [
             "STACK INIT OK",
             "CREATE DB SUCCESS",
             # BLE network-config advertising starts.
-            "appm start advertising"
+            "appm start advertising",
+            # The MCU link is up and the device talks first.
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # Accepted our reply and moved on to the working-mode query.
+            "55 aa 00 02 00 00 01",
         ]
     },
     {
@@ -880,10 +881,22 @@ TEST_CASES = [
         #    under the old stripped/logical model, which is what exposed the bug);
         #  - that a paired stock-Tuya image boots through to normal operation;
         #  - the UART1 capture path on stock vendor firmware, not just OpenBeken.
+        #
+        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py): it
+        # answers the module's frames, so the link is a conversation rather than
+        # a monologue. The heartbeat ACK unblocks the next step - QUERY_PRODUCT
+        # (0x01) - which the device never sends with nothing on the wire.
+        # Verified A/B over a shared EMULATED-INSTRUCTION budget (wall-clock
+        # comparison flakes; the frame lands near the cut-off):
+        #    with peer: heartbeat @19.2M insns, QUERY_PRODUCT @20.2M
+        #    without  : heartbeat @19.2M insns, no 0x01 through 43.2M
+        # Only one heartbeat is asserted, not a repeat: once the peer answers,
+        # the device advances into the query loop instead of idling on
+        # heartbeats, so progress through the handshake is the liveness signal.
         "name": "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_Ettroit_ETWF4301_Thermostat_TuyaMCU_3.1.28.bin"),
-        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
         # The first frame lands only after the SDK reaches normal operation
         # (~3-4 min here); streaming stops as soon as the required count is seen.
         "timeout": 420,
@@ -897,7 +910,12 @@ TEST_CASES = [
             "mirror kv info, addr: 1cf000, cnt: 97, is valid: 0",
             # TuyaMCU heartbeat (55 AA ver=00 cmd=00 len=0000 chk=FF), repeated -
             # proves the MCU link keeps running, not just starts.
-            ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # And this SDK parsed our 36-byte reply before rejecting it on
+            # length - proof the injected UART1 RX reaches stock firmware.
+            "prod len = 36",
         ]
     },
     {
@@ -913,10 +931,22 @@ TEST_CASES = [
         # store only rotates after real service use. Factory dumps leave the
         # mirror erased. (The earlier "user data %" heuristic was noise - it
         # scored this device the same as unpaired ones.)
+        #
+        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py): it
+        # answers the module's frames, so the link is a conversation rather than
+        # a monologue. The heartbeat ACK unblocks the next step - QUERY_PRODUCT
+        # (0x01) - which the device never sends with nothing on the wire.
+        # Verified A/B over a shared EMULATED-INSTRUCTION budget (wall-clock
+        # comparison flakes; the frame lands near the cut-off):
+        #    with peer: heartbeat @21.8M insns, QUERY_PRODUCT @22.8M
+        #    without  : heartbeat @21.8M insns, no 0x01 through 33.8M
+        # Only one heartbeat is asserted, not a repeat: once the peer answers,
+        # the device advances into the query loop instead of idling on
+        # heartbeats, so progress through the handshake is the liveness signal.
         "name": "BK7231N Tuya BEOK Thermostat (TuyaOS 3.11.12) sends TuyaMCU heartbeats",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_BEOK_TOL47WIFI_Thermostat_TuyaMCU_TuyaOS_3.11.12.bin"),
-        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
         "timeout": 420,
         "expected_strings": [
             "< TuyaOS V:3.11.12 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
@@ -928,7 +958,12 @@ TEST_CASES = [
             "0x53 0xc1 0xb1 0x85 0xe3 0xbf 0xb6 0x3 0xe8 0x43 0xad 0xfb 0x83 0x82 0x69 0xdf",
             # The MCU link is opened at the TuyaMCU baud before any frame goes out.
             "read baud rate 9600",
-            ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # And this SDK parsed our 36-byte reply before rejecting it on
+            # length - proof the injected UART1 RX reaches stock firmware.
+            "prod len = 36",
         ]
     },
     {
@@ -941,10 +976,22 @@ TEST_CASES = [
         # Its KV pair carries cnt 16 - a different rotation count from the other
         # two (97 and 8) - which is useful: it shows the physical-addressing fix
         # is not tied to one particular store state.
+        #
+        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py): it
+        # answers the module's frames, so the link is a conversation rather than
+        # a monologue. The heartbeat ACK unblocks the next step - QUERY_PRODUCT
+        # (0x01) - which the device never sends with nothing on the wire.
+        # Verified A/B over a shared EMULATED-INSTRUCTION budget (wall-clock
+        # comparison flakes; the frame lands near the cut-off):
+        #    with peer: heartbeat @21.6M insns, QUERY_PRODUCT @22.6M
+        #    without  : heartbeat @21.6M insns, no 0x01 through 51.6M
+        # Only one heartbeat is asserted, not a repeat: once the peer answers,
+        # the device advances into the query loop instead of idling on
+        # heartbeats, so progress through the handshake is the liveness signal.
         "name": "BK7231N Tuya PJ1103C Dual-Clamp Power Meter sends TuyaMCU heartbeats",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_PJ1103C_DualClampPowerMeter_TuyaMCU_TuyaOS_3.11.12.bin"),
-        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
         "timeout": 420,
         "expected_strings": [
             "< TuyaOS V:3.11.12 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
@@ -955,38 +1002,11 @@ TEST_CASES = [
             # This device's own protected key, decrypted from 0x1ee000.
             "0xfe 0x2f 0xe2 0x48 0x9 0x3f 0x8d 0x4a 0xad 0x1a 0xc1 0xf3 0x79 0x2f 0x56 0xf6",
             "read baud rate 9600",
-            ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
-        ]
-    },
-    {
-        # What the peer actually does for a STOCK TuyaOS device (unlike OBK,
-        # which it drives through a full handshake). This meter sends both
-        # its heartbeat AND its product query (0x01) UNPROMPTED - both come
-        # up with nothing on the wire, the product query just later (~70s),
-        # so QUERY_PRODUCT is NOT something the peer unlocks (an earlier
-        # version of this case wrongly asserted that). The peer's real,
-        # verifiable effect is on the RECEIVE side: when it answers the 0x01
-        # query with a product record, stock TuyaOS parses that reply and
-        # rejects it on length, logging "prod len = 36" (our default reply
-        # is 36 bytes). That line appears ONLY with the peer - with nothing
-        # answering there is no reply to parse - so it proves the injected
-        # UART1 RX is delivered to and processed by third-party firmware,
-        # not just OpenBeken. Stock TuyaOS then rejects it; its product-info
-        # check is stricter than OBK's, which accepts the same reply and
-        # finishes the handshake (see "TuyaMCU: simulated MCU answers").
-        "name": "TuyaMCU: stock PJ1103C receives and rejects the peer's product reply",
-        "binary": os.path.join(ROOT_DIR, "firmwares",
-                               "BK7231N_Tuya_PJ1103C_DualClampPowerMeter_TuyaMCU_TuyaOS_3.11.12.bin"),
-        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
-        "timeout": 420,
-        "expected_strings": [
-            "mf_init succ",
-            # The meter is running its TuyaMCU link (sends heartbeats).
             "[UART1/MCU] 55 aa 00 00 00 00 ff",
-            # The peer answered the query; stock TuyaOS parsed the 36-byte
-            # reply and rejected it on length. Needs the peer (no reply ->
-            # nothing to parse), so this is the real proof the RX injection
-            # reaches and is processed by stock firmware.
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # And this SDK parsed our 36-byte reply before rejecting it on
+            # length - proof the injected UART1 RX reaches stock firmware.
             "prod len = 36",
         ]
     },
@@ -1029,10 +1049,22 @@ TEST_CASES = [
         # and called bk_reboot, looping forever. With writes implemented it runs
         # on to normal operation and drives its MCU. Any firmware that saves
         # state at boot depends on this.
+        #
+        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py): it
+        # answers the module's frames, so the link is a conversation rather than
+        # a monologue. The heartbeat ACK unblocks the next step - QUERY_PRODUCT
+        # (0x01) - which the device never sends with nothing on the wire.
+        # Verified A/B over a shared EMULATED-INSTRUCTION budget (wall-clock
+        # comparison flakes; the frame lands near the cut-off):
+        #    with peer: heartbeat @18.1M insns, QUERY_PRODUCT @19.1M
+        #    without  : heartbeat @18.1M insns, no 0x01 through 33.1M
+        # Only one heartbeat is asserted, not a repeat: once the peer answers,
+        # the device advances into the query loop instead of idling on
+        # heartbeats, so progress through the handshake is the liveness signal.
         "name": "BK7231N Tuya NAS-PS10 Presence Sensor sends TuyaMCU heartbeats",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_NAS-PS10_PresenceSensor_TuyaMCU_TuyaOS_3.8.18.bin"),
-        "args": ["--only-uart", "--uart1-hex", "-key", "TUYA"],
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
         "timeout": 420,
         "expected_strings": [
             "< TuyaOS V:3.8.18 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
@@ -1043,7 +1075,12 @@ TEST_CASES = [
             "mirror kv info, addr: 1cf000, cnt: 16, is valid: 0",
             "0x9a 0xe5 0x6a 0x9b 0x84 0x26 0x71 0x1a 0x9f 0x6a 0xdb 0x77 0x34 0xf9 0xae 0xf7",
             "read baud rate 9600",
-            ("[UART1/MCU] 55 aa 00 00 00 00 ff", REPEATS)
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # And this SDK parsed our 36-byte reply before rejecting it on
+            # length - proof the injected UART1 RX reaches stock firmware.
+            "prod len = 36",
         ]
     }
 ,
@@ -1349,13 +1386,6 @@ DESCRIPTIONS = {
         "Startup command 'startDriver TuyaMCU'. The driver opens UART1 itself and talks first, "
         "unprompted: the first per-second tick emits a TuyaMCU heartbeat frame "
         "(55 AA 00 00 00 00 FF) with no MCU attached.",
-    "TuyaMCU: simulated MCU answers, module completes handshake":
-        "The full two-way TuyaMCU conversation. --tuyamcu attaches src/tuyamcu.py's simulated MCU "
-        "to UART1: it answers the module's heartbeat, product-info, working-mode and query-state "
-        "frames, so the firmware walks its whole startup handshake instead of looping on "
-        "heartbeats. The asserted lines are the firmware's own log - it received, checksum-"
-        "validated and JSON-parsed the exact product record the sim sent. Both directions of the "
-        "exchange show in the UART1 tab.",
     "MathDemo Startup Command: SetPinRole drives relay pin P9":
         "Startup command 'SetPinChannel 9 1; SetPinRole 9 Rel; SetChannel 1 0; SetChannel 1 1'. "
         "Orders OpenBeken to make pin 9 a relay output bound to channel 1, then switches that "
@@ -1512,14 +1542,6 @@ DESCRIPTIONS = {
         "and all metering while the Beken is only the radio, so this covers a different hardware "
         "class from the two thermostat cases. Its KV pair carries a third distinct rotation count "
         "(16), showing the physical flash-addressing model is not tied to one store state.",
-    "TuyaMCU: stock PJ1103C receives and rejects the peer's product reply":
-        "What the --tuyamcu peer really does for a stock-TuyaOS device (as opposed to OpenBeken, "
-        "which it drives through a full handshake). This meter sends heartbeat and product-query "
-        "unprompted, so QUERY_PRODUCT is not something the peer unlocks. The peer's verifiable "
-        "effect is on receive: it answers the query and stock TuyaOS parses the 36-byte reply and "
-        "rejects it on length ('prod len = 36'). That line appears only with the peer, proving the "
-        "injected UART1 RX is delivered to and processed by third-party firmware - which stock "
-        "TuyaOS then rejects, its product-info check being stricter than OBK's.",
     "MathDemo Startup Command: startDriver BL0942 drives the meter UART":
         "Runs OpenBeken's BL0942 energy-meter driver from an injected startup command. The driver "
         "opens UART1 at 4800 baud and speaks the BL0942 register protocol - two init writes "
