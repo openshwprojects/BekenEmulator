@@ -1070,21 +1070,24 @@ TEST_CASES = [
         # on to normal operation and drives its MCU. Any firmware that saves
         # state at boot depends on this.
         #
-        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py): it
-        # answers the module's frames, so the link is a conversation rather than
-        # a monologue. The heartbeat ACK unblocks the next step - QUERY_PRODUCT
-        # (0x01) - which the device never sends with nothing on the wire.
-        # Verified A/B over a shared EMULATED-INSTRUCTION budget (wall-clock
-        # comparison flakes; the frame lands near the cut-off):
-        #    with peer: heartbeat @18.1M insns, QUERY_PRODUCT @19.1M
-        #    without  : heartbeat @18.1M insns, no 0x01 through 33.1M
-        # Only one heartbeat is asserted, not a repeat: once the peer answers,
-        # the device advances into the query loop instead of idling on
-        # heartbeats, so progress through the handshake is the liveness signal.
+        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py) and,
+        # like the real MCU wired to this presence sensor, answers in the form
+        # TuyaOS 3.x expects: --tuyamcu-raw replies to the product query with
+        # the raw 16-byte product id + short version (not JSON), and
+        # --tuyamcu-pid gives the device's OWN licensed id, recovered from its
+        # gw_bi KV ('pk':'o9a6at9cyfchb47y'). With the right form and id the
+        # device accepts the record (its stored product_key matches our input)
+        # and advances into the working-mode query (0x02) and Wi-Fi link setup
+        # - far past the heartbeat loop it idles in with nothing attached. The
+        # heartbeat is asserted once, not repeated: once the peer answers the
+        # device advances instead of idling, so handshake progress is the
+        # liveness signal. (A/B over a shared instruction budget: with peer,
+        # heartbeat @18.1M / QUERY_PRODUCT @19.1M; without, no 0x01 by 33.1M.)
         "name": "BK7231N Tuya NAS-PS10 Presence Sensor sends TuyaMCU heartbeats",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_NAS-PS10_PresenceSensor_TuyaMCU_TuyaOS_3.8.18.bin"),
-        "args": ["--only-uart", "--uart1-hex", "--tuyamcu", "-key", "TUYA"],
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu",
+                 "--tuyamcu-pid", "o9a6at9cyfchb47y", "--tuyamcu-raw", "-key", "TUYA"],
         "timeout": 420,
         "expected_strings": [
             "< TuyaOS V:3.8.18 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",
@@ -1098,9 +1101,12 @@ TEST_CASES = [
             "[UART1/MCU] 55 aa 00 00 00 00 ff",
             # Peer-unblocked: the product query, never sent without a peer.
             "55 aa 00 01 00 00 00",
-            # And this SDK parsed our 36-byte reply before rejecting it on
-            # length - proof the injected UART1 RX reaches stock firmware.
-            "prod len = 36",
+            # The device ACCEPTED our raw product record - its stored key
+            # matched the id we sent (JSON is rejected on length; raw is not).
+            "gw_cntl->gw_if.product_key:o9a6at9cyfchb47y, input:o9a6at9cyfchb47y",
+            # ...and advances to the working-mode query (0x02): real forward
+            # progress past the product stage, into Wi-Fi link setup.
+            "55 aa 00 02 00 00 01",
         ]
     }
 ,

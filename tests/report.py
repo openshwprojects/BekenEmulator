@@ -9,6 +9,8 @@ The output is one static file (inline CSS/JS, no external requests), so it works
 opened locally and published to GitHub Pages unchanged.
 """
 import html
+import re
+from datetime import datetime, timezone
 
 
 def _fmt_int(n):
@@ -406,6 +408,17 @@ def generate(results, meta, out_path):
 
     chips = meta.get("chips") or sorted({r["chip"] for r in results if r.get("chip")})
 
+    # Machine-readable form of generated_at (epoch ms) for the live "... ago"
+    # counter in the header. Empty when the timestamp is not the expected
+    # "%Y-%m-%d %H:%M UTC" shape (e.g. a local preview build) - the counter then
+    # renders nothing.
+    generated_ms = ""
+    _gm = re.match(r"(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d) UTC",
+                   meta.get("generated_at", "") or "")
+    if _gm:
+        _dt = datetime(*(int(x) for x in _gm.groups()), tzinfo=timezone.utc)
+        generated_ms = str(int(_dt.timestamp() * 1000))
+
     page = _PAGE.format(
         overall_cls=overall_cls,
         passed=passed,
@@ -417,6 +430,7 @@ def generate(results, meta, out_path):
         chips_list=html.escape(", ".join(chips)),
         total_time=_fmt_total(meta.get("total_time", 0)),
         generated=html.escape(meta.get("generated_at", "")),
+        generated_ms=generated_ms,
         commit_html=commit_html,
         run_html=run_html,
         filters=_filters_html(results),
@@ -459,6 +473,7 @@ _PAGE = """<!doctype html>
   .wrap {{ max-width:1000px; margin:0 auto; padding:28px 18px 60px; }}
   header h1 {{ margin:0 0 4px; font-size:22px; }}
   .sub {{ color:var(--muted); font-size:13px; margin-bottom:18px; }}
+  .ago {{ font-style:italic; opacity:.8; white-space:nowrap; }}
   .sub a {{ color:var(--accent); text-decoration:none; }}
   .summary {{ display:flex; gap:10px; flex-wrap:wrap; margin:0 0 22px; }}
   .stat {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
@@ -582,7 +597,7 @@ _PAGE = """<!doctype html>
 <div class="wrap">
   <header>
     <h1>Beken Emulator · Self-Test Report</h1>
-    <div class="sub">{generated} · total {total_time} · {commit_html}{run_html}</div>
+    <div class="sub">{generated}<span class="ago" data-ts="{generated_ms}"></span> · total {total_time} · {commit_html}{run_html}</div>
   </header>
   <div class="summary">
     <div class="stat"><div class="n">{total}</div><div class="l">Tests</div></div>
@@ -605,6 +620,34 @@ _PAGE = """<!doctype html>
 # API where available and falls back to a hidden textarea + execCommand so it
 # also works from a file:// URL.
 _SCRIPT = """<script>
+
+// --- live "generated N ago" counter in the header ------------------------
+// The report is static, so how stale it is only tells you anything if it keeps
+// counting. Reads the epoch-ms stamp the generator put in data-ts and refreshes
+// every 30 s, so a tab left open reads e.g. "(2 days, 3 hours, 32 minutes ago)".
+(function () {
+  function fmtAgo(ms) {
+    var s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    var d = Math.floor(s / 86400); s -= d * 86400;
+    var h = Math.floor(s / 3600);  s -= h * 3600;
+    var m = Math.floor(s / 60);
+    var unit = function (n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); };
+    var parts = [];
+    if (d) parts.push(unit(d, 'day'));
+    if (d || h) parts.push(unit(h, 'hour'));
+    parts.push(unit(m, 'minute'));
+    return '(' + parts.join(', ') + ' ago)';
+  }
+  function tick() {
+    var els = document.querySelectorAll('.ago[data-ts]');
+    for (var i = 0; i < els.length; i++) {
+      var t = parseInt(els[i].getAttribute('data-ts'), 10);
+      els[i].textContent = t ? ' ' + fmtAgo(t) : '';
+    }
+  }
+  tick();
+  setInterval(tick, 30000);
+})();
 
 // --- tag filtering -------------------------------------------------------
 // Selected tags in the same group are OR-ed (two chips widens the result);
