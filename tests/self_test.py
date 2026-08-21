@@ -1710,6 +1710,7 @@ def run_test(test_config):
     remaining = set(required)          # strings not yet at their required count
     insns_holder = [None]
     periph_lines = []
+    uart1_lines = []
     lock = threading.Lock()
 
     def reader():
@@ -1721,6 +1722,9 @@ def run_test(test_config):
                 parts = line.split()
                 if len(parts) >= 2 and parts[1].isdigit():
                     insns_holder[0] = int(parts[1])
+                continue
+            if line.startswith("[EMU_UART1]"):
+                uart1_lines.append(line.strip())
                 continue
             with lock:
                 lines.append(line)
@@ -1851,6 +1855,7 @@ def run_test(test_config):
                      insns=insns_holder[0], timed_out=hit_timeout,
                      output=output, checks=checks)
     result["periph"] = periph_data
+    result["uart1"] = uart1_lines
     _add_derived_tags(result)
 
     if not all_passed:

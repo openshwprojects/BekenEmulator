@@ -204,6 +204,59 @@ def _gpio_html(r):
             % (touched, len(per["gpio"]), "".join(rows), extra, pwm))
 
 
+def _uart1_html(r):
+    """Dedicated UART1 (TuyaMCU link) view: a Sent/Recv byte log with timestamps.
+
+    Consumes the raw '[EMU_UART1] <insn> <T|R> <hex>' lines the emulator emits
+    (one per byte) and coalesces runs of same-direction bytes into frames,
+    breaking whenever the direction flips or the line sits idle longer than
+    GAP_INSNS. Each frame is one line: a timestamp, Sent: (the device
+    transmitted) or Recv: (delivered to the device), the hex bytes, and their
+    printable-ASCII rendering.
+    """
+    events = []
+    for ln in r.get("uart1") or []:
+        parts = ln.split()          # [EMU_UART1] <insn> <T|R> <hexbyte>
+        if len(parts) != 4 or parts[2] not in ("T", "R"):
+            continue
+        try:
+            events.append((int(parts[1]), parts[2], int(parts[3], 16)))
+        except ValueError:
+            continue
+
+    if not events:
+        return ('<p class="empty">No UART1 traffic on this run. UART1 is the serial link '
+                'to an external device MCU (the TuyaMCU protocol); firmware that only does '
+                'Wi-Fi and GPIO never drives it, so it stays idle.</p>')
+
+    GAP_INSNS = 50000               # ~10 ms idle ends one frame and starts the next
+    INSNS_PER_MS = 5000.0           # emulator tick model: 10000 insns ~ 2 ms
+
+    frames = []                     # [direction, start_insn, [bytes], last_insn]
+    for insn, d, byte in events:
+        if frames and frames[-1][0] == d and insn - frames[-1][3] <= GAP_INSNS:
+            frames[-1][2].append(byte)
+            frames[-1][3] = insn
+        else:
+            frames.append([d, insn, [byte], insn])
+
+    rows = []
+    for d, start, bs, _last in frames:
+        hexs = " ".join("%02X" % b for b in bs)
+        asc = "".join(chr(b) if 32 <= b < 127 else "." for b in bs)
+        label = "Sent" if d == "T" else "Recv"
+        cls = "u1tx" if d == "T" else "u1rx"
+        rows.append('<span class="%s">%10.2f ms  %s:</span> %s   <span class="u1asc">%s</span>'
+                    % (cls, start / INSNS_PER_MS, label, html.escape(hexs), html.escape(asc)))
+
+    note = ('<p class="cfg-note"><b class="u1tx">Sent</b> = bytes the emulated device '
+            'transmitted on UART1 (device &rarr; MCU); <b class="u1rx">Recv</b> = bytes '
+            'delivered to the device (MCU &rarr; device, e.g. an <code>--uart1-rx</code> '
+            'injection). Timestamps come from the emulator instruction clock '
+            '(~5000 insns/ms) - they mark ordering and gaps, not wall-clock time.</p>')
+    return note + '<pre class="log uart1-log">' + "\n".join(rows) + "</pre>"
+
+
 def _test_card(r):
     ok = r["passed"]
     status_cls = "pass" if ok else "fail"
@@ -262,11 +315,13 @@ def _test_card(r):
         </div>
         <div class="tabbar">
           <button class="tab-btn active" type="button" data-tab="log">UART / log output</button>
+          <button class="tab-btn{uart1_dis}" type="button" data-tab="uart1">UART1 (MCU)</button>
           <button class="tab-btn{tuya_dis}" type="button" data-tab="tuya">Tuya config</button>
           <button class="tab-btn{gpio_dis}" type="button" data-tab="gpio">GPIO / PWM</button>
           <button class="copy-btn" type="button">Copy</button>
         </div>
         <div class="tab-panel" data-panel="log"><pre class="log">{log}</pre></div>
+        <div class="tab-panel hidden" data-panel="uart1">{uart1}</div>
         <div class="tab-panel hidden" data-panel="tuya">{tuya}</div>
         <div class="tab-panel hidden" data-panel="gpio">{gpio}</div>
       </div>
@@ -289,6 +344,8 @@ def _test_card(r):
         tuya_dis="" if r.get("tuya_config") else " disabled",
         gpio=_gpio_html(r),
         gpio_dis="" if r.get("periph") else " disabled",
+        uart1=_uart1_html(r),
+        uart1_dis="" if r.get("uart1") else " disabled",
         log=_highlight(r.get("output", ""), [c["string"] for c in r["checks"] if c["found"]]),
     )
 
@@ -478,6 +535,12 @@ _PAGE = """<!doctype html>
   .tabbar .copy-btn {{ margin-left:auto; }}
   .tab-panel {{ padding-top:10px; }}
   .tab-panel.hidden {{ display:none; }}
+  .uart1-log {{ line-height:1.55; }}
+  .uart1-log .u1tx {{ color:var(--pass); font-weight:700; }}
+  .uart1-log .u1rx {{ color:var(--accent); font-weight:700; }}
+  .uart1-log .u1asc {{ color:var(--muted); }}
+  b.u1tx {{ color:var(--pass); }}
+  b.u1rx {{ color:var(--accent); }}
   .empty {{ color:var(--muted); font-size:13px; }}
   .cfg-note {{ color:var(--muted); font-size:12px; margin:2px 0 10px; }}
   .cfg-cols {{ display:flex; gap:16px; flex-wrap:wrap; }}

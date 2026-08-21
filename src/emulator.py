@@ -52,6 +52,13 @@ class SimulatorState:
         # True while stdout sits at a line boundary. Report lines may only be
         # written then, so they never land inside a UART log line.
         self.uart_at_line_start = True
+        # UART1 (the TuyaMCU serial link) byte log for the report's dedicated
+        # UART1 tab: a list of (insn_count, 'T'|'R', byte). 'T' = the device
+        # transmitted it (device -> MCU); 'R' = it was delivered to the device
+        # (MCU -> device, e.g. --uart1-rx). Drained on the same line-start tick
+        # as gpio/pwm below and filtered out of the log by the harness. Only
+        # populated when EMU_REPORT is set, so a normal run pays nothing.
+        self.uart1_events = []
 
 class FlashState:
     def __init__(self):
@@ -272,14 +279,22 @@ class BekenEmulator:
                 # it is killed once the harness has what it needs - so whatever
                 # has not been emitted by then is simply lost. The harness
                 # filters these lines out of the displayed log.
-                if (state.gpio_dirty or state.pwm_dirty) and state.uart_at_line_start:
+                if ((state.gpio_dirty or state.pwm_dirty or state.uart1_events)
+                        and state.uart_at_line_start):
                     buf = sys.__stdout__.buffer
                     for pin in sorted(state.gpio_dirty):
                         buf.write(b"[EMU_GPIO] %d %08x\n" % (pin, state.gpio_cfg[pin]))
                     for off in sorted(state.pwm_dirty):
                         buf.write(b"[EMU_PWM] %03x %08x\n" % (off, state.pwm_regs[off]))
+                    # One line per UART1 byte: insn timestamp, direction, value.
+                    # The report coalesces consecutive same-direction bytes into
+                    # Sent:/Recv: frames; keeping raw bytes here means no framing
+                    # decision is baked into the capture.
+                    for _t, _d, _b in state.uart1_events:
+                        buf.write(b"[EMU_UART1] %d %c %02x\n" % (_t, ord(_d), _b))
                     state.gpio_dirty.clear()
                     state.pwm_dirty.clear()
+                    state.uart1_events.clear()
                     buf.flush()
                 if state.insn_count - state.last_emit >= 1_000_000:
                     state.last_emit = state.insn_count
@@ -387,6 +402,8 @@ class BekenEmulator:
         # shown as tagged hex so the 55 AA protocol frames are readable instead
         # of printing as garbage characters mixed into the log.
         if address == self.UART1_FIFO_PORT:
+            if self._emit_insns:
+                self.state.uart1_events.append((self.state.insn_count, 'T', value & 0xFF))
             if self.uart1_hex:
                 if self._uart_src != 'u1':
                     self._uart_write(b'\n[UART1/MCU] ')
@@ -655,6 +672,8 @@ class BekenEmulator:
             # as (reg >> 8) & 0xFF - so the byte is shifted up here. TX, in
             # contrast, is bits [7:0].
             b = self.uart1_rx.pop(0)
+            if self._emit_insns:
+                self.state.uart1_events.append((self.state.insn_count, 'R', b & 0xFF))
             mu.mem_write(address, struct.pack("<I", (b & 0xFF) << 8))
             return
 
