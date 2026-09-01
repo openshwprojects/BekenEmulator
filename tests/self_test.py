@@ -998,6 +998,66 @@ TEST_CASES = [
         # device advances instead of idling, so handshake progress is the
         # liveness signal. (A/B over a shared instruction budget: with peer,
         # heartbeat @19.2M / QUERY_PRODUCT @20.2M; without, no 0x01 by 43.2M.)
+        # A stock Tuya breaker / leakage switch on the BK7231T, SDK 1.1.80.
+        # Two things make it worth its own case rather than being one more
+        # TuyaMCU dump:
+        #
+        # 1. It pins down where the product-info wire form actually changes.
+        #    The only other 1.1.x image here (TMWF02 fan switch, 1.1.71)
+        #    ACCEPTS the JSON record {"p":..,"v":..}; every 2.x/3.x image
+        #    rejects it on length and needs the raw 16-byte id. 1.1.80 turns
+        #    out to be on the RAW side of that line, so the switch happened
+        #    within the 1.1.x series, not at the 2.x boundary as the other
+        #    dumps here would suggest. Verified by running it both ways: with
+        #    JSON it logs "prod len = 36" and stores the mangled key
+        #    'product_key:{"p":"wcihaluccf' (the first 16 bytes of our reply,
+        #    copied verbatim); with --tuyamcu-raw it stores the real id. The
+        #    clean product_key assertion below is what separates the two.
+        #
+        # 2. It is the first stock dump here that brings its whole BLE stack up
+        #    unaided - "STACK INIT OK", a GATT database, and advertising - with
+        #    no --xvr-selfclear. The 2.x images (ATORCH, PC321, A03CB3S) all
+        #    need that opt-in to get past their RF/BLE busy spins, so this one
+        #    shows the emulator handling a wifi+BLE SDK on the real path.
+        #
+        # Paired dump: it reads a real protected key at 0x1ee000 (not the blank
+        # magic an unprovisioned part returns) and reaches mf_init, so it gets
+        # to normal operation and drives the MCU link instead of parking in the
+        # manufacturing-test thread the way the pre-pair zmai90 dump does.
+        "name": "BK7231T Tuya Breaker/Leakage Switch (TuyaMCU 1.1.80) accepts raw product",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231T_Tuya_Breaker_LeakageSwitch_TuyaMCU_1.1.80.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--tuyamcu",
+                 "--tuyamcu-pid", "wcihaluccfsoayqa", "--tuyamcu-raw", "-key", "TUYA"],
+        "timeout": 420,
+        "tags": ["BLE", "TuyaMCU"],
+        "expected_strings": [
+            "bk7231t_common_user_config_ty:1.1.80",
+            # Provisioned: a real key comes back from the protected block, and
+            # the SDK gets through manufacturing init to normal operation.
+            "key_addr: 0x1ee000",
+            "mf_init succ",
+            # Whole BLE stack, with no --xvr-selfclear to help it along.
+            "STACK INIT OK",
+            "CREATE DB SUCCESS",
+            "appm start advertising",
+            # The MCU link is up and the module talks first (heartbeat).
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            # Peer-unblocked: the product query, never sent without a peer.
+            "55 aa 00 01 00 00 00",
+            # Our RAW product record was accepted and stored intact. With the
+            # JSON form this same line reads product_key:{"p":"wcihaluccf, so
+            # the clean id here is the proof the raw form is the one 1.1.80
+            # wants - not merely that the firmware kept running.
+            "product_key:wcihaluccfsoayqa",
+            "wifi mcu init. pid:wcihaluccfsoayqa firmwarekey:key34ak4q5rmrkef v1:1.1.80",
+            # ...and the stored key matched what we sent, so it goes on to the
+            # working-mode query (0x02) and into Wi-Fi link setup.
+            "gw_cntl.gw_if.product_key:wcihaluccfsoayqa, input:wcihaluccfsoayqa",
+            "55 aa 00 02 00 00 01",
+        ]
+    },
+    {
         "name": "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_Ettroit_ETWF4301_Thermostat_TuyaMCU_3.1.28.bin"),
@@ -1866,6 +1926,14 @@ DESCRIPTIONS = {
         "on P8 at 1000 Hz - rather than by an external MCU, so unlike the other stock-Tuya cases it "
         "produces no UART1 traffic by design. Adds a fourth Tuya SDK generation (TuyaOS 3.3.44) and "
         "reaches normal operation after reading its protected key.",
+    "BK7231T Tuya Breaker/Leakage Switch (TuyaMCU 1.1.80) accepts raw product":
+        "A stock Tuya breaker / leakage switch, BK7231T, SDK 1.1.80. It pins down where the "
+        "TuyaMCU product-info wire form changes: the other 1.1.x dump here (TMWF02, 1.1.71) "
+        "accepts the JSON product record, while this one rejects it on length (prod len = 36) "
+        "and needs the raw 16-byte id - so the switch happens inside the 1.1.x series, not at "
+        "the 2.x boundary. It is also the first stock dump that brings its entire BLE stack up "
+        "unaided (STACK INIT OK, GATT database, advertising) with no --xvr-selfclear, then "
+        "completes the product handshake and moves on to the working-mode query.",
     "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats":
         "A stock Tuya ETWF4301 thermostat (SDK 3.1.28) and the first non-OpenBeken image found "
         "that actually drives its MCU. Because this dump was taken after pairing, the SDK skips "
