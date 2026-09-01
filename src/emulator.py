@@ -2,6 +2,7 @@ import sys
 import os
 import struct
 import io
+import threading
 import time
 from unicorn import *
 from unicorn.arm_const import *
@@ -40,6 +41,7 @@ class SimulatorState:
         self.efuse_ctrl = 0
         self.saradc_cfg = 0        # shadow of SARADC_ADC_CONFIG (0x802c00)
         self.saradc_pending = 0    # samples waiting in the emulated ADC FIFO
+        self.last_pc = 0           # start of the last basic block, for the GUI status bar
         self.last_slow = 0         # insn_count at last ~10000-insn (timer) tick
         self.last_fast = 0         # insn_count at last ~1000-insn (UART) tick
         self.last_emit = 0         # insn_count at last [EMU_INSNS] report line
@@ -114,7 +116,7 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False, tuyamcu_dps=None, tuyamcu_injects=None):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False, tuyamcu_dps=None, tuyamcu_injects=None, uart_sink=None):
         self.raw_flash = raw_flash
         self.xvr_selfclear = xvr_selfclear
         self.bootloader = bootloader
@@ -172,6 +174,26 @@ class BekenEmulator:
         else:
             self.tuyamcu = None
         self._uart_src = None   # last UART shown, for interleaving text/hex
+        # Optional callback taking (port, byte) for every byte the firmware
+        # transmits, port being 1 or 2. A GUI sets this to route each UART to
+        # its own pane; when it is None (every CLI run) nothing changes and the
+        # bytes go to stdout exactly as before.
+        self.uart_sink = uart_sink
+        # Appends to uart1_rx may come from another thread (a GUI typing into
+        # the console) while the emulation thread pops from it. Only appends
+        # are locked: the emulator is the sole consumer, and an append can only
+        # ever GROW the buffer, so a lock-free pop can never miss or overrun.
+        # That keeps the lock off the hot read path, which polls UART1 status
+        # constantly during boot.
+        self._rx_lock = threading.Lock()
+        # Pause support for a GUI. Checked once per basic block, so it must
+        # stay a plain attribute test - the Event is only touched once actually
+        # paused. Pausing also hands the GIL back, which is what keeps a UI
+        # responsive while a boot is running.
+        self._paused = False
+        self._resume = threading.Event()
+        self._resume.set()
+        self.stopping = False
         # When EMU_REPORT is set (the self-test harness does this), periodically
         # emit the approximate executed-instruction count on a distinct
         # [EMU_INSNS] line so the report can show it. Off by default so normal
@@ -246,6 +268,37 @@ class BekenEmulator:
         """True while queued UART1 RX bytes should be delivered to the guest."""
         return bool(self.uart1_rx) and self.state.insn_count >= self.uart1_rx_delay
 
+    def feed_uart1(self, data):
+        """Queue bytes for the guest to read back on UART1. Thread-safe.
+
+        This is how a GUI types into the firmware's command console: the bytes
+        join the same RX FIFO / RX interrupt path that --uart1-rx and the
+        simulated MCU's replies use, so the guest cannot tell them apart.
+        """
+        with self._rx_lock:
+            self.uart1_rx += bytes(data)
+
+    def is_paused(self):
+        return self._paused
+
+    def pause(self, paused=True):
+        """Hold the emulation between basic blocks, or let it run on."""
+        if paused:
+            self._resume.clear()
+            self._paused = True
+        else:
+            self._paused = False
+            self._resume.set()
+
+    def stop(self):
+        """Ask the emulation to finish. Safe to call from another thread."""
+        self.stopping = True
+        self.pause(False)          # a paused run must wake up to see the stop
+        try:
+            self.mu.emu_stop()
+        except Exception:
+            pass
+
     def _uart_write(self, data):
         """Emit UART bytes verbatim.
 
@@ -309,6 +362,16 @@ class BekenEmulator:
     def hook_block(self, mu, address, size, user_data):
         state = self.state
         state.insn_count += (size >> 2) or 1
+        # Where execution is right now. Read by the GUI status bar from another
+        # thread, which is why it is captured here rather than via reg_read -
+        # Unicorn is not safe to query while it is running.
+        state.last_pc = address
+
+        # GUI pause. One attribute test per basic block on the normal path; the
+        # blocking wait is only reached once actually paused, and it releases
+        # the GIL so the UI thread gets it all.
+        if self._paused:
+            self._resume.wait()
 
         # Slow tick (~every 10000 insns): raise the periodic sources' pending.
         if state.insn_count - state.last_slow >= 10000:
@@ -458,7 +521,13 @@ class BekenEmulator:
                 # to read back over UART1 RX (delivered by the RX interrupt path).
                 reply = self.tuyamcu.react_stream(bytes([value & 0xFF]))
                 if reply:
-                    self.uart1_rx += reply
+                    with self._rx_lock:
+                        self.uart1_rx += reply
+            if self.uart_sink is not None:
+                # A GUI shows each UART in its own pane and formats it there,
+                # so none of the stdout interleaving below applies.
+                self.uart_sink(1, value & 0xFF)
+                return
             if self.uart1_hex:
                 if self._uart_src != 'u1':
                     self._uart_write(b'\n[UART1/MCU] ')
@@ -468,6 +537,9 @@ class BekenEmulator:
                 self._uart_write(bytes([value & 0xFF]))
             return
         if address == self.UART2_FIFO_PORT:
+            if self.uart_sink is not None:
+                self.uart_sink(2, value & 0xFF)
+                return
             if self.uart1_hex and self._uart_src == 'u1':
                 self._uart_write(b'\n')
                 self._uart_src = 'u2'

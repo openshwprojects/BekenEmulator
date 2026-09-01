@@ -103,52 +103,67 @@ def parse_args():
                              % ", ".join(sorted(CHIP_FAMILIES)))
     return parser.parse_args()
 
-def main():
-    args = parse_args()
+def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uart=False,
+                   uart1_hex=False, uart1_rx=b"", uart1_rx_delay=None, tuyamcu=False,
+                   tuyamcu_pid=None, tuyamcu_raw=False, tuyamcu_dps=None,
+                   tuyamcu_injects=None, xvr_selfclear=False, uart_sink=None,
+                   save_decrypted=True, log=None):
+    """Load a dump and return a configured, not-yet-started BekenEmulator.
 
-    if args.only_uart:
-        # Redirect stdout internally if needed, but the emulator handles self._print()
-        pass
+    Everything between "here is an image and some options" and "start running"
+    lives here, so the GUI drives the emulator through exactly the same path as
+    the command line instead of a second copy that quietly drifts from it.
+    Rejects bad options with ValueError carrying the message the CLI prints.
 
-    with open(args.dump_file, "rb") as f:
+    `key`, `tuyamcu_dps` and `tuyamcu_injects` are the parsed forms; the CLI
+    string parsers above turn command-line text into them first.
+    """
+    if log is None:
+        log = (lambda *a: None) if only_uart else print
+
+    chip_name = (chip or "").strip().upper()
+    if chip_name not in CHIP_FAMILIES:
+        raise ValueError("Unknown -chip value: %r. Known chips: %s."
+                         % (chip, ", ".join(sorted(CHIP_FAMILIES))))
+
+    with open(dump_path, "rb") as f:
         raw_data = f.read()
 
-    try:
-        # Everything that turns a command-line string into emulator input, so a
-        # bad argument of ANY kind gets the same one-line message rather than a
-        # traceback from somewhere deep in setup.
-        coefs = parse_key(args.key)
-        tuyamcu_dps = parse_dp_specs(args.tuyamcu_dps)
-        tuyamcu_injects = parse_hex_blobs(args.tuyamcu_injects)
-    except ValueError as e:
-        print(e)
-        sys.exit(1)
-
-    chip_name = args.chip.strip().upper()
-    if chip_name not in CHIP_FAMILIES:
-        print("Unknown -chip value: %r. Known chips: %s." % (args.chip, ", ".join(sorted(CHIP_FAMILIES))))
-        sys.exit(1)
-    chip_identity = CHIP_FAMILIES[chip_name]
-
     flash_data = strip_crcs(raw_data)
+    bootloader = extract_and_decrypt(flash_data, "bootloader", key)
+    app = extract_and_decrypt(flash_data, "app", key)
 
-    bootloader = extract_and_decrypt(flash_data, "bootloader", coefs)
-    app = extract_and_decrypt(flash_data, "app", coefs)
-    
-    if app:
+    if app and save_decrypted:
         with open("app_decrypted.bin", "wb") as f:
             f.write(app)
 
-    if not args.only_uart:
-        if bootloader is None:
-            print("Warning: Could not find 'bootloader' RBL container. Booting from 0x10000.")
-        else:
-            print(f"Loaded 'bootloader' payload, size: {len(bootloader)} bytes")
-            
-        if app is None:
-            print("Warning: Could not find 'app' RBL container.")
-        else:
-            print(f"Loaded 'app' payload, size: {len(app)} bytes")
+    if bootloader is None:
+        log("Warning: Could not find 'bootloader' RBL container. Booting from 0x10000.")
+    else:
+        log(f"Loaded 'bootloader' payload, size: {len(bootloader)} bytes")
+    if app is None:
+        log("Warning: Could not find 'app' RBL container.")
+    else:
+        log(f"Loaded 'app' payload, size: {len(app)} bytes")
+
+    # A typed console command must wait for OBK's console callback (~2M insns);
+    # TuyaMCU replies are generated only after the firmware transmits a frame, so
+    # the firmware is already listening and no hold-off is needed.
+    if uart1_rx_delay is None:
+        uart1_rx_delay = 0 if tuyamcu else 2_000_000
+
+    return BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app,
+                         with_boot=with_boot, only_uart=only_uart,
+                         chip_identity=CHIP_FAMILIES[chip_name], uart1_hex=uart1_hex,
+                         physical_flash=raw_data, uart1_rx=uart1_rx,
+                         uart1_rx_delay=uart1_rx_delay, tuyamcu_enabled=tuyamcu,
+                         tuyamcu_pid=tuyamcu_pid, tuyamcu_raw=tuyamcu_raw,
+                         xvr_selfclear=xvr_selfclear, tuyamcu_dps=tuyamcu_dps,
+                         tuyamcu_injects=tuyamcu_injects, uart_sink=uart_sink)
+
+
+def main():
+    args = parse_args()
 
     uart1_rx = b""
     if args.uart1_rx is not None:
@@ -158,15 +173,23 @@ def main():
             text += "\r\n"
         uart1_rx = text.encode("latin-1", "replace")
 
-    # A typed console command must wait for OBK's console callback (~2M insns);
-    # TuyaMCU replies are generated only after the firmware transmits a frame, so
-    # the firmware is already listening and no hold-off is needed.
-    if args.uart1_rx_delay is not None:
-        rx_delay = args.uart1_rx_delay
-    else:
-        rx_delay = 0 if args.tuyamcu else 2_000_000
+    try:
+        # Everything that turns a command-line string into emulator input, so a
+        # bad argument of ANY kind gets the same one-line message rather than a
+        # traceback from somewhere deep in setup.
+        emu = build_emulator(
+            args.dump_file, key=parse_key(args.key), chip=args.chip,
+            with_boot=args.with_boot, only_uart=args.only_uart,
+            uart1_hex=args.uart1_hex, uart1_rx=uart1_rx,
+            uart1_rx_delay=args.uart1_rx_delay, tuyamcu=args.tuyamcu,
+            tuyamcu_pid=args.tuyamcu_pid, tuyamcu_raw=args.tuyamcu_raw,
+            tuyamcu_dps=parse_dp_specs(args.tuyamcu_dps),
+            tuyamcu_injects=parse_hex_blobs(args.tuyamcu_injects),
+            xvr_selfclear=args.xvr_selfclear)
+    except ValueError as e:
+        print(e)
+        sys.exit(1)
 
-    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data, uart1_rx=uart1_rx, uart1_rx_delay=rx_delay, tuyamcu_enabled=args.tuyamcu, tuyamcu_pid=args.tuyamcu_pid, tuyamcu_raw=args.tuyamcu_raw, xvr_selfclear=args.xvr_selfclear, tuyamcu_dps=tuyamcu_dps, tuyamcu_injects=tuyamcu_injects)
     emu.setup()
     emu.run()
 
