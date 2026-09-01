@@ -73,6 +73,10 @@ class SimulatorState:
         # by writing bit 31; the next read of an armed one reports the bit clear
         # ("op done") and disarms. Only used under the opt-in --xvr-selfclear.
         self.xvr_armed = set()
+        # General-DMA channel config shadows: channel -> last CONF value, with
+        # the enable bit already cleared because the transfer is done by the
+        # time the guest can look. Reads of CONF are served from here.
+        self.gdma_conf = {}
 
 class FlashState:
     def __init__(self):
@@ -95,6 +99,17 @@ class BekenEmulator:
     XVR_BASE = 0x00900000
     ACCEL_BASE = 0x00810000
     PWM_BASE = 0x00802A00
+    # General DMA (beken378/driver/general_dma/general_dma.h). Four channels,
+    # eight 32-bit registers each: CONF, DST_START, SRC_START, DSTLOOP_END,
+    # DSTLOOP_START, SRCLOOP_END, SRCLOOP_START, REMAIN_LEN.
+    GDMA_BASE = 0x00809000
+    GDMA_CHANNELS = 4
+    GDMA_CH_STRIDE = 0x20
+    GDMA_END = 0x00809000 + 4 * 0x20
+    GDMA_EN = 1 << 0            # GDMA_X_DMA_EN, cleared by hardware when done
+    GDMA_SRCADDR_INC = 1 << 8
+    GDMA_DSTADDR_INC = 1 << 9
+    GDMA_TRANS_LEN_POSI = 16    # length is stored as (bytes - 1)
     GPIO_BASE = 0x00802800
     GPIO_END = 0x008028A0
     # Capture-only upper bound for the WRITE hook. Wider than GPIO_END so the
@@ -456,7 +471,64 @@ class BekenEmulator:
                 state.pending_irqs |= (1 << 1)
                 self.trigger_irq()
 
+    def _gdma_channel(self, address):
+        """Channel number if address is a GDMA CONF register, else None."""
+        if not (self.GDMA_BASE <= address
+                < self.GDMA_BASE + self.GDMA_CHANNELS * self.GDMA_CH_STRIDE):
+            return None
+        offset = address - self.GDMA_BASE
+        channel, within = divmod(offset, self.GDMA_CH_STRIDE)
+        return channel if within == 0 else None
+
+    def _gdma_start(self, mu, channel, conf):
+        """Run one general-DMA transfer to completion, immediately.
+
+        The firmware kicks a channel by setting GDMA_X_DMA_EN in its CONF
+        register and then spins on that same bit waiting for the hardware to
+        clear it - see gdma_enable()/gdma_memcpy() in the vendor SDK, which
+        wrap the whole thing in GLOBAL_INT_DISABLE(). With no DMA engine here
+        the bit stayed set forever and the firmware wedged in that spin with
+        interrupts masked, which is exactly where an OpenBeken boot stopped
+        once it reached Wi-Fi AP setup.
+
+        Real hardware transfers in the background; doing it inline is both
+        simpler and indistinguishable to the guest, because the guest cannot
+        run again until the copy is finished anyway.
+        """
+        length = ((conf >> self.GDMA_TRANS_LEN_POSI) & 0xFFFF) + 1
+        base = self.GDMA_BASE + channel * self.GDMA_CH_STRIDE
+        try:
+            dst = struct.unpack("<I", mu.mem_read(base + 0x04, 4))[0]
+            src = struct.unpack("<I", mu.mem_read(base + 0x08, 4))[0]
+        except UcError:
+            return
+
+        # Only a straight incrementing block copy is modelled. A channel with a
+        # fixed source or destination is streaming to or from a peripheral FIFO
+        # that this emulator does not implement, so inventing bytes for it would
+        # be worse than leaving the buffer alone - the enable bit is still
+        # cleared either way, so the firmware is never left spinning.
+        both_inc = (conf & self.GDMA_SRCADDR_INC) and (conf & self.GDMA_DSTADDR_INC)
+        if both_inc and length:
+            try:
+                mu.mem_write(dst, bytes(mu.mem_read(src, length)))
+            except UcError as e:
+                self._print("[GDMA] ch%d copy 0x%08x -> 0x%08x (%d bytes) failed: %s"
+                            % (channel, src, dst, length, e))
+
     def hook_mem_write_mmio(self, mu, access, address, size, value, user_data):
+        # Bounds test inlined rather than calling _gdma_channel(): this hook
+        # runs on every MMIO write in the system, so the common path must not
+        # pay for an extra Python call.
+        if self.GDMA_BASE <= address < self.GDMA_END:
+            channel = self._gdma_channel(address)
+            if channel is not None:
+                if value & self.GDMA_EN:
+                    self._gdma_start(mu, channel, value)
+                # Whatever the guest reads back, the enable bit is clear: the
+                # transfer above already happened.
+                self.state.gdma_conf[channel] = value & ~self.GDMA_EN
+                return
         if address == self.ICU_INT_ENABLE:
             self.state.icu_int_enable = value
             self._print(f"[DEBUG] ICU_INT_ENABLE set to: 0x{value:08x}")
@@ -776,6 +848,14 @@ class BekenEmulator:
             mu.mem_write(address, struct.pack("<I", val))
             return
             
+        if self.GDMA_BASE <= address < self.GDMA_END:
+            channel = self._gdma_channel(address)
+            if channel is not None and channel in self.state.gdma_conf:
+                # The enable bit reads back clear, which is how the firmware's
+                # wait-for-completion spin exits.
+                mu.mem_write(address, struct.pack("<I", self.state.gdma_conf[channel]))
+                return
+
         if address == self.ICU_INT_ENABLE:
             mu.mem_write(address, struct.pack("<I", self.state.icu_int_enable))
             return
