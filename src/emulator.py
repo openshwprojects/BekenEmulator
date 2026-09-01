@@ -114,7 +114,7 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False, tuyamcu_dps=None):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False, tuyamcu_dps=None, tuyamcu_injects=None):
         self.raw_flash = raw_flash
         self.xvr_selfclear = xvr_selfclear
         self.bootloader = bootloader
@@ -163,6 +163,11 @@ class BekenEmulator:
                 # {dp_id: (dp_type, value)} reported for a query-state (0x08),
                 # so a device advances past working-mode into DP reporting.
                 kw["dps"] = tuyamcu_dps
+            if tuyamcu_injects:
+                # Raw byte blobs the peer sends unprompted after the handshake,
+                # so the link is not only "firmware asks, MCU answers" - the
+                # firmware's own reply and error paths get exercised too.
+                kw["injects"] = tuyamcu_injects
             self.tuyamcu = _tuyamcu.TuyaMCUSlave(**kw)
         else:
             self.tuyamcu = None

@@ -155,7 +155,7 @@ class TuyaMCUSlave:
     """
 
     def __init__(self, product_key="bekenemulator000", version="1.0.0", dps=None,
-                 raw_product=False):
+                 raw_product=False, injects=None):
         # product_key: the 16-char Tuya product id reported for a 0x01 query.
         # raw_product: product-info wire form. False -> JSON {"p":..,"v":..},
         #   which OpenBeken and older Tuya SDKs (e.g. 1.1.71) accept. True ->
@@ -163,6 +163,13 @@ class TuyaMCUSlave:
         #   _raw_product). The caller picks this per dump; it is NOT inferred,
         #   so a device is only ever sent the form it expects.
         # dps: {dp_id: (dp_type, value)} reported in response to a 0x08 query.
+        # injects: raw byte strings the MCU pushes onto the wire on its OWN
+        #   initiative, once the module's startup handshake is over (see
+        #   react()). Everything above is a *reply*; this is the other half of
+        #   a real link - the MCU asking the module for something (0x1C time,
+        #   0x24 signal strength), or sending it something malformed. They are
+        #   raw bytes, not frames, so a case can deliberately send a bad
+        #   checksum or leading garbage and assert how the module recovers.
         self.product_key = product_key
         self.version = version
         self.raw_product = raw_product
@@ -170,6 +177,9 @@ class TuyaMCUSlave:
         self.parser = TuyaMCUParser()
         self.heartbeats = 0
         self.seen = []               # cmd bytes reacted to, for assertions
+        self.injects = [bytes(x) for x in (injects or [])]
+        self.handshake_done = False  # module has asked for state (0x08) at least once
+        self.injected = 0            # how many injects have gone out, for assertions
 
     def _raw_product(self):
         """Raw product-info payload for the TuyaOS 3.x wire form: the 16-byte
@@ -184,6 +194,26 @@ class TuyaMCUSlave:
         return pid + self.version.encode("ascii")[:8]
 
     def react(self, frame):
+        """Answer one module frame, plus any queued MCU-initiated bytes.
+
+        The injects are held back until the module has finished its startup
+        handshake (it has sent a QUERY_STATE, so heartbeat/product/working-mode
+        are all already accepted) and then all go out together on the module's
+        NEXT frame - normally the following heartbeat. Waiting costs nothing:
+        the module keeps talking regardless, and it keeps the injected traffic
+        from racing the data-point reports that answer that very 0x08.
+        """
+        # Sampled BEFORE the reply, so the 0x08 that *completes* the handshake
+        # still carries only its data-point reports.
+        was_done = self.handshake_done
+        out = self._reply(frame)
+        if was_done and self.injects:
+            out = out + self.injects
+            self.injected += len(self.injects)
+            self.injects = []
+        return out
+
+    def _reply(self, frame):
         if not frame.valid:
             return []
         self.seen.append(frame.cmd)
@@ -211,6 +241,10 @@ class TuyaMCUSlave:
             # becomes valid, which is all the handshake needs here.
             return [build_frame(CMD_MCU_CONF, b"")]
         if c == CMD_QUERY_STATE:
+            # The module only reaches 0x08 after it has accepted the heartbeat,
+            # the product record and the working mode - so this is the point
+            # where the link is fully up and queued injects may start.
+            self.handshake_done = True
             return [build_frame(CMD_STATE, encode_dp(dp, t, v))
                     for dp, (t, v) in sorted(self.dps.items())]
         # 0x03 / 0x2B Wi-Fi-state reports and anything else: nothing to answer.
@@ -347,6 +381,44 @@ def _run_selftests():
           "full startup sequence -> ACK, product, working-mode (no DPs configured)")
     check(mcu2.seen == [CMD_HEARTBEAT, CMD_QUERY_PRODUCT, CMD_MCU_CONF, CMD_QUERY_STATE],
           "slave recorded every module command it reacted to, in order")
+
+    print("== MCU-initiated (injected) traffic ==")
+    # HB is the module's heartbeat, captured from a real dump at the top of
+    # these tests; ACK_BOOT / ACK_RUN are the MCU's two answers to it.
+    ACK_BOOT = build_frame(CMD_HEARTBEAT, b"\x00")
+    ACK_RUN = build_frame(CMD_HEARTBEAT, b"\x01")
+    ASK_TIME = build_frame(CMD_SET_TIME)          # 55 AA 00 1C 00 00 1B
+    JUNK = b"\xDE\xAD\xBE\xEF"                    # leading garbage, not a frame
+    mcu3 = TuyaMCUSlave(injects=[ASK_TIME, JUNK])
+
+    # Nothing is injected before the handshake: not on the heartbeat, not on
+    # the product query, not even on the 0x08 that completes it.
+    check(mcu3.react_stream(HB) == ACK_BOOT and mcu3.injected == 0,
+          "no inject before the handshake (heartbeat)")
+    mcu3.react_stream(build_frame(CMD_QUERY_PRODUCT) + build_frame(CMD_MCU_CONF))
+    check(mcu3.injected == 0 and not mcu3.handshake_done,
+          "still no inject after product / working-mode")
+    check(mcu3.react_stream(build_frame(CMD_QUERY_STATE)) == b""
+          and mcu3.handshake_done and mcu3.injected == 0,
+          "0x08 completes the handshake but does not itself carry the injects")
+
+    # ... they all go out together on the module's next frame, in order.
+    check(mcu3.react_stream(HB) == ACK_RUN + ASK_TIME + JUNK and mcu3.injected == 2,
+          "next module frame carries ACK + every inject, in the given order")
+    check(mcu3.react_stream(HB) == ACK_RUN and mcu3.injected == 2,
+          "injects are sent once, not repeated on later frames")
+
+    # Injected bytes are raw on purpose - a case may need a frame the codec
+    # would never build, e.g. one with a deliberately wrong checksum.
+    bad_hb = bytearray(HB)
+    bad_hb[-1] ^= 0xFF
+    mcu4 = TuyaMCUSlave(injects=[bytes(bad_hb)])
+    mcu4.react_stream(build_frame(CMD_QUERY_STATE))
+    check(mcu4.react_stream(HB).endswith(bytes(bad_hb)),
+          "a deliberately corrupt inject is passed through byte for byte")
+
+    check(TuyaMCUSlave().react(Frame(0x00, CMD_HEARTBEAT, b"")) == [ACK_BOOT],
+          "a slave with no injects behaves exactly as before")
 
     print("\nAll %d TuyaMCU self-tests passed." % n)
     return n

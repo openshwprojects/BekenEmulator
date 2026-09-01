@@ -266,6 +266,12 @@ TEST_CASES = [
         ]
     },
     {
+        # The suite's deepest TuyaMCU case: a whole two-way link, not just the
+        # module talking into the void. Every other TuyaMCU case here stops at
+        # "the firmware reached the link and sent something"; this one runs the
+        # handshake, every data-point type, both mapping directions, and the
+        # firmware's malformed-input recovery.
+        #
         # "startDriver TuyaMCU" - the driver opens UART1 itself (TuyaMCU_Init
         # calls UART_InitUART(9600)), so no uartInit is needed. It then talks
         # unprompted: TuyaMCU_RunStateMachine_V3 starts with heartbeat_timer==0,
@@ -275,36 +281,122 @@ TEST_CASES = [
         # <checksum>, checksum = 0xFF + cmd + lenHi + lenLo = 0xFF for a
         # zero-length heartbeat.
         #
+        # The rest of the startup command is what a real TuyaMCU device is
+        # configured with - data points bound to OpenBeken channels:
+        #   linkTuyaMCUOutputToChannel 1 bool 1 / 2 val 2 / 4 enum 4
+        #       MCU -> module: a reported data point must land on that channel.
+        #   linkTuyaMCUOutputToChannel 20 bool 20
+        #   addChangeHandler Channel1 != 0 setChannel 20 1
+        #       module -> MCU: nothing ever reports DP 20, so the only way
+        #       channel 20 moves is the change handler firing when DP 1 lands
+        #       on channel 1 - and OBK must then SEND a 0x06 SET_DP frame.
+        #       That closes the loop the other way round, off one MCU report.
+        #
         # A simulated MCU is attached (--tuyamcu, src/tuyamcu.py) so the link
         # is a conversation: it answers the heartbeat, the product query and
         # the working-mode query. OpenBeken accepts the product record and
         # completes the handshake, which no stock TuyaOS image here does.
         # It goes one step further: it sends QUERY_STATE (0x08), and
-        # --tuyamcu-dp gives the MCU two data points to report back (DP 1 =
-        # bool 1, DP 2 = value 100). OBK parses those 0x07 reports with the
-        # exact values, exercising the data-point path end to end.
-        "name": "MathDemo Startup Command: startDriver TuyaMCU sends heartbeat",
+        # --tuyamcu-dp gives the MCU one data point of EVERY wire type to
+        # report back (bool, value, string, enum, bitmap). OBK parses each 0x07
+        # report exactly, so the whole DP decoder is covered, not just two arms.
+        #
+        # --tuyamcu-inject is the MCU speaking on its own initiative once the
+        # handshake is over. Real MCUs do this, and it reaches firmware paths a
+        # pure question-and-answer link never touches:
+        #   55AA0004000003          0x04 WiFiReset  -> OBK answers 0x04
+        #   55AA001C00001B          0x1C SetTime    -> OBK answers with the time
+        #   55AA0000000000          heartbeat with a WRONG checksum (0xFF is
+        #                           correct) -> must be discarded, not acted on
+        #   DEADBEEF55AA0099000098  four junk bytes, then an unknown command ->
+        #                           the framer must resynchronise on 55 AA and
+        #                           the unknown command must be reported, not
+        #                           crash or desync the stream
+        # The last two are the point of injecting RAW bytes rather than built
+        # frames: a codec that can only build valid frames cannot test this.
+        "name": "MathDemo Startup Command: TuyaMCU full link, data points and channels",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_tuyaMCU.bin"),
         "args": ["--only-uart", "--uart1-hex", "--tuyamcu",
-                 "--tuyamcu-dp", "1:bool:1", "--tuyamcu-dp", "2:value:100", "-key", "TUYA"],
-        "timeout": 300,
+                 "--tuyamcu-dp", "1:bool:1", "--tuyamcu-dp", "2:value:100",
+                 "--tuyamcu-dp", "3:string:HELLO", "--tuyamcu-dp", "4:enum:2",
+                 "--tuyamcu-dp", "5:bitmap:0x0F",
+                 "--tuyamcu-inject", "55AA0004000003",
+                 "--tuyamcu-inject", "55AA001C00001B",
+                 "--tuyamcu-inject", "55AA0000000000",
+                 "--tuyamcu-inject", "DEADBEEF55AA0099000098",
+                 "-key", "TUYA"],
+        "timeout": 420,
+        "tags": ["TuyaMCU DP", "channels", "TuyaMCU errors"],
         "expected_strings": [
             "CFG_InitAndLoad: Correct config has been loaded",
             "Started TuyaMCU.",
+            # The channel wiring from the startup command was accepted.
+            "CMD_AddChangeHandler: added Channel1 with cmd setChannel 20 1",
+
+            # --- the module talks first, with nothing having prompted it ---
             "[UART1/MCU] 55 aa 00 00 00 00 ff",
-            # With the simulated MCU answering, OpenBeken runs the WHOLE
-            # handshake - unlike the stock images, it accepts the product
-            # record and goes on to the working-mode query.
+            "ProcessIncoming[v=0]: cmd 0 (Hearbeat) len 8",
+
+            # --- handshake. With the simulated MCU answering, OpenBeken runs
+            # the WHOLE sequence - unlike the stock images, it accepts the
+            # product record and goes on to the working-mode query.
             "cmd 1 (QueryProductInformation)",
             'received {"p":"bekenemulator000","v":"1.0.0"}',
             "cmd 2 (MCUconf)",
-            # It then queries state (0x08); the MCU answers with the two DPs
-            # from --tuyamcu-dp, and OBK parses each 0x07 report exactly.
-            "ParseState: id 1 type 1-bool",
+            "ProcessIncoming: TUYA_CMD_MCU_CONF, TODO!",
+
+            # --- query-state (0x08), then one 0x07 report per DP wire type.
+            # Only the heartbeat keeps its [UART1/MCU] tag here: OBK sends
+            # several frames back to back and the capture puts a whole burst on
+            # one tagged line, so the rest assert the bytes alone.
+            "55 aa 00 08 00 00 07",
+            "ParseState: id 1 type 1-bool len 1",
             "ParseState: byte 1",
-            "ParseState: id 2 type 2-val",
+            "ParseState: id 2 type 2-val len 4",
             "ParseState: int32 100",
+            "ParseState: id 3 type 3-str len 5",
+            "ParseState: id 4 type 4-enum len 1",
+            "ParseState: byte 2",
+            "ParseState: id 5 type 5-bitmap len 1",
+            "ParseState: byte 15",
+
+            # --- MCU -> module: each mapped report reached its channel, with
+            # the reported value intact (bool 1, int32 100, enum 2).
+            "CHANNEL_Set channel 1 has changed to 1",
+            "CHANNEL_Set channel 2 has changed to 100",
+            "CHANNEL_Set channel 4 has changed to 2",
+
+            # --- module -> MCU: channel 1 moving fires the change handler,
+            # which sets channel 20, which OBK must push to the MCU as a 0x06
+            # SET_DP. Payload dp 0x14 (20), type 01 (bool), len 0001, data 01;
+            # checksum 0xFF+0x06+0x00+0x05 + 0x14+1+0+1+1 = 0x21.
+            "executing command setChannel 20 1",
+            "CHANNEL_Set channel 20 has changed to 1",
+            "55 aa 00 06 00 05 14 01 00 01 01 21",
+
+            # --- MCU-initiated frames: the firmware's own reply paths ---
+            # OBK's 0x04 answer happens to be byte-identical to the 0x04 that
+            # provoked it, so this looks like it could match the stimulus. It
+            # cannot: the capture tags only what the DEVICE transmits, and it
+            # prints lowercase, while OBK's log of what it RECEIVED is upper
+            # case ("Received: 55 AA 00 04 ..."). Lowercase here means TX.
+            "cmd 4 (WiFiReset) len 7",
+            "ProcessIncoming: 0x04 replying",
+            "55 aa 00 04 00 00 03",
+            "cmd 28 (SetTime) len 7",
+            "ProcessIncoming: received TUYA_CMD_SET_TIME, so sending back time",
+            # No NTP in emulation, so the clock reads 0 and the reply carries
+            # the epoch: valid flag 01, year 0x46 (70), month 01, day 01.
+            "MCU time to set: 0",
+            "55 aa 00 1c 00 08 01 46 01 01",
+
+            # --- malformed input is rejected and the stream resynchronises ---
+            "discarding packet bad expected checksum, expected 0 and got checksum 255",
+            "Consumed 4 unwanted non-header byte in Tuya MCU buffer",
+            "Skipped data (part) DE AD BE EF",
+            "cmd 153 (Unknown) len 7",
+            "ProcessIncoming: unhandled type 153",
         ]
     },
     {
@@ -1563,10 +1655,16 @@ DESCRIPTIONS = {
         "Same config-injection trick, but the startup command drives OpenBeken's uartSendHex to "
         "place arbitrary bytes on UART1 (the MCU link). Exercises config load -> command "
         "registration -> HAL UART write -> the emulator's UART1 hex capture.",
-    "MathDemo Startup Command: startDriver TuyaMCU sends heartbeat":
-        "Startup command 'startDriver TuyaMCU'. The driver opens UART1 itself and talks first, "
-        "unprompted: the first per-second tick emits a TuyaMCU heartbeat frame "
-        "(55 AA 00 00 00 00 FF) with no MCU attached.",
+    "MathDemo Startup Command: TuyaMCU full link, data points and channels":
+        "The deepest TuyaMCU case here. The driver opens UART1 itself and talks first, "
+        "unprompted: the first per-second tick emits a heartbeat (55 AA 00 00 00 00 FF). A "
+        "simulated MCU answers, so OpenBeken completes the whole handshake and then reports one "
+        "data point of every wire type - bool, value, string, enum, bitmap. The startup command "
+        "binds those data points to channels, so the case checks both directions: a reported DP "
+        "must land on its channel, and a channel moved by a change handler must go back out as a "
+        "0x06 SET_DP frame. The MCU then speaks unprompted, including a frame with a deliberately "
+        "wrong checksum and one behind four junk bytes, to check that bad input is discarded and "
+        "the framer resynchronises instead of desyncing.",
     "MathDemo Startup Command: SetPinRole drives relay pin P9":
         "Startup command 'SetPinChannel 9 1; SetPinRole 9 Rel; SetChannel 1 0; SetChannel 1 1'. "
         "Orders OpenBeken to make pin 9 a relay output bound to channel 1, then switches that "

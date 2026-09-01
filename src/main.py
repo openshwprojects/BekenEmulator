@@ -30,6 +30,24 @@ def parse_dp_specs(specs):
         dps[int(id_s, 0)] = (DP_TYPE_NAMES[type_s], value)
     return dps
 
+def parse_hex_blobs(specs):
+    """Parse --tuyamcu-inject hex strings into raw byte strings.
+
+    Spaces and a leading 0x are allowed so a frame can be pasted in the same
+    shape the logs print it ("55 aa 00 1c 00 00 1b").
+    """
+    out = []
+    for spec in specs:
+        text = spec.replace(" ", "").replace("_", "")
+        if text[:2].lower() == "0x":
+            text = text[2:]
+        try:
+            out.append(bytes.fromhex(text))
+        except ValueError:
+            raise ValueError("bad --tuyamcu-inject %r (want hex bytes, e.g. 55AA001C00001B)" % spec)
+    return out
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="BK7231T/N Emulator")
     parser.add_argument("dump_file", help="Path to the raw BK7231 flash dump")
@@ -63,6 +81,15 @@ def parse_args():
                              "ID:TYPE:VALUE, TYPE one of bool/value/enum/bitmap/string. Repeatable. "
                              "E.g. --tuyamcu-dp 1:bool:1 --tuyamcu-dp 101:value:230. Lets a device "
                              "advance past the working-mode query into data-point reporting.")
+    parser.add_argument("--tuyamcu-inject", dest="tuyamcu_injects", action="append", default=[],
+                        metavar="HEX",
+                        help="Raw bytes the simulated MCU puts on the wire on its own initiative, "
+                             "once the module's startup handshake is done. Repeatable; all queued "
+                             "blobs go out together on the module's next frame, in order. Unlike "
+                             "the replies above these are NOT built by the codec, so they can be "
+                             "deliberately malformed - a wrong checksum, or leading garbage - to "
+                             "test how the firmware recovers. E.g. --tuyamcu-inject 55AA001C00001B "
+                             "asks OpenBeken for the time and it answers with a 0x1C frame.")
     parser.add_argument("--xvr-selfclear", dest="xvr_selfclear", action="store_true",
                         help="Model the XVR RF/BLE busy bits (0x9000F8 RF-cal, 0x900000 BLE llm_init) "
                              "as self-clearing, so stock Tuya SDK 2.x dumps (ATORCH 2.1.17, PC321 "
@@ -87,7 +114,12 @@ def main():
         raw_data = f.read()
 
     try:
+        # Everything that turns a command-line string into emulator input, so a
+        # bad argument of ANY kind gets the same one-line message rather than a
+        # traceback from somewhere deep in setup.
         coefs = parse_key(args.key)
+        tuyamcu_dps = parse_dp_specs(args.tuyamcu_dps)
+        tuyamcu_injects = parse_hex_blobs(args.tuyamcu_injects)
     except ValueError as e:
         print(e)
         sys.exit(1)
@@ -134,7 +166,7 @@ def main():
     else:
         rx_delay = 0 if args.tuyamcu else 2_000_000
 
-    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data, uart1_rx=uart1_rx, uart1_rx_delay=rx_delay, tuyamcu_enabled=args.tuyamcu, tuyamcu_pid=args.tuyamcu_pid, tuyamcu_raw=args.tuyamcu_raw, xvr_selfclear=args.xvr_selfclear, tuyamcu_dps=parse_dp_specs(args.tuyamcu_dps))
+    emu = BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app, with_boot=args.with_boot, only_uart=args.only_uart, chip_identity=chip_identity, uart1_hex=args.uart1_hex, physical_flash=raw_data, uart1_rx=uart1_rx, uart1_rx_delay=rx_delay, tuyamcu_enabled=args.tuyamcu, tuyamcu_pid=args.tuyamcu_pid, tuyamcu_raw=args.tuyamcu_raw, xvr_selfclear=args.xvr_selfclear, tuyamcu_dps=tuyamcu_dps, tuyamcu_injects=tuyamcu_injects)
     emu.setup()
     emu.run()
 
