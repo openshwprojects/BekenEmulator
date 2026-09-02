@@ -6,7 +6,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.crypto import extract_and_decrypt, strip_crcs, parse_key, KNOWN_KEYS
-from src.emulator import BekenEmulator, CHIP_FAMILIES
+from src.emulator import BekenEmulator, CHIP_FAMILIES, CONSOLE_RX_HOLDOFF_INSNS
 from src import tuyamcu
 
 # Data-point type names accepted by --tuyamcu-dp, mapped to the wire type codes.
@@ -61,8 +61,9 @@ def parse_args():
     parser.add_argument("--uart1-rx-delay", dest="uart1_rx_delay", type=int, default=None,
                         metavar="INSNS",
                         help="Hold the --uart1-rx bytes until this many instructions have run, so the "
-                             "firmware has registered its console RX callback first (default 2000000, "
-                             "or 0 with --tuyamcu since those replies are already reactive).")
+                             "firmware has registered its console RX callback first (default %d, "
+                             "or 0 with --tuyamcu since those replies are already reactive)."
+                             % CONSOLE_RX_HOLDOFF_INSNS)
     parser.add_argument("--tuyamcu", dest="tuyamcu", action="store_true",
                         help="Attach a simulated TuyaMCU MCU to UART1: answer the firmware's heartbeat, "
                              "product-info, working-mode and query-state frames so a TuyaMCU dump walks "
@@ -150,7 +151,7 @@ def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uar
     # TuyaMCU replies are generated only after the firmware transmits a frame, so
     # the firmware is already listening and no hold-off is needed.
     if uart1_rx_delay is None:
-        uart1_rx_delay = 0 if tuyamcu else 2_000_000
+        uart1_rx_delay = 0 if tuyamcu else CONSOLE_RX_HOLDOFF_INSNS
 
     return BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app,
                          with_boot=with_boot, only_uart=only_uart,

@@ -971,36 +971,62 @@ TEST_CASES = [
         ]
     },
     {
-        # The first *stock Tuya* dump found that actually drives its MCU. An
-        # ETWF4301 thermostat (AXZN / TM1640 panel): the MCU owns the display and
-        # sensors, the Beken is only the radio, so the two talk over UART1.
+        # The first STOCK-firmware dump on BK7238. Every other image on this
+        # silicon here is OpenBeken, so until now the BK7238 chip identity was
+        # only ever exercised by firmware we build ourselves.
         #
-        # It is a PAIRED dump - it logs "have actived over 15 min, not enter
-        # mf_init", so unlike the pre-pair dumps (TempHum sensor, zmai90) it does
-        # not park in the manufacturing-test thread. It reaches normal operation
-        # and then sends TuyaMCU heartbeats unprompted, with no MCU attached -
-        # byte-identical to the frame OpenBeken's own driver emits.
+        # Two things make it worth its own case:
         #
-        # This case guards three things at once:
-        #  - the PHYSICAL flash-addressing model: both KV copies must read valid
-        #    with matching counts (the mirror at 0x1cf000 read as blank flash
-        #    under the old stripped/logical model, which is what exposed the bug);
-        #  - that a paired stock-Tuya image boots through to normal operation;
-        #  - the UART1 capture path on stock vendor firmware, not just OpenBeken.
+        # 1. The firmware reads the SCTRL device-id register back and PRINTS it
+        #    ("device_id=0x21128000"), which is exactly the value CHIP_FAMILIES
+        #    serves for -chip BK7238. No other case asserts a chip-id round
+        #    trip: here the firmware itself confirms the identity we hand it,
+        #    so a wrong -chip would show up in the device's own log.
         #
-        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py) and,
-        # like the real MCU wired to this thermostat, answers in the form
-        # TuyaOS 3.x expects: --tuyamcu-raw replies to the product query with
-        # the raw 16-byte product id + short version (not JSON), and
-        # --tuyamcu-pid gives the device's OWN licensed id, recovered from its
-        # gw_bi KV ('pk':'i3k1tsas1esbewba'). With the right form and id the
-        # device accepts the record (its stored product_key matches our input)
-        # and advances into the working-mode query (0x02) and Wi-Fi link setup
-        # - far past the heartbeat loop it idles in with nothing attached. The
-        # heartbeat is asserted once, not repeated: once the peer answers the
-        # device advances instead of idling, so handshake progress is the
-        # liveness signal. (A/B over a shared instruction budget: with peer,
-        # heartbeat @19.2M / QUERY_PRODUCT @20.2M; without, no 0x01 by 43.2M.)
+        # 2. It is UNENCRYPTED. Every other stock Tuya dump here needs
+        #    -key TUYA; BK7238 images are plaintext, so this is the only stock
+        #    case covering crypto.py's plaintext path on real vendor firmware
+        #    rather than on an OpenBeken build.
+        #
+        # It boots a long way: RF calibration, the OTA check, the Tuya light
+        # stack (colour gamma tables, dimmer curve, startup state), its own
+        # product id, and into BLE init - all without --xvr-selfclear, which
+        # the BK7231N 2.x dumps need to get past their RF/BLE spins.
+        "name": "BK7238 Tuya RGB Controller TY-02-3CH (stock, unencrypted) boots its light stack",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7238_Tuya_RGBController_TY-02-3CH_PWM_T1-3S_1.0.14.bin"),
+        # No -key: this image is plaintext, unlike every other stock Tuya dump.
+        "args": ["--only-uart", "-chip", "BK7238"],
+        "timeout": 420,
+        "tags": ["BLE"],
+        "expected_strings": [
+            # The chip identity we serve, echoed back by the firmware itself.
+            "device_id=0x21128000",
+            # Vendor SDK bring-up: Wi-Fi MAC init and RF calibration.
+            "[FUNC]rwnxl_init",
+            "[FUNC]calibration_main",
+            "tuya_upgrade_main need upgrade?",
+            # Tuya light application: per-channel gamma tables and the dimmer
+            # curve - an RGB controller doing RGB-controller things, not just
+            # a generic Tuya boot.
+            "sa_crc_r[18] sa_crc_g[18] sa_crc_b[18]",
+            "val_cur:2835, val_max:7000, val_min:1050",
+            "startup default",
+            "light basic service init OK",
+            # Reached the Tuya device layer and knows its own identity - the
+            # firmware key this dump was licensed with.
+            "upd product_id type:1 keyw97qjscyfmsyn",
+            # ...and gets its BLE stack going unaided.
+            "initial BLE...",
+        ],
+        # Only pins whose value never changes during the run are asserted: 1, 9
+        # and 11 are each written twice, so pinning them would test timing
+        # rather than decoding. 0x78 = second function + pull-up, the UART
+        # pads. Pin 7 is the negative half - never written, which proves the
+        # capture follows this firmware rather than emitting a fixed set.
+        "expected_pins": {0: 0x78, 10: 0x78, 7: None},
+    },
+    {
         # A stock Tuya breaker / leakage switch on the BK7231T, SDK 1.1.80.
         # Two things make it worth its own case rather than being one more
         # TuyaMCU dump:
@@ -1061,6 +1087,36 @@ TEST_CASES = [
         ]
     },
     {
+        # The first *stock Tuya* dump found that actually drives its MCU. An
+        # ETWF4301 thermostat (AXZN / TM1640 panel): the MCU owns the display and
+        # sensors, the Beken is only the radio, so the two talk over UART1.
+        #
+        # It is a PAIRED dump - it logs "have actived over 15 min, not enter
+        # mf_init", so unlike the pre-pair dumps (TempHum sensor, zmai90) it does
+        # not park in the manufacturing-test thread. It reaches normal operation
+        # and then sends TuyaMCU heartbeats unprompted, with no MCU attached -
+        # byte-identical to the frame OpenBeken's own driver emits.
+        #
+        # This case guards three things at once:
+        #  - the PHYSICAL flash-addressing model: both KV copies must read valid
+        #    with matching counts (the mirror at 0x1cf000 read as blank flash
+        #    under the old stripped/logical model, which is what exposed the bug);
+        #  - that a paired stock-Tuya image boots through to normal operation;
+        #  - the UART1 capture path on stock vendor firmware, not just OpenBeken.
+        #
+        # A simulated MCU is attached to UART1 (--tuyamcu, src/tuyamcu.py) and,
+        # like the real MCU wired to this thermostat, answers in the form
+        # TuyaOS 3.x expects: --tuyamcu-raw replies to the product query with
+        # the raw 16-byte product id + short version (not JSON), and
+        # --tuyamcu-pid gives the device's OWN licensed id, recovered from its
+        # gw_bi KV ('pk':'i3k1tsas1esbewba'). With the right form and id the
+        # device accepts the record (its stored product_key matches our input)
+        # and advances into the working-mode query (0x02) and Wi-Fi link setup
+        # - far past the heartbeat loop it idles in with nothing attached. The
+        # heartbeat is asserted once, not repeated: once the peer answers the
+        # device advances instead of idling, so handshake progress is the
+        # liveness signal. (A/B over a shared instruction budget: with peer,
+        # heartbeat @19.2M / QUERY_PRODUCT @20.2M; without, no 0x01 by 43.2M.)
         "name": "BK7231N Tuya Ettroit ETWF4301 (paired) sends TuyaMCU heartbeats",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7231N_Tuya_Ettroit_ETWF4301_Thermostat_TuyaMCU_3.1.28.bin"),
@@ -1929,6 +1985,14 @@ DESCRIPTIONS = {
         "on P8 at 1000 Hz - rather than by an external MCU, so unlike the other stock-Tuya cases it "
         "produces no UART1 traffic by design. Adds a fourth Tuya SDK generation (TuyaOS 3.3.44) and "
         "reaches normal operation after reading its protected key.",
+    "BK7238 Tuya RGB Controller TY-02-3CH (stock, unencrypted) boots its light stack":
+        "The first stock-firmware dump on BK7238 - every other image on this silicon here is "
+        "OpenBeken, so the chip identity had only ever been exercised by firmware we build "
+        "ourselves. This one reads the SCTRL device-id register back and prints it, so the "
+        "device confirms the identity -chip BK7238 hands it. It is also the only stock Tuya "
+        "dump that is plaintext rather than TUYA-encrypted. It boots through RF calibration "
+        "into the Tuya light stack - colour gamma tables, dimmer curve, startup state - "
+        "reports its own product id and starts BLE, with no --xvr-selfclear needed.",
     "BK7231T Tuya Breaker/Leakage Switch (TuyaMCU 1.1.80) accepts raw product":
         "A stock Tuya breaker / leakage switch, BK7231T, SDK 1.1.80. It pins down where the "
         "TuyaMCU product-info wire form changes: the other 1.1.x dump here (TMWF02, 1.1.71) "
@@ -2116,6 +2180,19 @@ def _add_derived_tags(result):
 
 # Chips whose PWM is the pwm_new block at 0x802B00 (capture offset 0x100+).
 # BL2028N is a BK7231N clone; BK7231M is the N die in another package.
+
+
+def _record_check(checks, label, ok, detail):
+    """Print and record one non-string assertion (pins, PWM). Returns `ok`.
+
+    The pin and PWM loops below differ only in how they describe what they
+    found, so the verdict / print / record dance lives here once.
+    """
+    print("  [%s] %s%s" % ("PASS" if ok else "FAIL", label,
+                           (" (%s)" % detail) if ok else ", got %s" % detail))
+    checks.append({"string": label, "found": ok,
+                   "count": 1 if ok else 0, "required": 1})
+    return ok
 
 
 def _periph(lines, chip=""):
@@ -2331,13 +2408,10 @@ def run_test(test_config):
             label = "GPIO P%d config = 0x%02X" % (pin, want)
         if ok:
             detail = "no write captured" if want is None else _pin_desc(want)
-            print(f"  [PASS] {label} ({detail})")
         else:
-            seen = "0x%02X" % got if got is not None else "no write captured"
-            print(f"  [FAIL] {label}, got {seen}")
+            detail = "0x%02X" % got if got is not None else "no write captured"
+        if not _record_check(checks, label, ok, detail):
             all_passed = False
-        checks.append({"string": label, "found": ok,
-                       "count": 1 if ok else 0, "required": 1})
 
     # PWM assertions. Same idea as expected_pins: the period is 26 MHz / freq
     # straight out of HAL_PIN_PWM_Start, and the duty is that period scaled by
@@ -2357,13 +2431,11 @@ def run_test(test_config):
         else:
             label = "PWM%d period = 0x%04X, duty = 0x%04X" % (ch, want_period, want_duty)
         if ok:
-            print(f"  [PASS] {label} ({got[3]:.1f} Hz, {got[4]:.1f}%)")
+            detail = "%.1f Hz, %.1f%%" % (got[3], got[4])
         else:
-            seen = ("period 0x%04X duty %s" % (got[1], got[2])) if got else "channel not decoded"
-            print(f"  [FAIL] {label}, got {seen}")
+            detail = ("period 0x%04X duty %s" % (got[1], got[2])) if got else "channel not decoded"
+        if not _record_check(checks, label, ok, detail):
             all_passed = False
-        checks.append({"string": label, "found": ok,
-                       "count": 1 if ok else 0, "required": 1})
 
     result = _result(test_config, passed=all_passed, elapsed=elapsed,
                      insns=insns_holder[0], timed_out=hit_timeout,

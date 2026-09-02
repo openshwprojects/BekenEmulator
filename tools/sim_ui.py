@@ -41,7 +41,7 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT_DIR)
 
 from src.crypto import KNOWN_KEYS, parse_key
-from src.emulator import CHIP_FAMILIES
+from src.emulator import CHIP_FAMILIES, CONSOLE_RX_HOLDOFF_INSNS, SLOW_TICK_INSNS, SLOW_TICK_MS
 from src.main import build_emulator, parse_hex_blobs
 # One decoder for the GPIO/PWM registers, shared with the self-test report -
 # so the pane below and the report's tables can never disagree.
@@ -56,17 +56,15 @@ DEFAULT_IMAGE = os.path.join(
 POLL_MS = 60            # how often the UI drains the emulator's output buffer
 MAX_LINES = 4000        # per pane; older lines are dropped so a long run is bounded
 
-# The block hook raises the guest's periodic timer every 10000 instructions and
-# that tick is 2 ms of device time, so a guest second costs 500 ticks. Used only
-# to label the status bar - it is an estimate, like insn_count itself.
-GUEST_SECOND_INSNS = 10000 * (1000 // 2)
+# Device time per emulated second, from the emulator's own tick model rather
+# than a copy of its numbers. Used only to label the status bar - it is an
+# estimate, like insn_count itself.
+GUEST_SECOND_INSNS = SLOW_TICK_INSNS * (1000 // SLOW_TICK_MS)
 
-# OpenBeken enables UART1 RX early but only registers its console callback
-# around 2M instructions in; before that the ISR drops what it reads. The same
-# number is build_emulator()'s default hold-off, so anything typed earlier is
-# queued and delivered here rather than lost - the indicator just says when the
+# The emulator holds queued RX bytes for exactly this long, so anything typed
+# earlier is delivered rather than lost - the indicator only says when the
 # firmware actually starts listening.
-CONSOLE_READY_INSNS = 2_000_000
+CONSOLE_READY_INSNS = CONSOLE_RX_HOLDOFF_INSNS
 
 LINE_ENDINGS = {"CR+LF": b"\r\n", "LF": b"\n", "CR": b"\r", "(none)": b""}
 

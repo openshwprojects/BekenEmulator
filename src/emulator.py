@@ -27,6 +27,21 @@ CHIP_FAMILIES = {
     "BK7252N": (0x0007252A, 0x23A18000),  # accepts dev 0x23A1xxxx or 0x2431xxxx
 }
 
+# Instructions between raises of the guest's periodic timer (see hook_block),
+# and the slice of DEVICE time one such tick stands for. Together they are the
+# whole emulated clock: guest seconds = insn_count / (TICK_INSNS * 1000/TICK_MS).
+# Exported because the GUI's status bar reports device uptime from them, and a
+# private copy there would quietly start lying the day this changes.
+SLOW_TICK_INSNS = 10000
+SLOW_TICK_MS = 2
+
+# How long UART1 receive bytes are held before the guest may read them. OpenBeken
+# enables UART1 RX early (~140k insns) but only registers its console callback
+# about a million instructions later in CMD_Init_Delayed, and the ISR discards
+# what it reads until then - so bytes handed over sooner are simply lost. Both
+# the CLI default and the GUI's "console ready" indicator come from here.
+CONSOLE_RX_HOLDOFF_INSNS = 2_000_000
+
 class SimulatorState:
     def __init__(self):
         self.icu_int_enable = 0
@@ -42,7 +57,7 @@ class SimulatorState:
         self.saradc_cfg = 0        # shadow of SARADC_ADC_CONFIG (0x802c00)
         self.saradc_pending = 0    # samples waiting in the emulated ADC FIFO
         self.last_pc = 0           # start of the last basic block, for the GUI status bar
-        self.last_slow = 0         # insn_count at last ~10000-insn (timer) tick
+        self.last_slow = 0         # insn_count at last slow (timer) tick
         self.last_fast = 0         # insn_count at last ~1000-insn (UART) tick
         self.last_emit = 0         # insn_count at last [EMU_INSNS] report line
         # Peripheral state observed during the run, for the report's GPIO tab.
@@ -131,7 +146,7 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=2_000_000, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False, tuyamcu_dps=None, tuyamcu_injects=None, uart_sink=None):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=CONSOLE_RX_HOLDOFF_INSNS, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False, tuyamcu_dps=None, tuyamcu_injects=None, uart_sink=None):
         self.raw_flash = raw_flash
         self.xvr_selfclear = xvr_selfclear
         self.bootloader = bootloader
@@ -388,14 +403,14 @@ class BekenEmulator:
         if self._paused:
             self._resume.wait()
 
-        # Slow tick (~every 10000 insns): raise the periodic sources' pending.
-        if state.insn_count - state.last_slow >= 10000:
+        # Slow tick: raise the periodic sources' pending.
+        if state.insn_count - state.last_slow >= SLOW_TICK_INSNS:
             state.last_slow = state.insn_count
             # Report-only: emit the running instruction estimate a few times per
             # boot. Guarded by _emit_insns (off unless the harness asks) and
             # throttled, so this costs nothing on a normal run.
             if self._emit_insns:
-                # Peripheral changes go out on THIS tick (~every 10000 insns)
+                # Peripheral changes go out on THIS tick (the slow one)
                 # rather than the 1M-instruction one, and only for registers
                 # that actually changed. The emulator never exits on its own -
                 # it is killed once the harness has what it needs - so whatever
