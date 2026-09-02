@@ -990,8 +990,25 @@ TEST_CASES = [
         #
         # It boots a long way: RF calibration, the OTA check, the Tuya light
         # stack (colour gamma tables, dimmer curve, startup state), its own
-        # product id, and into BLE init - all without --xvr-selfclear, which
-        # the BK7231N 2.x dumps need to get past their RF/BLE spins.
+        # product id, and into BLE init.
+        #
+        # Where it stops, and why the markers end here: at ~19M instructions,
+        # just past BLE init, it wedges in an XVR spin - it sets bit 31 of
+        # 0x00900000 and polls it until hardware clears it, with interrupts
+        # masked (PC pins to 0x000E8C40, output freezes, rate drops ~18x and
+        # stays there for at least 10 minutes). That is precisely the busy bit
+        # --xvr-selfclear models, and passing it does push further (device
+        # clock 01:00:21 vs 01:00:03, 224 vs 167 log lines) - but only into
+        # the BLE HOST stack, which then fails waiting for an HCI ack it can
+        # never get (ble_hs_hci_wait_for_ack rc = 19) and loops on assert +
+        # tkl_hci_reset. So the flag is deliberately NOT used here: this dump
+        # does real BLE init, exactly the case its help text warns about. The
+        # assertions stop at the last state the dump reaches reliably.
+        #
+        # It never hands a pad to the PWM peripheral before that point, so
+        # there are no PWM channels to assert on despite this being an RGB
+        # controller. The case right after this one runs the same dump with
+        # --ble-core, which is what gets past the spin.
         "name": "BK7238 Tuya RGB Controller TY-02-3CH (stock, unencrypted) boots its light stack",
         "binary": os.path.join(ROOT_DIR, "firmwares",
                                "BK7238_Tuya_RGBController_TY-02-3CH_PWM_T1-3S_1.0.14.bin"),
@@ -1025,6 +1042,50 @@ TEST_CASES = [
         # pads. Pin 7 is the negative half - never written, which proves the
         # capture follows this firmware rather than emitting a fixed set.
         "expected_pins": {0: 0x78, 10: 0x78, 7: None},
+    },
+    {
+        # Same BK7238 dump, with the BLE core modelled (--ble-core, src/blecore.py).
+        #
+        # Why the plain run wedges: the NimBLE HOST hands HCI commands to the
+        # RivieraWaves CONTROLLER on the same CPU, and the controller only ever
+        # runs (rwip_schedule) after one of its two FIQs - which come from the
+        # core register block at 0x900000. Served as plain memory that block
+        # never interrupts, so the controller arms deep sleep once and never
+        # wakes, and the host times out (ble_hs_hci_wait_for_ack rc = 19) and
+        # loops on assert. This emulator had also never delivered an FIQ.
+        #
+        # With the model the controller's real steady state runs: deep sleep
+        # (capped at 10 ms of device time, as an external event would cut it
+        # short on silicon) -> SLP interrupt -> clock correction -> slot-clock
+        # interrupt -> wake-up complete -> schedule -> sleep. Every FIQ is
+        # acknowledged, HCI commands get their completion events, and the
+        # Tuya BLE service reports the advertisement applied - a line the
+        # plain run never reaches. No radio is modelled, so nothing goes on
+        # air; the BLE-side event interrupts are never raised.
+        #
+        # Decoded from register traces of this very image; the two interrupt
+        # register sets are the reverse of the older SDK headers (set 1 is
+        # the core side), which cost a storm of 2000 unacknowledged FIQs to
+        # find out. See src/blecore.py for the full account.
+        "name": "BK7238 Tuya RGB Controller with --ble-core: BLE host completes HCI, adv applied",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7238_Tuya_RGBController_TY-02-3CH_PWM_T1-3S_1.0.14.bin"),
+        "args": ["--only-uart", "-chip", "BK7238", "--ble-core"],
+        "timeout": 420,
+        "tags": ["BLE", "BLE core", "FIQ"],
+        "expected_strings": [
+            "device_id=0x21128000",
+            "initial BLE...",
+            # The host asked for advertising...
+            "ble_gap.c:2505] Start Adv",
+            # ...and the controller answered: Tuya's BLE service only logs this
+            # once the HCI advertising commands have completed. The plain run
+            # gets "ble_hs_hci_wait_for_ack, rc = 19" here instead.
+            "ble adv updated",
+            # Device services keep initialising past the point the plain run
+            # spends looping on the BLE host assert.
+            "__devos_init_evt success",
+        ],
     },
     {
         # A stock Tuya breaker / leakage switch on the BK7231T, SDK 1.1.80.
@@ -1993,6 +2054,14 @@ DESCRIPTIONS = {
         "dump that is plaintext rather than TUYA-encrypted. It boots through RF calibration "
         "into the Tuya light stack - colour gamma tables, dimmer curve, startup state - "
         "reports its own product id and starts BLE, with no --xvr-selfclear needed.",
+    "BK7238 Tuya RGB Controller with --ble-core: BLE host completes HCI, adv applied":
+        "The same BK7238 dump with the RivieraWaves BLE core modelled (--ble-core). Without it "
+        "the controller arms deep sleep and never wakes, so the NimBLE host times out on every "
+        "HCI command and loops on assert. With the core's slot clock, sleep/wake, clock "
+        "correction and slot-clock interrupt modelled - and FIQ delivery added to the emulator - "
+        "the controller runs its real sleep/wake loop, acknowledges every interrupt, answers "
+        "the host, and the Tuya BLE service reports the advertisement applied. No radio: "
+        "nothing goes on air.",
     "BK7231T Tuya Breaker/Leakage Switch (TuyaMCU 1.1.80) accepts raw product":
         "A stock Tuya breaker / leakage switch, BK7231T, SDK 1.1.80. It pins down where the "
         "TuyaMCU product-info wire form changes: the other 1.1.x dump here (TMWF02, 1.1.71) "

@@ -181,6 +181,8 @@ class SimulatorUI:
         ttk.Checkbutton(cfg, text="boot ROM", variable=self.var_boot).pack(side="left")
         self.var_tuyamcu = tk.BooleanVar(value=False)
         ttk.Checkbutton(cfg, text="TuyaMCU peer", variable=self.var_tuyamcu).pack(side="left", padx=(8, 0))
+        self.var_blecore = tk.BooleanVar(value=False)
+        ttk.Checkbutton(cfg, text="BLE core", variable=self.var_blecore).pack(side="left", padx=(8, 0))
 
         run = ttk.Frame(self.root)
         run.pack(fill="x", padx=6)
@@ -491,7 +493,8 @@ class SimulatorUI:
         # Read every Tk variable HERE, on the main thread. Tkinter is not
         # thread-safe, so the worker gets plain values, never widgets.
         cfg = {"chip": self.var_chip.get(), "key": self.var_key.get(),
-               "boot": self.var_boot.get(), "tuyamcu": self.var_tuyamcu.get()}
+               "boot": self.var_boot.get(), "tuyamcu": self.var_tuyamcu.get(),
+               "blecore": self.var_blecore.get()}
         self.thread = threading.Thread(target=self._worker, args=(path, cfg), daemon=True)
         self.thread.start()
 
@@ -509,6 +512,7 @@ class SimulatorUI:
                 # hex tagging is left off and everything arrives via the sink.
                 uart1_hex=False,
                 tuyamcu=cfg["tuyamcu"],
+                ble_core=cfg["blecore"],
                 uart_sink=self._sink,
                 # Writing app_decrypted.bin into the working directory is a
                 # command-line convenience, not something a GUI should do.

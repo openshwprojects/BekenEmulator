@@ -96,6 +96,12 @@ def parse_args():
                              "as self-clearing, so stock Tuya SDK 2.x dumps (ATORCH 2.1.17, PC321 "
                              "2.0.2, ...) boot past their RF and BLE init spins to the TuyaMCU link. "
                              "Opt-in: it breaks dumps that do real BLE init, so only enable per dump.")
+    parser.add_argument("--ble-core", dest="ble_core", action="store_true",
+                        help="Model the RivieraWaves BLE core registers at 0x900000 (slot clock, "
+                             "deep-sleep wake-up, interrupt status/ack, timer targets) and deliver "
+                             "the BLE/BTDM FIQs, so a stock BLE+Wi-Fi image's controller keeps "
+                             "running and answers the host's HCI commands instead of the host "
+                             "timing out. No radio is modelled: nothing goes on air. Opt-in.")
     parser.add_argument("-key", "--key", dest="key", default=None, metavar="KEY",
                         help="Firmware decryption key: a known name (%s), 32 hex chars, or base64 of 16 bytes. "
                              "Omit for plaintext images (no decryption)." % ", ".join(sorted(KNOWN_KEYS)))
@@ -108,7 +114,7 @@ def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uar
                    uart1_hex=False, uart1_rx=b"", uart1_rx_delay=None, tuyamcu=False,
                    tuyamcu_pid=None, tuyamcu_raw=False, tuyamcu_dps=None,
                    tuyamcu_injects=None, xvr_selfclear=False, uart_sink=None,
-                   save_decrypted=True, log=None):
+                   save_decrypted=True, log=None, ble_core=False):
     """Load a dump and return a configured, not-yet-started BekenEmulator.
 
     Everything between "here is an image and some options" and "start running"
@@ -160,7 +166,8 @@ def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uar
                          uart1_rx_delay=uart1_rx_delay, tuyamcu_enabled=tuyamcu,
                          tuyamcu_pid=tuyamcu_pid, tuyamcu_raw=tuyamcu_raw,
                          xvr_selfclear=xvr_selfclear, tuyamcu_dps=tuyamcu_dps,
-                         tuyamcu_injects=tuyamcu_injects, uart_sink=uart_sink)
+                         tuyamcu_injects=tuyamcu_injects, uart_sink=uart_sink,
+                         ble_core=ble_core)
 
 
 def main():
@@ -186,7 +193,7 @@ def main():
             tuyamcu_pid=args.tuyamcu_pid, tuyamcu_raw=args.tuyamcu_raw,
             tuyamcu_dps=parse_dp_specs(args.tuyamcu_dps),
             tuyamcu_injects=parse_hex_blobs(args.tuyamcu_injects),
-            xvr_selfclear=args.xvr_selfclear)
+            xvr_selfclear=args.xvr_selfclear, ble_core=args.ble_core)
     except ValueError as e:
         print(e)
         sys.exit(1)

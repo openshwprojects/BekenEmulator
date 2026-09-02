@@ -37,6 +37,9 @@ jobs:
     - name: TuyaMCU protocol unit self-tests (no firmware)
       run: python src/tuyamcu.py
 
+    - name: BLE core register model self-tests (no firmware)
+      run: python src/blecore.py
+
     - name: Run self tests (also writes report/index.html)
       id: tests
       run: |

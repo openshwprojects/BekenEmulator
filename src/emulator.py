@@ -12,8 +12,10 @@ from unicorn.arm_const import *
 # module with src/ on the path.
 try:
     from . import tuyamcu as _tuyamcu
+    from . import blecore as _blecore
 except ImportError:
     import tuyamcu as _tuyamcu
+    import blecore as _blecore
 
 # Known chip identities served from the SCTRL id registers (0x00800000 chip
 # id, 0x00800004 device id), selectable with --chip. Values extracted from
@@ -87,6 +89,9 @@ class SimulatorState:
         # XVR RF/BLE busy registers (0x9000F8, 0x900000) the firmware has armed
         # by writing bit 31; the next read of an armed one reports the bit clear
         # ("op done") and disarms. Only used under the opt-in --xvr-selfclear.
+        # (Now understood: on the BLE 5.1 layout these are the RW core's
+        # IP_SLOTCLK SAMP bit and RWDMCNTL MASTER_SOFT_RST - the same block
+        # --ble-core models fully for the 5.2 layout; see src/blecore.py.)
         self.xvr_armed = set()
         # General-DMA channel config shadows: channel -> last CONF value, with
         # the enable bit already cleared because the transfer is done by the
@@ -146,9 +151,16 @@ class BekenEmulator:
     ICU_INT_ENABLE = 0x00802040  # ICU_INTERRUPT_ENABLE (0x802050 is ICU_ARM_WAKEUP_EN)
     ICU_GLOBAL_INT_EN = 0x00802044
 
-    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=CONSOLE_RX_HOLDOFF_INSNS, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False, tuyamcu_dps=None, tuyamcu_injects=None, uart_sink=None):
+    def __init__(self, raw_flash, bootloader, app, with_boot=False, only_uart=False, chip_identity=None, uart1_hex=False, physical_flash=None, uart1_rx=b"", uart1_rx_delay=CONSOLE_RX_HOLDOFF_INSNS, tuyamcu_enabled=False, tuyamcu_pid=None, tuyamcu_raw=False, xvr_selfclear=False, tuyamcu_dps=None, tuyamcu_injects=None, uart_sink=None, ble_core=False):
         self.raw_flash = raw_flash
         self.xvr_selfclear = xvr_selfclear
+        # Opt-in RivieraWaves BLE core model over the 0x900000 block (see
+        # src/blecore.py). Off, that block stays plain memory plus the
+        # --xvr-selfclear bit tricks; on, the controller gets a slot clock,
+        # deep-sleep wake-ups and interrupt registers - and the FIQ lines
+        # (ICU bits 29/30) that this emulator never raised before.
+        self.blecore = (_blecore.BleCore(self.XVR_BASE, SLOW_TICK_INSNS * 1000 // SLOW_TICK_MS)
+                        if ble_core else None)
         self.bootloader = bootloader
         self.app = app
         self.with_boot = with_boot
@@ -363,6 +375,27 @@ class BekenEmulator:
             self.mu.reg_write(UC_ARM_REG_LR, pc + 4)
             self.mu.reg_write(UC_ARM_REG_PC, 0x00000018)
 
+    def trigger_fiq(self):
+        """Take the FIQ exception, if the ICU and the CPSR F bit allow it.
+
+        Mirror of trigger_irq for the fast-interrupt line: the ICU's global
+        enable has a separate FIQ bit (GINTR_FIQ_EN, bit 1), the CPU masks
+        FIQ with CPSR.F (0x40) rather than .I, entry mode is FIQ (0x11) with
+        both F and I set, and the vector is 0x1C. The firmware's FIQ stub
+        expects LR = return address + 4 exactly like its IRQ stub does.
+        """
+        if not (self.state.icu_global_int_en & 0x2):
+            return
+        cpsr = self.mu.reg_read(UC_ARM_REG_CPSR)
+        if cpsr & 0x40:
+            return
+        pc = self.mu.reg_read(UC_ARM_REG_PC)
+        new_cpsr = (cpsr & ~0x3F) | 0x11 | 0xC0
+        self.mu.reg_write(UC_ARM_REG_CPSR, new_cpsr)
+        self.mu.reg_write(UC_ARM_REG_SPSR, cpsr)
+        self.mu.reg_write(UC_ARM_REG_LR, pc + 4)
+        self.mu.reg_write(UC_ARM_REG_PC, 0x0000001C)
+
     def hook_intr(self, mu, intno, user_data):
         pc = mu.reg_read(UC_ARM_REG_PC)
         if intno == 2: # EXCP_SWI
@@ -455,6 +488,15 @@ class BekenEmulator:
             # unmask bit 11 (T and the 7238/7252 families) are unaffected.
             if state.saradc_pending and (state.icu_int_enable & (1 << 11)):
                 state.pending_irqs |= (1 << 11)
+            if self.blecore is not None:
+                # FIQ_BTDM (29) carries the core-side interrupts (sleep wake,
+                # timers, SW request) into rwip_isr; FIQ_BLE (30) the BLE
+                # event side into rwble_isr. Both are levels: they stay up
+                # until the firmware acks them in INTACK0/1.
+                core_irq, ble_irq = self.blecore.tick(state.insn_count)
+                state.pending_irqs = ((state.pending_irqs & ~((1 << 29) | (1 << 30)))
+                                      | ((1 << 29) if core_irq else 0)
+                                      | ((1 << 30) if ble_irq else 0))
 
         if state.pwm_status & 0x3F:
             state.pending_irqs |= (1 << 9)
@@ -466,8 +508,11 @@ class BekenEmulator:
         else:
             state.pending_irqs &= ~(1 << 8)
 
-        if state.pending_irqs & state.icu_int_enable:
+        ready = state.pending_irqs & state.icu_int_enable
+        if ready & 0x0000FFFF:
             self.trigger_irq()
+        if ready & 0xFFFF0000:
+            self.trigger_fiq()
 
         # Fast tick (~every 1000 insns): UART RX/TX and SARADC interrupts.
         if state.insn_count - state.last_fast >= 1000:
@@ -555,6 +600,8 @@ class BekenEmulator:
         # 31 to start an operation. The write still lands in mapped memory.
         if self.xvr_selfclear and address in (0x009000f8, 0x00900000) and (value & 0x80000000):
             self.state.xvr_armed.add(address)
+        if self.blecore is not None and self.XVR_BASE <= address < self.XVR_BASE + _blecore.SIZE:
+            self.blecore.write(address, value, self.state.insn_count)
 
         # GPIO config registers - one 32-bit word per pin at GPIO_BASE + n*4.
         # Bit 1 is the driven output level (GCFG_OUTPUT), bit 3 output-enable.
@@ -784,8 +831,10 @@ class BekenEmulator:
 
         # XVR (RF transceiver) transaction register. RF init sets bit 31 to
         # start a transfer and spins until hardware clears it; report it always
-        # complete (bit 31 low) so the wait loop exits.
-        if address == 0x00900100:
+        # complete (bit 31 low) so the wait loop exits. On the RW BLE 5.x
+        # layout this same offset is SLOTCLK, the controller's slot counter,
+        # which --ble-core serves properly - so that model takes precedence.
+        if address == 0x00900100 and self.blecore is None:
             mu.mem_write(address, struct.pack("<I", 0))
             return
 
@@ -802,6 +851,12 @@ class BekenEmulator:
         # it (state.xvr_armed). Measured to walk the stock 2.x / ATORCH (2.1.17)
         # RF and BLE init past BOTH spins all the way to the TuyaMCU link.
         # Disassembly + measurements: scratch/ble_stall.py, scratch/ble_crack.py.
+        if self.blecore is not None and self.XVR_BASE <= address < self.XVR_BASE + _blecore.SIZE:
+            served = self.blecore.read(address, self.state.insn_count)
+            if served is not None:
+                mu.mem_write(address, struct.pack("<I", served))
+                return
+            # anything else in the block: plain memory, fall through
         if self.xvr_selfclear and address in (0x009000f8, 0x00900000):
             if address in self.state.xvr_armed:
                 self.state.xvr_armed.discard(address)
