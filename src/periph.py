@@ -17,6 +17,9 @@ A pin the firmware never wrote is left as "factory": on real silicon that is
 whatever reset state the pad has, and the emulator has not been told otherwise.
 """
 
+import os
+import re
+
 PIN_COUNT = 32
 FUNC_REGS = {32: "REG_GPIO_FUNC_CFG", 46: "REG_GPIO_FUNC_CFG_2"}
 
@@ -333,3 +336,49 @@ def pwm_output_pins(gpio):
 def pwm_registers(pwm):
     """[(offset, value)] for every PWM register the firmware wrote."""
     return [("+0x%02X" % off, "0x%08X" % val) for off, val in sorted(pwm.items())]
+
+
+# Same captured offsets mean different peripherals per chip: 0x100+ is pwm_new
+# on the N family but AUDIO on 7252, so the chip selects the decoder. This
+# lives here rather than in the caller because it is a decoding decision, and
+# there are now two callers - the self-test report and the GUI, which reads the
+# emulator's live register dicts instead of captured [EMU_*] lines.
+PWM_NEW_CHIPS = {"BK7231N", "BK7231M", "BL2028N"}
+
+
+def decode_state(gpio, pwm, chip=""):
+    """Decode raw {pin: value} / {offset: value} register maps.
+
+    Returns the dict the report and the GUI both render, or None when the
+    firmware has not touched either peripheral yet.
+    """
+    if not gpio and not pwm:
+        return None
+    if chip in PWM_NEW_CHIPS and any(off >= 0x100 for off in pwm):
+        channels = pwm_new_channels(pwm)
+        ctl, base, layout = 0, None, "new"
+    else:
+        channels, ctl, base = pwm_channels(pwm)
+        layout = "old"
+    return {"gpio": gpio_table(gpio),
+            "pwm_layout": layout,
+            "raw": gpio,
+            "pwm_pins": pwm_output_pins(gpio),
+            "func": func_rows(gpio),
+            "pwm_ctl": ctl,
+            "pwm_base": base,
+            "pwm_channels": channels,
+            "pwm_regs": pwm_registers(pwm)}
+
+
+# Silicon name implied by a dump's filename. Report chip names (BK7231N,
+# BK7231T, ...) are finer-grained than the four -chip CLI identities, and
+# decode_state above needs the fine-grained one, so this lives beside it and
+# is shared by the self-test harness and the GUI.
+CHIP_RE = re.compile(r"(BL2028N|BK7252N|BK7231[TUNMQ]|BK7238|BK7252|BK7236|BK7258|BK3231)", re.I)
+
+
+def chip_from_name(filename):
+    """Chip a dump's filename names, or "" when it says nothing."""
+    m = CHIP_RE.search(os.path.basename(filename or ""))
+    return m.group(1).upper() if m else ""

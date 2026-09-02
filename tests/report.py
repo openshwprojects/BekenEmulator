@@ -9,8 +9,13 @@ The output is one static file (inline CSS/JS, no external requests), so it works
 opened locally and published to GitHub Pages unchanged.
 """
 import html
+import os
 import re
+import sys
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from src import periph
 
 
 def _fmt_int(n):
@@ -124,8 +129,7 @@ def _gpio_html(r):
         # PWM_CTL's enable bits name the active channels from a different
         # register than the period/duty pair, so agreement between the two is
         # real corroboration rather than the decode agreeing with itself.
-        import periph as _p
-        ctl_on = _p.ctl_channels(per.get("pwm_ctl") or 0)
+        ctl_on = periph.ctl_channels(per.get("pwm_ctl") or 0)
         decoded = [c[0] for c in per["pwm_channels"]]
         ctl_note = ""
         if ctl_on:

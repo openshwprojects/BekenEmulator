@@ -2,13 +2,16 @@ import subprocess
 import threading
 import time
 import os
-import re
 import sys
 from datetime import datetime, timezone
 
 # Get the path to the root directory
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 MAIN_SCRIPT = os.path.join(ROOT_DIR, 'src', 'main.py')
+
+# Register decoding lives in src/periph.py, shared with the GUI front-end.
+sys.path.insert(0, ROOT_DIR)
+from src import periph
 
 # How many times a periodic line must repeat for the "1s timers" cases.
 # Two is the sweet spot: a second tick already proves the timer REPEATS rather
@@ -1961,14 +1964,11 @@ def dump_url(binary):
 # first so BK7252N is not matched as BK7252, and BK7231N not as BK7231. This is
 # the *part* the dump came from, which is finer-grained than the emulated
 # identity: --chip collapses the whole T/U/N/M family onto BK7231.
-_CHIP_RE = re.compile(r"(BL2028N|BK7252N|BK7231[TUNMQ]|BK7238|BK7252|BK7236|BK7258|BK3231)", re.I)
-
-
 def chip_of(test_config):
     """Best-effort chip name for a test: filename first, then the -chip arg."""
-    m = _CHIP_RE.search(os.path.basename(test_config["binary"]))
-    if m:
-        return m.group(1).upper()
+    name = periph.chip_from_name(test_config["binary"])
+    if name:
+        return name
     args = test_config.get("args", [])
     for i, a in enumerate(args):
         if a in ("-chip", "--chip") and i + 1 < len(args):
@@ -2116,35 +2116,16 @@ def _add_derived_tags(result):
 
 # Chips whose PWM is the pwm_new block at 0x802B00 (capture offset 0x100+).
 # BL2028N is a BK7231N clone; BK7231M is the N die in another package.
-PWM_NEW_CHIPS = {"BK7231N", "BK7231M", "BL2028N"}
 
 
 def _periph(lines, chip=""):
     """Decode captured [EMU_GPIO]/[EMU_PWM] lines; never breaks a run."""
     try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import periph
         gpio, pwm = periph.parse_lines(lines)
-        if not gpio and not pwm:
-            return None
-        # Same captured offsets mean different peripherals per chip: 0x100+
-        # is pwm_new on the N family but AUDIO on 7252 - so the chip, which
-        # only the harness knows, selects the decoder.
-        if chip in PWM_NEW_CHIPS and any(off >= 0x100 for off in pwm):
-            channels = periph.pwm_new_channels(pwm)
-            ctl, base, layout = 0, None, "new"
-        else:
-            channels, ctl, base = periph.pwm_channels(pwm)
-            layout = "old"
-        return {"gpio": periph.gpio_table(gpio),
-                "pwm_layout": layout,
-                "raw": gpio,
-                "pwm_pins": periph.pwm_output_pins(gpio),
-                "func": periph.func_rows(gpio),
-                "pwm_ctl": ctl,
-                "pwm_base": base,
-                "pwm_channels": channels,
-                "pwm_regs": periph.pwm_registers(pwm)}
+        # The decode itself lives in periph.decode_state so the GUI, which has
+        # the emulator's live register dicts and never sees these text lines,
+        # renders exactly what the report does.
+        return periph.decode_state(gpio, pwm, chip)
     except Exception as exc:
         # Decoding is best-effort and must never fail a run, but swallowing it
         # silently once cost a whole debug cycle: a stale 2-tuple unpack here
@@ -2156,8 +2137,6 @@ def _periph(lines, chip=""):
 def _pin_desc(value):
     """Human-readable form of a pin config word, for test output."""
     try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import periph
         return periph.decode_pin(value)
     except Exception:
         return "?"

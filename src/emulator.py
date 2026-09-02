@@ -105,7 +105,7 @@ class BekenEmulator:
     GDMA_BASE = 0x00809000
     GDMA_CHANNELS = 4
     GDMA_CH_STRIDE = 0x20
-    GDMA_END = 0x00809000 + 4 * 0x20
+    GDMA_END = GDMA_BASE + GDMA_CHANNELS * GDMA_CH_STRIDE
     GDMA_EN = 1 << 0            # GDMA_X_DMA_EN, cleared by hardware when done
     GDMA_SRCADDR_INC = 1 << 8
     GDMA_DSTADDR_INC = 1 << 9

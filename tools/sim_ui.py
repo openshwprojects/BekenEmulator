@@ -6,9 +6,10 @@ Run it with no arguments (or point it straight at a dump):
     python tools/sim_ui.py firmwares/OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_uartConsole.bin
 
 Pick any Beken flash dump, press Run, and watch UART1 and UART2 in their own
-panes. Anything typed in the send bar goes into UART1's receive FIFO through
-BekenEmulator.feed_uart1(), i.e. the same RX interrupt path --uart1-rx and the
-simulated TuyaMCU peer use - the firmware cannot tell the difference.
+panes, with a third column decoding the GPIO and PWM registers as the firmware
+configures them. Anything typed in the send bar goes into UART1's receive FIFO
+through BekenEmulator.feed_uart1(), i.e. the same RX interrupt path --uart1-rx
+and the simulated TuyaMCU peer use - the firmware cannot tell the difference.
 
 Two things are worth knowing before the first run:
 
@@ -42,6 +43,9 @@ sys.path.insert(0, ROOT_DIR)
 from src.crypto import KNOWN_KEYS, parse_key
 from src.emulator import CHIP_FAMILIES
 from src.main import build_emulator, parse_hex_blobs
+# One decoder for the GPIO/PWM registers, shared with the self-test report -
+# so the pane below and the report's tables can never disagree.
+from src import periph
 
 FIRMWARE_DIR = os.path.join(ROOT_DIR, "firmwares")
 # Image shipped with OBK config flag 31 already set, so its UART1 is a command
@@ -80,6 +84,16 @@ LINE_ENDINGS = {"CR+LF": b"\r\n", "LF": b"\n", "CR": b"\r", "(none)": b""}
 #
 # Clicked left to right they chain, each building on the last value:
 #   1 -> 10 (5*2) -> 12 ($CH1+2) -> 19 (+7) -> 0 -> 1 (toggle) -> read back
+#
+# The two setPinRole buttons drive the GPIO pane rather than a channel: they
+# reassign pin 1 as a plain output held high or low, so its row flips between
+# "OUTPUT = 1" (reg 0x02) and "OUTPUT = 0" (reg 0x00) as you click. Like
+# toggleChannel these log NOTHING on success - CMD_SetPinRole only prints on
+# "Unknown pin" / "Unknown role" - so the third column is the only place their
+# effect is visible, which is the point of pairing them with it.
+# Pin 1 is the UART2 RX pad, which costs nothing here - the emulator's UART2 is
+# the log's transmit path and does not go through the pin mux - but on real
+# silicon this would take the pad away from the debug port's receive side.
 QUICK_COMMANDS = [
     "setChannel 1 1",
     "setChannel 1 5*2",
@@ -88,6 +102,8 @@ QUICK_COMMANDS = [
     "setChannel 1 0",
     "toggleChannel 1",
     "getChannel 1",
+    "setPinRole 1 AlwaysHigh",
+    "setPinRole 1 AlwaysLow",
 ]
 QUICK_PER_ROW = 4       # they wrap rather than run off the end of the window
 
@@ -96,23 +112,21 @@ QUICK_PER_ROW = 4       # they wrap rather than run off the end of the window
 QUICKTICK = "Info:MAIN:quicktick"
 
 
+# -chip collapses the whole BK7231 T/U/N/M/Q family onto one identity, so the
+# silicon name periph reads off the filename maps down to these four.
+CLI_FAMILY = {"BK7238": "BK7238", "BK7252N": "BK7252N", "BK7252": "BK7252"}
+
+
 def guess_chip(path):
     """Pick the -chip identity a dump's filename implies, as the CLI docs do."""
-    name = os.path.basename(path).upper()
-    if "7238" in name:
-        return "BK7238"
-    if "7252N" in name:
-        return "BK7252N"
-    if "7252" in name:
-        return "BK7252"
-    return "BK7231"
+    return CLI_FAMILY.get(periph.chip_from_name(path), "BK7231")
 
 
 class SimulatorUI:
     def __init__(self, root, initial_image=None):
         self.root = root
         root.title("BekenSimulator")
-        root.minsize(900, 600)
+        root.minsize(1280, 620)
 
         self.emu = None
         self.thread = None
@@ -131,6 +145,7 @@ class SimulatorUI:
         # half-line is held here until its newline turns up.
         self._u2_partial = ""
         self.quick_buttons = []
+        self._periph_key = None       # last GPIO/PWM snapshot drawn
 
         self._last_insns = 0
         self._last_rate_at = None
@@ -200,6 +215,35 @@ class SimulatorUI:
                    command=lambda: self._copy(self.txt1, "UART1")).pack(side="right")
         panes.add(left, weight=1)
 
+        peri = ttk.LabelFrame(panes, text="GPIO / PWM", padding=4)
+        pf = ttk.Frame(peri)
+        pf.pack(fill="both", expand=True)
+        pbar = ttk.Scrollbar(pf, orient="vertical")
+        self.tree = ttk.Treeview(pf, columns=("pin", "name", "state", "reg"),
+                                 show="headings", height=16, yscrollcommand=pbar.set)
+        for key, title, width, anchor in (("pin", "Pin", 38, "e"), ("name", "Name", 74, "w"),
+                                          ("state", "State", 250, "w"), ("reg", "Reg", 58, "e")):
+            self.tree.heading(key, text=title)
+            self.tree.column(key, width=width, anchor=anchor, stretch=(key == "state"))
+        pbar.config(command=self.tree.yview)
+        pbar.pack(side="right", fill="y")
+        self.tree.pack(side="left", fill="both", expand=True)
+        # A ttk Treeview draws on the NATIVE light background, not the dark one
+        # the console Text widgets use, so these must be dark inks - the pale
+        # greens and blues that read well in the log panes are near-invisible
+        # here. Contrast ratios against white, all clearing WCAG AA (4.5:1):
+        #   factory 6.0:1   out 6.6:1   func 9.3:1
+        self.tree.tag_configure("factory", foreground="#5b6472")   # de-emphasised
+        self.tree.tag_configure("out", foreground="#0b6b3a")       # driven output
+        self.tree.tag_configure("func", foreground="#14448f")      # peripheral owns the pad
+
+        self.var_pwm = tk.StringVar(value="no PWM channels decoded yet")
+        ttk.Label(peri, textvariable=self.var_pwm, anchor="w",
+                  wraplength=300, justify="left").pack(fill="x", pady=(4, 0))
+        self.var_all_pins = tk.BooleanVar(value=False)
+        ttk.Checkbutton(peri, text="show untouched pins", variable=self.var_all_pins,
+                        command=self._refresh_periph).pack(anchor="w")
+
         right = ttk.LabelFrame(panes, text="UART2 - firmware debug log", padding=4)
         self.txt2 = self._console(right, mono)
         ropts = ttk.Frame(right)
@@ -210,6 +254,11 @@ class SimulatorUI:
         ttk.Button(ropts, text="Copy", width=7,
                    command=lambda: self._copy(self.txt2, "UART2")).pack(side="right")
         panes.add(right, weight=1)
+
+        # Added last so the peripheral table is the THIRD column, to the right
+        # of both logs - the two UARTs stay side by side where they are easiest
+        # to read against each other.
+        panes.add(peri, weight=1)
 
         send = ttk.LabelFrame(self.root, text="send to UART1", padding=6)
         send.pack(fill="x", padx=6, pady=(4, 6))
@@ -288,6 +337,65 @@ class SimulatorUI:
                 out.append("\n")
                 self._hex_col = 0
         return "".join(out)
+
+    def _refresh_periph(self):
+        """Redraw the GPIO/PWM table from the emulator's live registers.
+
+        The emulator records every GPIO and PWM register write into
+        state.gpio_cfg / state.pwm_regs unconditionally (not only under
+        EMU_REPORT), so this needs no capture plumbing - and the decoding is
+        periph.decode_state, the very function the HTML report renders from.
+        """
+        if self.emu is None:
+            return
+        try:
+            gpio = dict(self.emu.state.gpio_cfg)
+            pwm = dict(self.emu.state.pwm_regs)
+        except RuntimeError:
+            # The emulation thread was mid-write into the dict. Registers are
+            # written tens of times per boot, so simply catching the next tick
+            # is cheaper and safer than locking the write hook.
+            return
+
+        key = (tuple(sorted(gpio.items())), tuple(sorted(pwm.items())),
+               self.var_all_pins.get())
+        if key == self._periph_key:
+            return              # nothing moved; leave the widget alone
+        self._periph_key = key
+
+        # decode_state wants the fine-grained silicon name (BK7231N, not the
+        # four -chip identities), which the dump's filename carries.
+        data = periph.decode_state(gpio, pwm, periph.chip_from_name(self.var_image.get()))
+        self.tree.delete(*self.tree.get_children())
+        if not data:
+            self.var_pwm.set("firmware has not touched GPIO or PWM yet")
+            return
+
+        show_all = self.var_all_pins.get()
+        for pin, alias, state, detail in data["gpio"]:
+            if state == "factory" and not show_all:
+                continue
+            if state == "factory":
+                tag = "factory"
+            elif "OUTPUT" in detail:
+                tag = "out"
+            else:
+                tag = "func"
+            raw = data["raw"].get(pin)
+            self.tree.insert("", "end", tags=(tag,), values=(
+                pin, alias or "", detail, "" if raw is None else "0x%02X" % raw))
+
+        for name, value in data["func"]:
+            self.tree.insert("", "end", tags=("func",), values=("", name, "function select", value))
+
+        chans = data.get("pwm_channels") or []
+        if chans:
+            self.var_pwm.set("PWM (%s layout), pins %s:  %s" % (
+                data["pwm_layout"], data["pwm_pins"] or "-",
+                "   ".join("ch%d %.0f Hz %.0f%%" % (c[0], c[3], c[4]) for c in chans)))
+        else:
+            self.var_pwm.set("PWM pins %s, no channels decoded"
+                             % (data["pwm_pins"] or "-"))
 
     def _render_uart2(self, data):
         """Firmware log text, optionally with the quicktick chatter dropped.
@@ -368,6 +476,7 @@ class SimulatorUI:
             return
 
         self._clear()
+        self._periph_key = None
         self._tx_count = {1: 0, 2: 0}
         self._last_insns = 0
         self._rate = 0.0
@@ -527,6 +636,7 @@ class SimulatorUI:
                 self._tx_count[2] += len(chunks[2])
                 self._append(self.txt2, self._render_uart2(chunks[2]))
 
+            self._refresh_periph()
             self._update_state()
         except Exception:
             detail = traceback.format_exc()
