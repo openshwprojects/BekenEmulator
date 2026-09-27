@@ -98,10 +98,13 @@ def parse_args():
                              "Opt-in: it breaks dumps that do real BLE init, so only enable per dump.")
     parser.add_argument("--ble-core", dest="ble_core", action="store_true",
                         help="Model the RivieraWaves BLE core registers at 0x900000 (slot clock, "
-                             "deep-sleep wake-up, interrupt status/ack, timer targets) and deliver "
-                             "the BLE/BTDM FIQs, so a stock BLE+Wi-Fi image's controller keeps "
-                             "running and answers the host's HCI commands instead of the host "
-                             "timing out. No radio is modelled: nothing goes on air. Opt-in.")
+                             "deep-sleep wake-up, interrupt status/ack, timer targets, AES engine) "
+                             "and deliver the BLE/BTDM FIQs, so a stock BLE+Wi-Fi image's controller "
+                             "keeps running and answers the host instead of the host timing out. "
+                             "The register layout follows -chip: BLE 5.1 for BK7231 (N/M/BL2028N "
+                             "images), 5.2 for BK7238. Advertising payloads the controller stages "
+                             "are printed as [BLE_ADV] lines. No radio is modelled: nothing goes "
+                             "on air. Opt-in.")
     parser.add_argument("-key", "--key", dest="key", default=None, metavar="KEY",
                         help="Firmware decryption key: a known name (%s), 32 hex chars, or base64 of 16 bytes. "
                              "Omit for plaintext images (no decryption)." % ", ".join(sorted(KNOWN_KEYS)))

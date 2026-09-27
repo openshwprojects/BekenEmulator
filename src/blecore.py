@@ -29,6 +29,21 @@ and from register traces of a real BK7238 image (scratch: ipcore900_probe.py):
 Everything else in the block is left as plain memory: the firmware reads back
 what it wrote, which is what the radio-config registers do on silicon too.
 
+Two generations of the block are modelled, picked per chip (see LAYOUTS):
+
+  5.2  BK7238. The map above.
+  5.1  BK7231N/M (and BL2028N, which is N silicon). Same registers and the
+       same interrupt bits in both sets, but the IP has one timestamp target
+       fewer, so everything from +0xF8 moves up a word: SLOTCLK is at +0xF8
+       (where 5.2 has CLKNTGT3) and FINETIMECNT at +0xFC. Its exchange memory
+       sits at a fixed 0x910000 (EM_BASE_ADDR in ble_5_x_rw/.../em_map.h), so
+       there is no base register to read. From ble_5_1/.../ble_reg_ipcore.h,
+       identical in the OpenBK7231N SDK. A stock image with this layout polls
+       SLOTCLK's SAMP bit right after "rwble_hl_init ok" and, served as plain
+       memory, never gets past it.
+
+BK7231T/U and BK7252N carry the older BLE 4.2 IP, which is not modelled.
+
 Nothing here models the radio. No packets are ever sent or received, so the
 BLE-side event interrupts (start/end of event, RX) are never raised. That is
 enough for the controller to keep time, wake up, run its scheduler and answer
@@ -41,13 +56,49 @@ INTCNTL0, INTSTAT0, INTACK0 = 0x00C, 0x010, 0x014
 INTCNTL1, INTSTAT1, INTACK1 = 0x018, 0x01C, 0x020
 DEEPSLCNTL, DEEPSLWKUP, DEEPSLSTAT = 0x030, 0x034, 0x038
 FINECNTCORR, CLKNCNTCORR = 0x040, 0x044
+# AES-128 engine: key in four words (AESKEY31_0 first), AESPTR = exchange-memory
+# offset of the 16-byte input; the result is written 16 bytes after it
+# (em_map.h: EM_ENC_OUT_OFFSET = EM_ENC_IN_OFFSET + 16). Same offsets on 5.1/5.2.
+AESCNTL = 0x0B0
+AESKEY = (0x0B4, 0x0B8, 0x0BC, 0x0C0)
+AESPTR = 0x0C4
+AES_START = 1 << 0
 FINETIMTGT = 0x0E4
 CLKNTGT = (0x0E8, 0x0F0, 0x0F8)          # CLKNTGT1..3
 HMICROSECTGT = (0x0EC, 0x0F4, 0x0FC)     # HMICROSECTGT1..3
 SLOTCLK, FINETIMECNT = 0x100, 0x104
+# Beken addition, not in the RivieraWaves map: the absolute base of the
+# exchange memory. The RW stack reaches EM through a runtime pointer
+# (`extern uint8_t *ex_mem`), so its address moves with every build - but the
+# hardware needs the absolute address, and the firmware writes it here. Reading
+# it back is therefore a build-independent way to find EM, where a hardcoded
+# address or a scan of all RAM would not be.
+BKRWEXMEM = 0x19C
+EM_SCAN_BYTES = 0x2000            # EM is small; this covers the descriptor area
 SIZE = 0x200                              # window the model claims
 
 VERSION_RESET = 0x0B001100               # BLE_VERSION_RESET, 5.2 blecore
+
+# Per-generation differences. Everything not listed here is common to both.
+#   window       bytes of the block the model is offered (reads it returns
+#                None for stay plain memory)
+#   ble_version  (offset, value) of a second version register the link layer
+#                checks, or None
+LAYOUTS = {
+    "5.2": {"slotclk": SLOTCLK, "finetimecnt": FINETIMECNT, "targets": 3,
+            "version": VERSION_RESET, "em_fixed": None,
+            "window": SIZE, "ble_version": None},
+    "5.1": {"slotclk": 0x0F8, "finetimecnt": 0x0FC, "targets": 2,
+            "version": 0x0A000700,          # IP_VERSION_RESET, 5.1 ipcore
+            "em_fixed": 0x00910000,         # REG_EM_ET_BASE_ADDR
+            # On 5.1 the BLE-specific registers are a separate block at
+            # +0x800 (ble_reg_blecore.h: BLE_RWBLECNTL_ADDR 0x00900800), and
+            # lld_init asserts its version before anything else - lld.c:404,
+            # "param0 = 0, param1 = 167776000" with it unmodelled. The link
+            # layer then runs uninitialised and the host never gets its
+            # random numbers (gapm "wait GAPM_GEN_RAND_NB").
+            "window": 0x1000, "ble_version": (0x804, 0x0A000F00)},
+}
 
 # RWBLECNTL bits
 MASTER_SOFT_RST = 1 << 31
@@ -71,6 +122,17 @@ CLKN_UPD = 1 << 30
 SLOT_MASK = 0x0FFFFFFF
 FINE_MASK = 0x3FF
 
+# A payload the controller is advertising always starts with the Flags AD
+# structure, and LE General/Limited Discoverable is what a pairable Tuya device
+# sets. Used only to locate the payload INSIDE the register-identified EM
+# window, never to search memory at large.
+AD_FLAGS_PREFIXES = tuple(bytes.fromhex(h) for h in ("020104", "020105", "020106"))
+AD_TYPE_NAMES = {
+    0x01: "Flags", 0x02: "16-bit UUIDs (incomplete)", 0x03: "16-bit UUIDs",
+    0x08: "Short Name", 0x09: "Complete Name", 0x0A: "TX Power",
+    0x16: "Service Data", 0xFF: "Manufacturer Data",
+}
+
 SLOT_US = 625
 LP_CLOCK_HZ = 32768                      # the sleep clock DEEPSLWKUP counts in
 
@@ -78,8 +140,20 @@ LP_CLOCK_HZ = 32768                      # the sleep clock DEEPSLWKUP counts in
 class BleCore:
     """One BLE core. Drive it with write()/read()/tick(); poll pending_*."""
 
-    def __init__(self, base, insns_per_second, max_sleep_us=10_000):
+    def __init__(self, base, insns_per_second, max_sleep_us=10_000, layout="5.2"):
         self.base = base
+        self.layout = layout
+        lay = LAYOUTS[layout]
+        self.slotclk = lay["slotclk"]
+        self.finetimecnt = lay["finetimecnt"]
+        self.version = lay["version"]
+        self.em_fixed = lay["em_fixed"]
+        self.window = lay["window"]
+        self.ble_version = lay["ble_version"]
+        # Timestamp targets this IP has; on 5.1 the third pair's offsets are
+        # SLOTCLK/FINETIMECNT, so they must not be treated as targets there.
+        self.clkntgt = CLKNTGT[:lay["targets"]]
+        self.hmicrosectgt = HMICROSECTGT[:lay["targets"]]
         # Deep sleep is cut short at this much device time. On silicon a
         # sleeping controller is woken early by external events (an HCI
         # command from the host, an AON timer); the RW stack expects that and
@@ -102,6 +176,9 @@ class BleCore:
         self.slept_from = None
         self.fired_tgt = {}               # target offset -> value already fired for
         self.events = []                  # ("sleep", insns) ... for probes/tests
+        # (read(addr, n) -> bytes, write(addr, data)) over guest memory, set by
+        # the emulator; the AES engine needs it to reach exchange memory.
+        self.mem = None
 
     # ---------------------------------------------------------------- clocks
     def slot(self, insns):
@@ -115,7 +192,9 @@ class BleCore:
         """Value to serve for a read inside the block, or None for plain memory."""
         off = address - self.base
         if off == VERSION:
-            return VERSION_RESET
+            return self.version
+        if self.ble_version is not None and off == self.ble_version[0]:
+            return self.ble_version[1]
         if off == INTSTAT0:
             return self.raw_evt & self.regs.get(INTCNTL0, 0)
         if off == INTSTAT1:
@@ -123,13 +202,17 @@ class BleCore:
         if off == DEEPSLCNTL:
             v = self.regs.get(DEEPSLCNTL, 0)
             return v | DEEP_SLEEP_STAT if self.sleeping else v & ~DEEP_SLEEP_STAT
-        if off == SLOTCLK:
+        if off == self.slotclk:
             # SAMP and CLKN_UPD are commands; they always read back clear.
             return self.slot_latch & SLOT_MASK
-        if off == FINETIMECNT:
+        if off == self.finetimecnt:
             return self.fine(insns) & FINE_MASK
         if off in (RWBLECNTL, DEEPSLSTAT):
             return self.regs.get(off, 0)
+        if off == AESCNTL:
+            # AES_START self-clears: the block is encrypted by the time the
+            # firmware can look (see _aes_run).
+            return self.regs.get(AESCNTL, 0) & ~AES_START
         return None
 
     def write(self, address, value, insns):
@@ -167,14 +250,135 @@ class BleCore:
                                            self.max_sleep_insns)
                 self.events.append(("sleep", insns, cycles))
             return
-        if off == SLOTCLK:
+        if off == self.slotclk:
             if value & SAMP:
                 self.slot_latch = self.slot(insns)
             return
-        if off in (FINETIMTGT,) + CLKNTGT:
+        if off == AESCNTL:
+            self.regs[off] = value & ~AES_START
+            if value & AES_START:
+                self._aes_run()
+            return
+        if off in (FINETIMTGT,) + self.clkntgt:
             # A new target may fire again even if the previous value did.
             self.fired_tgt.pop(off, None)
         self.regs[off] = value
+
+    # ------------------------------------------------------------ AES engine
+    def _aes_run(self):
+        """Encrypt the 16 bytes at EM+AESPTR into EM+AESPTR+16, raise CRYPTINT.
+
+        The controller uses this for everything from HCI LE_Rand/LE_Encrypt to
+        resolvable-address generation; the host's GAPM_GEN_RAND_NB waits on it
+        during start-up, so with no engine BLE init never completes ("wait
+        GAPM_GEN_RAND_NB" -> "create cmd db fail").
+
+        Byte order is BLE's: key, input and output are all LSB first, the key
+        loaded from key[0..3] into AESKEY31_0 as a little-endian word. AES
+        itself is MSB first, so each side is reversed around a plain AES-128
+        ECB - checked against the spec's ah() vector in the self-tests.
+        """
+        if self.mem is None:
+            return
+        base = self.em_base()
+        if not base:
+            return
+        from Crypto.Cipher import AES      # pycryptodome, see requirements.txt
+        key_le = b"".join((self.regs.get(k, 0) & 0xFFFFFFFF).to_bytes(4, "little")
+                          for k in AESKEY)
+        ptr = base + (self.regs.get(AESPTR, 0) & 0xFFFF)
+        read_mem, write_mem = self.mem
+        try:
+            plain_le = bytes(read_mem(ptr, 16))
+            out = AES.new(key_le[::-1], AES.MODE_ECB).encrypt(plain_le[::-1])
+            write_mem(ptr + 16, out[::-1])
+        except Exception:
+            return
+        self.raw_core |= CRYPTINT
+        self.events.append(("aes", ptr))
+
+    # --------------------------------------------------- advertising payload
+    def em_base(self):
+        """Absolute exchange-memory base: fixed on 5.1, handed over by the firmware on 5.2."""
+        if self.em_fixed is not None:
+            return self.em_fixed
+        return self.regs.get(BKRWEXMEM, 0)
+
+    @staticmethod
+    def parse_ad(blob):
+        """Split a BLE AD payload into [(type, value)], or [] if malformed.
+
+        Length-type-value, walked to the first zero length. A chain that does
+        not parse cleanly is rejected, which is what keeps a chance byte match
+        from being reported as an advertisement.
+        """
+        fields, p = [], 0
+        while p < len(blob) and blob[p]:
+            length = blob[p]
+            if p + 1 + length > len(blob):
+                return []
+            fields.append((blob[p + 1], bytes(blob[p + 2:p + 1 + length])))
+            p += 1 + length
+        return fields if len(fields) >= 2 else []
+
+    def find_adv(self, read_mem):
+        """Advertising payloads staged in EM: [(em_offset, raw, fields)].
+
+        `read_mem(addr, size) -> bytes`. The EM base comes from the register
+        above, so nothing here depends on where a particular build put its
+        buffers.
+        """
+        base = self.em_base()
+        if not base:
+            return []
+        # Page by page, stopping at the first page the firmware never touched:
+        # EM is ordinary RAM mapped on first use, and a smaller controller
+        # (the 5.1 core uses under 4K of it) leaves the rest unmapped, which
+        # would fail a single read of the whole window.
+        blob = b""
+        for off in range(0, EM_SCAN_BYTES, 0x1000):
+            try:
+                blob += bytes(read_mem(base + off, min(0x1000, EM_SCAN_BYTES - off)))
+            except Exception:
+                break
+        if not blob:
+            return []
+        out, seen = [], set()
+        for prefix in AD_FLAGS_PREFIXES:
+            start = 0
+            while True:
+                i = blob.find(prefix, start)
+                if i < 0:
+                    break
+                start = i + 1
+                fields = self.parse_ad(blob[i:i + 62])
+                if not fields:
+                    continue
+                used = sum(2 + len(v) for _, v in fields)
+                raw = bytes(blob[i:i + used])
+                if raw in seen:
+                    continue
+                seen.add(raw)
+                out.append((i, raw, fields))
+        return out
+
+    @staticmethod
+    def describe_ad(fields):
+        """One readable line per AD structure."""
+        lines = []
+        for t, v in fields:
+            name = AD_TYPE_NAMES.get(t, "type 0x%02X" % t)
+            note = ""
+            if t in (0x02, 0x03, 0x16) and len(v) >= 2:
+                note = "  uuid=0x%04X" % int.from_bytes(v[:2], "little")
+            elif t == 0xFF and len(v) >= 2:
+                # Bluetooth SIG company identifier, little endian.
+                note = "  company=0x%04X" % int.from_bytes(v[:2], "little")
+            text = "".join(chr(c) if 32 <= c < 127 else "." for c in v)
+            # Whole bytes only; the full payload is on the line above anyway.
+            shown = v[:12].hex(" ") + (" .." if len(v) > 12 else "")
+            lines.append("%-26s %-39s %s%s" % (name, shown, text, note))
+        return lines
 
     # ------------------------------------------------------------------ time
     def tick(self, insns):
@@ -202,16 +406,16 @@ class BleCore:
                 self.fired_tgt[FINETIMTGT] = tgt
                 self.raw_core |= FINETGTINT
         # Timestamp targets 1..3: slot target plus a fine (half-microsecond) part.
-        for i in range(3):
+        for i, tgt_off in enumerate(self.clkntgt):
             bit = TIMESTAMPTGTINT[i]
-            if not (mask0 & bit) or CLKNTGT[i] not in self.regs:
+            if not (mask0 & bit) or tgt_off not in self.regs:
                 continue
-            tgt = self.regs[CLKNTGT[i]] & SLOT_MASK
-            if self.fired_tgt.get(CLKNTGT[i]) == tgt or not self._reached(now, tgt):
+            tgt = self.regs[tgt_off] & SLOT_MASK
+            if self.fired_tgt.get(tgt_off) == tgt or not self._reached(now, tgt):
                 continue
-            if now == tgt and self.fine(insns) < (self.regs.get(HMICROSECTGT[i], 0) & FINE_MASK):
+            if now == tgt and self.fine(insns) < (self.regs.get(self.hmicrosectgt[i], 0) & FINE_MASK):
                 continue
-            self.fired_tgt[CLKNTGT[i]] = tgt
+            self.fired_tgt[tgt_off] = tgt
             self.raw_core |= bit
 
         # (core line -> FIQ_BTDM, event line -> FIQ_BLE)
@@ -296,11 +500,91 @@ def _run_selftests():
     c.write(b + INTACK1, CLKNINT, now); c.write(b + INTCNTL1, 0x808e, now)
     check(not c.tick(now + 2 * 3125)[0], "masked again: silent")
 
+    print("== advertising payload, located through the EM base register ==")
+    ADV = bytes.fromhex("020106" "030250fd" "1716" "50fd430400106b6579773937716a736379666d73796e")
+    c3 = BleCore(b, 5_000_000)
+    check(c3.em_base() == 0 and c3.find_adv(lambda a, n: b"") == [],
+          "no EM base yet -> nothing reported, no guessing")
+    EM = 0x00424480
+    c3.write(b + BKRWEXMEM, EM, 0)
+    check(c3.em_base() == EM, "EM base is read back from BKRWEXMEM")
+    mem = bytearray(EM_SCAN_BYTES)
+    mem[0xBB8:0xBB8 + len(ADV)] = ADV
+    def rd(addr, n, _base=EM, _m=mem):
+        assert _base <= addr < _base + EM_SCAN_BYTES, "must read from the register-provided base"
+        return bytes(_m[addr - _base:addr - _base + n])
+    got = c3.find_adv(rd)
+    check(len(got) == 1 and got[0][0] == 0xBB8 and got[0][1] == ADV,
+          "payload found at its EM offset, read from the register base")
+    def rd_one_page(addr, n, _base=EM, _m=mem):
+        if addr >= _base + 0x1000:
+            raise RuntimeError("unmapped")      # what Unicorn does past the touched page
+        return bytes(_m[addr - _base:addr - _base + n])
+    got1 = c3.find_adv(rd_one_page)
+    check(len(got1) == 1 and got1[0][0] == 0xBB8,
+          "an untouched (unmapped) second EM page does not hide the first")
+    types = [t for t, _ in got[0][2]]
+    check(types == [0x01, 0x02, 0x16], "AD chain decodes to Flags + UUID + Service Data")
+    svc = dict(got[0][2])[0x16]
+    check(svc[:2] == bytes.fromhex("50fd") and b"keyw97qjscyfmsyn" in svc,
+          "service data carries UUID 0xFD50 and the firmware key as ASCII")
+    # a build with EM somewhere else is found just the same
+    c4 = BleCore(b, 5_000_000); c4.write(b + BKRWEXMEM, 0x00431000, 0)
+    m2 = bytearray(EM_SCAN_BYTES); m2[0x40:0x40 + len(ADV)] = ADV
+    got2 = c4.find_adv(lambda a, n: bytes(m2[a - 0x00431000:a - 0x00431000 + n]))
+    check(len(got2) == 1 and got2[0][0] == 0x40,
+          "a different EM base and offset is found with no code change")
+    check(BleCore.parse_ad(bytes.fromhex("0201064009") + b"zzz") == [],
+          "a length that overruns the buffer is rejected, not reported")
+    check(BleCore.parse_ad(bytes.fromhex("020106")) == [],
+          "a lone Flags structure is not enough to call it an advertisement")
+
     print("== masking ==")
     c2 = BleCore(b, 5_000_000)
     c2.write(b + RWBLECNTL, SWINT_REQ, 0)
     check(not c2.tick(0)[0] and c2.read(b + INTSTAT1, 0) == 0, "a masked-out interrupt neither shows in INTSTAT1 nor raises the line")
     check(c2.tick(0)[1] is False, "the BLE EVENT line (set 0) never rises: no radio events are modelled")
+
+    print("== 5.1 layout (BK7231N/M) ==")
+    c5 = BleCore(b, 5_000_000, layout="5.1")
+    check(c5.read(b + VERSION, 0) == 0x0A000700, "ipcore VERSION reads the 5.1 reset value")
+    check(c5.read(b + 0x804, 0) == 0x0A000F00,
+          "BLE-block VERSION at +0x804 reads 0x0A000F00 (lld.c:404 asserts it)")
+    check(c5.window == 0x1000 and BleCore(b, 5_000_000).window == SIZE,
+          "5.1 claims the whole page (BLE block at +0x800); 5.2 keeps its window")
+    c5.write(b + 0x0F8, SAMP, 3 * 3125)
+    check(c5.read(b + 0x0F8, 3 * 3125) == 3, "SLOTCLK lives at +0xF8: SAMP latches the slot there")
+    check(c5.read(b + 0x100, 0) is None, "+0x100 is not SLOTCLK on 5.1 (plain memory)")
+    check(c5.read(b + 0x0FC, 3 * 3125 + 1562) == c5.fine(3 * 3125 + 1562),
+          "FINETIMECNT lives at +0xFC")
+    c5.write(b + INTCNTL1, TIMESTAMPTGTINT[2], 0)
+    c5.write(b + 0x0F8, 5, 0)                 # a SLOTCLK write, not a CLKNTGT3 target
+    check(not c5.tick(10 * 3125)[0], "the 5.2 third timestamp target does not exist on 5.1")
+    check(c5.em_base() == 0x00910000, "5.1 exchange memory is at its fixed 0x910000")
+
+    print("== AES engine (BLE byte order, spec ah() vector) ==")
+    # Bluetooth Core Vol 3 Part H D.7: ah(IRK, prand) = e(IRK, 0..0||prand) mod 2^24.
+    irk_msb = bytes.fromhex("ec0234a357c8ad05341010a60a397d9b")
+    plain_msb = bytes(13) + bytes.fromhex("708194")
+    em = bytearray(0x100)
+    ptr = 0x4C
+    em[ptr:ptr + 16] = plain_msb[::-1]        # the firmware stages it LSB first
+    ca = BleCore(b, 5_000_000, layout="5.1")
+    ca.mem = (lambda a, n: bytes(em[a - 0x910000:a - 0x910000 + n]),
+              lambda a, d: em.__setitem__(slice(a - 0x910000, a - 0x910000 + len(d)), d))
+    key_le = irk_msb[::-1]
+    for i, off in enumerate(AESKEY):
+        ca.write(b + off, int.from_bytes(key_le[4 * i:4 * i + 4], "little"), 0)
+    ca.write(b + AESPTR, ptr, 0)
+    ca.write(b + INTCNTL1, CRYPTINT, 0)
+    ca.write(b + AESCNTL, AES_START, 0)
+    check(bytes(em[ptr + 16:ptr + 19]) == bytes.fromhex("aafb0d"),
+          "result lands 16 bytes after the input, LSB first: ah = 0x0dfbaa")
+    check(ca.read(b + AESCNTL, 0) & AES_START == 0, "AES_START reads back clear once done")
+    check(ca.tick(0)[0] and ca.read(b + INTSTAT1, 0) & CRYPTINT,
+          "CRYPTINT raised on the core line when unmasked")
+    ca.write(b + INTACK1, CRYPTINT, 0)
+    check(not ca.tick(0)[0], "acked: line drops")
 
     print("\nAll %d BLE core self-tests passed." % n)
     return n

@@ -68,6 +68,20 @@ TEST_CASES = [
         ]
     },
     {
+        # Guards the --ble-core layout choice: the model covers the BLE 5.1
+        # (BK7231N/M) and 5.2 (BK7238) cores only. BK7252 has SDRAM where the
+        # core would be, so it must be refused up front, not modelled over
+        # the heap.
+        "name": "CLI: --ble-core is rejected on a chip without a BLE 5.x core",
+        "binary": os.path.join(ROOT_DIR, "firmwares", "OpenBK7252_QIO_1.18.300.bin"),
+        "args": ["--only-uart", "-chip", "BK7252", "--ble-core"],
+        "timeout": 60,
+        "expected_strings": [
+            "--ble-core models the BLE 5.x core",
+            "this chip has no such core"
+        ]
+    },
+    {
         # Guards the plaintext-vs-encrypted heuristic in crypto.py: running an
         # encrypted image with no key must warn that the slice is not ARM code
         # and suggest the key, instead of silently emulating garbage.
@@ -1088,6 +1102,106 @@ TEST_CASES = [
         ],
     },
     {
+        # The first non-Tuya vendor stack in the suite, and the first stock
+        # BK7231M dump: a VeSync (Etekcity) EU plug running VeSync SDK v1.2.1
+        # on top of the Beken SDK. Plaintext, no -key; M is N silicon, so the
+        # default BK7231 identity - which --ble-core maps to the BLE 5.1 core.
+        #
+        # This dump is what brought the N-family 5.1 core into the model. Each
+        # of these was a wall, in boot order (without --ble-core it still
+        # stops at the first one):
+        #   1. SLOTCLK sits at +0xF8 on 5.1 (+0x100 on 5.2). As plain memory its
+        #      SAMP bit never clears: a spin right after "rwble_hl_init ok".
+        #   2. lld_init asserts the BLE block's own VERSION at 0x900804
+        #      (lld.c:404, param1 = 167776000 = 0x0A000F00). Earlier notes put
+        #      that assert down to the prebuilt link layer; it is one register.
+        #   3. The hardware AES engine. The host's GAPM_GEN_RAND_NB is computed
+        #      with it; without it BLE init fails with "create cmd db fail".
+        #   4. pwm_new, used here to capture the metering chip's pulses:
+        #      REG_GROUP_PWM_CPU's read request never self-cleared, and
+        #      GROUP_CTRL's write-1-to-clear interrupt status stuck at 1, so the
+        #      PWM ISR acked a phantom capture forever.
+        # With all four modelled BLE comes up, the advertisement is staged in
+        # exchange memory, and network config starts a Wi-Fi scan - the edge
+        # of what the emulator models.
+        "name": "BK7231M VeSync WHOGPLUG Plug (VeSync SDK, BLE 5.1 core) advertises and scans",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231M_VeSync_GreenSun_WHOGPLUG_Plug_1.0.01.bin"),
+        "args": ["--only-uart", "--ble-core"],
+        "timeout": 420,
+        "tags": ["BLE", "BLE core", "FIQ"],
+        "expected_strings": [
+            "Vesync SDK version: v1.2.1",
+            "ble mac:fc-58-4a-a1-d3-c3",
+            # (1) past the slot-clock spin, (2) with the link layer initialised
+            "rwble_hl_init ok",
+            # (3) the AES engine answered, twice, and the stack declared itself up
+            ("gapm_cmp_evt:GAPM_GEN_RAND_NB", 2),
+            "gapm_cmp_evt:BLE_STACK_OK",
+            "[THD]vesync_ble_task",
+            # The advertisement, read out of exchange memory: Etekcity's
+            # company id, then the BLE MAC above in reverse byte order.
+            "company=0x06D0",
+            "ff d0 06 01 c3 d3 a1 4a 58 fc",
+            # (4) the firmware reads GROUP_CTRL back with no phantom status
+            # bits - it printed 0xc0001c14 before the model.
+            "REG_PWM_GROUP_CTRL= 0x1c14",
+            "[THD]netcfg_task",
+            "wpa rx E SCAN_STARTED",
+        ],
+        "unexpected_strings": [
+            "lld.c",
+            "create cmd db fail",
+            "ble is not ready",
+        ],
+    },
+    {
+        # A "BLE-gated" stock Tuya dump - the class that used to be written
+        # off. Its firmware brings the RivieraWaves GAP layer up during
+        # start-up (ble_appm_send_gapm_reset_cmd) and, with the core served
+        # as plain memory, spins on the slot clock or dies on the lld.c:404
+        # version assert. 153 of the 218 full BK7231N/BL2028N dumps in
+        # FlashDumps are built this way. --ble-core (5.1 layout) takes them
+        # through REAL BLE init instead of the --xvr-selfclear bit trick the
+        # ATORCH/PC321/A03CB3S cases use, and further: this paired Globe
+        # Nashville ceiling fan (SDK 2.1.17, TuyaMCU) runs the whole
+        # advertising state machine, stages Tuya's pairing beacon - service
+        # UUID 0xA201 with its own product key in the service data - and,
+        # with the MCU peer answering (licensed id qasrgndvbbtrula9), goes
+        # past working-mode to report its Wi-Fi state (0x03).
+        "name": "BK7231N Tuya Globe Ceiling Fan (BLE-gated, SDK 2.1.17) --ble-core: Tuya beacon, TuyaMCU to Wi-Fi state",
+        "binary": os.path.join(ROOT_DIR, "firmwares",
+                               "BK7231N_Tuya_GlobeNashville_CeilingFan_TuyaMCU_2.1.17.bin"),
+        "args": ["--only-uart", "--uart1-hex", "--ble-core", "--tuyamcu",
+                 "--tuyamcu-pid", "qasrgndvbbtrula9", "--tuyamcu-raw", "-key", "TUYA"],
+        "timeout": 420,
+        "tags": ["BLE", "BLE core", "FIQ"],
+        "expected_strings": [
+            "bk7231n_common_user_config_ty:2.1.17",
+            "[ble_appm_send_gapm_reset_cmd]",
+            # Real BLE init: the AES engine answered, the stack came up and
+            # the advertising state machine ran to the start command.
+            ("gapm_cmp_evt:GAPM_GEN_RAND_NB", 2),
+            "gapm_cmp_evt:BLE_STACK_OK",
+            "[ble_appm_start_advertising]",
+            "mf_init succ",
+            # Tuya's pairing beacon, read out of exchange memory.
+            "uuid=0xA201",
+            "qasrgndvbbtrula9  uuid=0xA201",
+            # The MCU link: heartbeat, product query, working-mode...
+            "[UART1/MCU] 55 aa 00 00 00 00 ff",
+            "55 aa 00 01 00 00 00",
+            "55 aa 00 02 00 00 01",
+            "product_key:qasrgndvbbtrula9",
+            # ...and one step further: the Wi-Fi state report.
+            "55 aa 00 03 00 01 01 04",
+        ],
+        "unexpected_strings": [
+            "lld.c",
+            "prod len",
+        ],
+    },
+    {
         # A stock Tuya breaker / leakage switch on the BK7231T, SDK 1.1.80.
         # Two things make it worth its own case rather than being one more
         # TuyaMCU dump:
@@ -2062,6 +2176,26 @@ DESCRIPTIONS = {
         "the controller runs its real sleep/wake loop, acknowledges every interrupt, answers "
         "the host, and the Tuya BLE service reports the advertisement applied. No radio: "
         "nothing goes on air.",
+    "BK7231M VeSync WHOGPLUG Plug (VeSync SDK, BLE 5.1 core) advertises and scans":
+        "A VeSync (Etekcity) EU smart plug on BK7231M - the first firmware in the suite that "
+        "is neither OpenBeken nor Tuya. It runs VeSync SDK v1.2.1 on the Beken SDK and needs "
+        "the N-family BLE 5.1 core, which --ble-core now models alongside BK7238's 5.2: the "
+        "slot clock at its 5.1 offset, the BLE block's version register the link layer "
+        "asserts on, and the hardware AES engine the host needs for its random numbers. It "
+        "also needed two pwm_new behaviours, since the plug captures its metering chip's "
+        "pulses with PWM: the counter-read request self-clears, and interrupt status is "
+        "write-1-to-clear. BLE comes up, the advertisement (Etekcity manufacturer data "
+        "carrying the BLE MAC) is decoded straight out of exchange memory, and network "
+        "config starts a Wi-Fi scan - the edge of what the emulator models.",
+    "BK7231N Tuya Globe Ceiling Fan (BLE-gated, SDK 2.1.17) --ble-core: Tuya beacon, TuyaMCU to Wi-Fi state":
+        "A paired Tuya ceiling fan from the 'BLE-gated' class - about 70% of the BK7231N dumps "
+        "in FlashDumps - whose firmware brings BLE up at start-up and used to stall on the "
+        "unmodelled BLE core. With --ble-core it runs real BLE init (random numbers from the "
+        "modelled AES engine, the stack up, the full advertising state machine) and stages "
+        "Tuya's pairing beacon: service UUID 0xA201 carrying the device's own product key, "
+        "decoded from exchange memory. With the simulated MCU answering, it accepts its product "
+        "record and goes one step further than the --xvr-selfclear dumps, reporting its Wi-Fi "
+        "state to the MCU.",
     "BK7231T Tuya Breaker/Leakage Switch (TuyaMCU 1.1.80) accepts raw product":
         "A stock Tuya breaker / leakage switch, BK7231T, SDK 1.1.80. It pins down where the "
         "TuyaMCU product-info wire form changes: the other 1.1.x dump here (TMWF02, 1.1.71) "
@@ -2457,6 +2591,17 @@ def run_test(test_config):
                 print(f"  [FAIL] Missing string: '{string}'")
             all_passed = False
 
+    # Strings that must NOT appear, when a case declares "unexpected_strings".
+    # The negative half of a fix: a case that proves a boot now gets past an
+    # assert should also prove the assert itself is gone, not merely that
+    # later lines still print after it. Checked over the whole captured log,
+    # which runs at least up to the last expected marker.
+    for string in test_config.get("unexpected_strings") or []:
+        actual = output.count(string)
+        if not _record_check(checks, "absent: '%s'" % string, actual == 0,
+                             "never printed" if actual == 0 else "printed %dx" % actual):
+            all_passed = False
+
     periph_data = _periph(periph_lines, chip_of(test_config))
 
     # Pin assertions, when a case declares "expected_pins". This is what turns
@@ -2550,14 +2695,28 @@ def _write_report(results):
         print(f"WARN: could not write HTML report: {e}")
 
 def main():
-    results = [run_test(test) for test in TEST_CASES]
+    # -k PATTERN runs only the cases whose name contains PATTERN (case
+    # insensitive; repeatable). Selecting by name rather than by TEST_CASES
+    # index matters: indices shift whenever a case is inserted, and running
+    # "case 20" standalone has verified the wrong test before. A filtered run
+    # leaves report/index.html alone - it describes the whole suite.
+    patterns = [a.lower() for i, a in enumerate(sys.argv[1:])
+                if i > 0 and sys.argv[i] == "-k"]
+    selected = [t for t in TEST_CASES
+                if not patterns or any(p in t["name"].lower() for p in patterns)]
+    if patterns and not selected:
+        print("No test name contains any of: %s" % ", ".join(patterns))
+        sys.exit(2)
+
+    results = [run_test(test) for test in selected]
     passed = sum(1 for r in results if r["passed"])
     failed = len(results) - passed
 
     print(f"=====================================")
     print(f"Test Run Completed: {passed} passed, {failed} failed.")
 
-    _write_report(results)
+    if not patterns:
+        _write_report(results)
 
     sys.exit(1 if failed else 0)
 

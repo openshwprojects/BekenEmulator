@@ -24,10 +24,36 @@ except ImportError:
 # do not check these registers at all, so the BK7231 default is safe for them.
 CHIP_FAMILIES = {
     "BK7231": (0x0007231A, 0x18520001),   # BK7231T/U family (default)
+    # BK7231N/M silicon's own identity (sys_ctrl.h: CHIP_ID_BK7231N,
+    # DEVICE_ID_BK7231N_A). Most N-family builds run fine on the default
+    # above, but newer SDK builds check it: their bk_check_chip_id accepts
+    # chip 0x7231C with device 0x2015xxxx / 0x2052xxxx / 0x20A2xxxx only, and
+    # hangs after "Unsupported chip or dev (7231a.18520001)" otherwise (VeSync
+    # plug 1.0.02, ChinaMobile HeJiaQin plug). Not the default because the
+    # real id also selects the full BK7231N RF calibration (bk7231N_cal.c),
+    # which measures test tones through the unmodelled RC block at 0x01050000
+    # between thousands of busy-wait delays: still inside calibration_main
+    # after 70M instructions. Fine where the check demands it; slow otherwise.
+    "BK7231N": (0x0007231C, 0x20521023),
     "BK7238": (0x00007238, 0x21128000),   # accepts dev 0x2112xxxx or 0x2206xxxx
     "BK7252": (0x0007221A, 0x18221020),   # BK7252 = BK7221U silicon
     "BK7252N": (0x0007252A, 0x23A18000),  # accepts dev 0x23A1xxxx or 0x2431xxxx
 }
+
+# BLE core generation per chip id, for --ble-core (CFG_BLE_VERSION in each
+# chip's sys_config_*.h). The BK7231 identity covers T/U too, which carry the
+# older 4.2 IP - but only N-family images (N, M, BL2028N) have a BLE core that
+# needs --ble-core, so 5.1 is the layout that identity means in practice.
+# BK7252/BK7252N have no 5.x core, and on BK7252 0x900000 is SDRAM.
+BLE_CORE_LAYOUTS = {
+    CHIP_FAMILIES["BK7231"][0]: "5.1",
+    CHIP_FAMILIES["BK7231N"][0]: "5.1",
+    CHIP_FAMILIES["BK7238"][0]: "5.2",
+}
+
+# Chip ids that are the BK7231 die (T/U/N/M): same SARADC layout, and the
+# pwm_new block on N/M.
+BK7231_CHIP_IDS = (CHIP_FAMILIES["BK7231"][0], CHIP_FAMILIES["BK7231N"][0])
 
 # Instructions between raises of the guest's periodic timer (see hook_block),
 # and the slice of DEVICE time one such tick stands for. Together they are the
@@ -97,6 +123,15 @@ class SimulatorState:
         # the enable bit already cleared because the transfer is done by the
         # time the guest can look. Reads of CONF are served from here.
         self.gdma_conf = {}
+        # pwm_new interrupt status (BK7231N/BK7238 PWM block at 0x802B00).
+        # pwmn_seen flips the first time the firmware programs a group; from
+        # then on ICU bit 9 (IRQ_PWM) follows pwmn_stat rather than the
+        # T-family PWM status at 0x802A04, which an N-family ISR never clears.
+        # pwmn_stat holds each group's INT_STAT bits (30/31) at their own bit
+        # positions shifted down by 30 - 2*group. Nothing raises them yet (no
+        # signal is ever driven onto a capture pin), so they only get cleared.
+        self.pwmn_seen = False
+        self.pwmn_stat = 0
 
 class FlashState:
     def __init__(self):
@@ -119,6 +154,13 @@ class BekenEmulator:
     XVR_BASE = 0x00900000
     ACCEL_BASE = 0x00810000
     PWM_BASE = 0x00802A00
+    # pwm_new (0x802B00, three groups of 0x40): REG_PWM_GROUP_CTRL and
+    # REG_GROUP_PWM_CPU of each group (pwm_bk7231n.h).
+    PWMN_BASE = 0x00802B00
+    PWMN_CTRL_REGS = (0x00802B00, 0x00802B40, 0x00802B80)
+    PWM_CPU_REGS = (0x00802B24, 0x00802B64, 0x00802BA4)
+    PWMN_INT_STAT = (1 << 30) | (1 << 31)     # per-channel status, write 1 to clear
+    PWMN_CFG_UPDATA = (1 << 7) | (1 << 15)    # per-channel config latch, self-clearing
     # General DMA (beken378/driver/general_dma/general_dma.h). Four channels,
     # eight 32-bit registers each: CONF, DST_START, SRC_START, DSTLOOP_END,
     # DSTLOOP_START, SRCLOOP_END, SRCLOOP_START, REMAIN_LEN.
@@ -159,8 +201,18 @@ class BekenEmulator:
         # --xvr-selfclear bit tricks; on, the controller gets a slot clock,
         # deep-sleep wake-ups and interrupt registers - and the FIQ lines
         # (ICU bits 29/30) that this emulator never raised before.
-        self.blecore = (_blecore.BleCore(self.XVR_BASE, SLOW_TICK_INSNS * 1000 // SLOW_TICK_MS)
-                        if ble_core else None)
+        self.blecore = None
+        if ble_core:
+            chip_id = (chip_identity or CHIP_FAMILIES["BK7231"])[0]
+            layout = BLE_CORE_LAYOUTS.get(chip_id)
+            if layout is None:
+                raise ValueError("--ble-core models the BLE 5.x core of BK7231N/M (5.1) and "
+                                 "BK7238 (5.2); this chip has no such core.")
+            self.blecore = _blecore.BleCore(self.XVR_BASE, SLOW_TICK_INSNS * 1000 // SLOW_TICK_MS,
+                                            layout=layout)
+            # Exchange memory is ordinary guest RAM, reached through Unicorn.
+            self.blecore.mem = (lambda addr, size: self.mu.mem_read(addr, size),
+                                lambda addr, data: self.mu.mem_write(addr, bytes(data)))
         self.bootloader = bootloader
         self.app = app
         self.with_boot = with_boot
@@ -236,6 +288,8 @@ class BekenEmulator:
         self._resume = threading.Event()
         self._resume.set()
         self.stopping = False
+        # Advertising payloads already printed, so each is reported once.
+        self._ble_adv_seen = set()
         # When EMU_REPORT is set (the self-test harness does this), periodically
         # emit the approximate executed-instruction count on a distinct
         # [EMU_INSNS] line so the report can show it. Off by default so normal
@@ -250,6 +304,13 @@ class BekenEmulator:
         # other supported chip 0x900000 is the XVR register block instead. So
         # this flag switches that window between "RAM" and "XVR registers".
         self.is_bk7252 = (self.chip_id_value == CHIP_FAMILIES["BK7252"][0])
+        # Chips whose 0x802B00 block is pwm_new (pwm_bk7231n.c). On the 7252
+        # family the same window is the audio block. The BK7231 identity also
+        # covers T/U, which never touch 0x802B00, so modelling it there is inert.
+        self.has_pwm_new = self.chip_id_value in BK7231_CHIP_IDS + (CHIP_FAMILIES["BK7238"][0],)
+        # The BK7231 SARADC model (CHNL_EN arms a sample batch) applies to the
+        # whole BK7231 die, whichever of its identities is served.
+        self.is_bk7231 = self.chip_id_value in BK7231_CHIP_IDS
 
         self.state = SimulatorState()
         self.flash_state = FlashState()
@@ -471,7 +532,10 @@ class BekenEmulator:
                     buf = sys.__stdout__.buffer
                     buf.write(b"\n[EMU_INSNS] %d\n" % state.insn_count)
                     buf.flush()
-            if state.icu_int_enable & (1 << 9): # PWM/Timer (Tuya)
+            # PWM/Timer (Tuya T-family tick through 0x802A04). Not on a pwm_new
+            # firmware: that block has no such register, its ISR never acks
+            # 0x802A04, and the bit would stay pending for good.
+            if state.icu_int_enable & (1 << 9) and not state.pwmn_seen:
                 state.pwm_status |= (1 << 0)
             if state.icu_int_enable & (1 << 8): # BKTIMER (OpenBK)
                 state.timer3_5_ctl |= (1 << 7)
@@ -494,11 +558,12 @@ class BekenEmulator:
                 # event side into rwble_isr. Both are levels: they stay up
                 # until the firmware acks them in INTACK0/1.
                 core_irq, ble_irq = self.blecore.tick(state.insn_count)
+                self._report_ble_adv()
                 state.pending_irqs = ((state.pending_irqs & ~((1 << 29) | (1 << 30)))
                                       | ((1 << 29) if core_irq else 0)
                                       | ((1 << 30) if ble_irq else 0))
 
-        if state.pwm_status & 0x3F:
+        if (state.pwmn_stat if state.pwmn_seen else state.pwm_status & 0x3F):
             state.pending_irqs |= (1 << 9)
         else:
             state.pending_irqs &= ~(1 << 9)
@@ -530,6 +595,34 @@ class BekenEmulator:
             if (state.uart2_int_enable & 0x01) and (state.icu_int_enable & (1 << 1)):
                 state.pending_irqs |= (1 << 1)
                 self.trigger_irq()
+
+    def _report_ble_adv(self):
+        """Print any advertising payload the controller has staged in EM.
+
+        Where EM lives comes from the core model (BleCore.em_base): on the 5.2
+        core the firmware hands the hardware its runtime pointer (`extern
+        uint8_t *ex_mem`, different in every build) through a base register;
+        on 5.1 EM sits at a fixed address. Either way no RAM-wide scan.
+        Emitted on a line boundary like the other capture lines, and only when
+        a payload is new - a boot produces one or two, not a stream.
+        """
+        if not self.state.uart_at_line_start:
+            return
+        found = self.blecore.find_adv(
+            lambda addr, size: bytes(self.mu.mem_read(addr, size)))
+        if not found:
+            return
+        base = self.blecore.em_base()
+        buf = sys.__stdout__.buffer
+        for offset, payload, fields in found:
+            if payload in self._ble_adv_seen:
+                continue
+            self._ble_adv_seen.add(payload)
+            buf.write(b"\n[BLE_ADV] EM 0x%08x +0x%04x (%d bytes): %s\n"
+                      % (base, offset, len(payload), payload.hex(" ").encode("ascii")))
+            for line in _blecore.BleCore.describe_ad(fields):
+                buf.write(b"[BLE_ADV]   %s\n" % line.rstrip().encode("ascii", "replace"))
+            buf.flush()
 
     def _gdma_channel(self, address):
         """Channel number if address is a GDMA CONF register, else None."""
@@ -600,7 +693,7 @@ class BekenEmulator:
         # 31 to start an operation. The write still lands in mapped memory.
         if self.xvr_selfclear and address in (0x009000f8, 0x00900000) and (value & 0x80000000):
             self.state.xvr_armed.add(address)
-        if self.blecore is not None and self.XVR_BASE <= address < self.XVR_BASE + _blecore.SIZE:
+        if self.blecore is not None and self.XVR_BASE <= address < self.XVR_BASE + self.blecore.window:
             self.blecore.write(address, value, self.state.insn_count)
 
         # GPIO config registers - one 32-bit word per pin at GPIO_BASE + n*4.
@@ -621,6 +714,12 @@ class BekenEmulator:
         # in pwm_regs are therefore pwm_new registers. On 7252-family chips
         # 0x802B00 is the audio block instead, so the DECODER gates on chip
         # identity - capture here just records writes.
+        if address in self.PWMN_CTRL_REGS and self.has_pwm_new:
+            # Write-1-to-clear the group's interrupt status (see the read hook).
+            group = (address - self.PWMN_BASE) >> 6
+            self.state.pwmn_seen = True
+            self.state.pwmn_stat &= ~(((value >> 30) & 0x3) << (2 * group))
+
         if self.PWM_BASE <= address < self.PWM_BASE + 0x1C0:
             _off = address - self.PWM_BASE
             self.state.pwm_regs[_off] = value & 0xFFFFFFFF
@@ -736,7 +835,7 @@ class BekenEmulator:
                 sys.__stderr__.flush()
             # Only the BK7231(T/U/N/M) SARADC layout uses this model; the
             # 7238/7252/7252N layout differs and is served via 0x802c0c.
-            if self.chip_id_value == 0x0007231A:
+            if self.is_bk7231:
                 if value & (1 << 2):                # CHNL_EN: start converting
                     if self.state.saradc_pending == 0:
                         self.state.saradc_pending = 32
@@ -798,6 +897,33 @@ class BekenEmulator:
         if address == 0x00802A04:
             mu.mem_write(address, struct.pack("<I", self.state.pwm_status))
             return
+
+        # pwm_new REG_GROUP_PWM_CPU, one per group (0x802B24/64/A4). Reading a
+        # channel's counter is a request: the driver sets CPU_RD0/1 (bits 0/1)
+        # and spins until hardware clears it, having latched the count into
+        # RD_DATA (pwm_bk7231n.c: `while ((value & (1 << post)) != 0)`). Served
+        # as plain memory the bit never clears - the VeSync plug firmware wedges
+        # there right after putting its PWM channels into capture mode (how it
+        # counts the metering chip's pulses). Read back with the request
+        # bits clear, i.e. the count already latched; RD_DATA itself stays
+        # plain memory. Gated to the chips whose 0x802B00 block is pwm_new; on
+        # the 7252 family it is the audio block.
+        if address in self.PWM_CPU_REGS and self.has_pwm_new:
+            cur = struct.unpack("<I", mu.mem_read(address, 4))[0]
+            mu.mem_write(address, struct.pack("<I", cur & ~0x3))
+            return
+        # pwm_new REG_PWM_GROUP_CTRL: the interrupt status bits (30/31) come
+        # from the shadow, since the firmware writes them as 1 to CLEAR them
+        # and plain memory would keep them set - its PWM ISR then sees a
+        # phantom capture interrupt, acks it and spins forever waiting for the
+        # ack to take. CFG_UPDATA reads back clear: the new config is latched.
+        if address in self.PWMN_CTRL_REGS and self.has_pwm_new:
+            group = (address - self.PWMN_BASE) >> 6
+            cur = struct.unpack("<I", mu.mem_read(address, 4))[0]
+            stat = ((self.state.pwmn_stat >> (2 * group)) & 0x3) << 30
+            mu.mem_write(address, struct.pack(
+                "<I", (cur & ~(self.PWMN_INT_STAT | self.PWMN_CFG_UPDATA)) | stat))
+            return
         if address == 0x00802A0C:
             mu.mem_write(address, struct.pack("<I", self.state.timer0_2_ctl))
             return
@@ -811,7 +937,7 @@ class BekenEmulator:
             # `while((cfg & FIFO_EMPTY)==0)` loop reads them. INT_CLR (bit 8) is
             # deliberately never reflected, so saradc_int_clr()'s do/while exits.
             # Identical to the historical constant (1<<30) whenever idle.
-            cfg = 0 if (self.chip_id_value == 0x0007231A
+            cfg = 0 if (self.is_bk7231
                         and self.state.saradc_pending) else (1 << 30)
             mu.mem_write(address, struct.pack("<I", cfg))
             return
@@ -851,7 +977,7 @@ class BekenEmulator:
         # it (state.xvr_armed). Measured to walk the stock 2.x / ATORCH (2.1.17)
         # RF and BLE init past BOTH spins all the way to the TuyaMCU link.
         # Disassembly + measurements: scratch/ble_stall.py, scratch/ble_crack.py.
-        if self.blecore is not None and self.XVR_BASE <= address < self.XVR_BASE + _blecore.SIZE:
+        if self.blecore is not None and self.XVR_BASE <= address < self.XVR_BASE + self.blecore.window:
             served = self.blecore.read(address, self.state.insn_count)
             if served is not None:
                 mu.mem_write(address, struct.pack("<I", served))
