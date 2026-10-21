@@ -7,7 +7,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from src.crypto import (extract_and_decrypt, strip_crcs, parse_key, KNOWN_KEYS,
                         detect_bk7252_app_only)
-from src.emulator import BekenEmulator, CHIP_FAMILIES, CONSOLE_RX_HOLDOFF_INSNS
+from src.chips import chip_names, get_chip
+from src.chips.base import DEFAULT_FLASH_SIZE
+from src.emulator import BekenEmulator, CONSOLE_RX_HOLDOFF_INSNS
 from src import tuyamcu, tuya_config
 from src.periph import parse_adc_specs
 from src.wifipeer import WIFI_ROLES
@@ -132,6 +134,23 @@ def check_wifi_pass(passphrase):
     return passphrase
 
 
+def fit_flash(physical, chip):
+    """Pad a physical dump with erased bytes out to the size of the flash chip.
+
+    The size is the chip's; a chip without one takes the smallest power of two
+    that holds the dump, at least DEFAULT_FLASH_SIZE.
+    """
+    flash_size = chip.flash_size
+    if flash_size is None:
+        flash_size = DEFAULT_FLASH_SIZE
+        while flash_size < len(physical):
+            flash_size *= 2
+    if len(physical) > flash_size:
+        raise ValueError("The dump (%d bytes) does not fit the %d-byte flash of %s."
+                         % (len(physical), flash_size, chip.name))
+    return bytes(physical) + b"\xff" * (flash_size - len(physical))
+
+
 def check_tuyamcu_pid(pid):
     """Check --tuyamcu-pid: the MCU sends it as ASCII on the wire."""
     if pid and not pid.isascii():
@@ -169,7 +188,7 @@ def parse_args():
                         help="Report the first execution of this exact guest code address as an "
                              "[EMU_PC] line. Repeatable; useful when firmware keeps running after "
                              "its UART log goes quiet. Bit 0 may mark a Thumb address.")
-    parser.add_argument("--with-boot", action="store_true", help="Start execution from bootloader (0x00000000) instead of app (0x10000)")
+    parser.add_argument("--with-boot", action="store_true", help="Start execution from the chip's bootloader partition instead of its app partition")
     parser.add_argument("--uart1-hex", action="store_true", help="Show UART1 (TuyaMCU link) as tagged hex; UART2 stays text log")
     parser.add_argument("--uart1-rx", dest="uart1_rx", default=None, metavar="TEXT",
                         help="Feed TEXT into UART1's receive FIFO (a CRLF is appended). With OBK's "
@@ -317,7 +336,7 @@ def parse_args():
     parser.add_argument("-chip", "--chip", dest="chip", default="BK7231", metavar="CHIP",
                         help="Chip/variant served from the SCTRL id registers: %s. "
                              "Default: BK7231; select BK7231U for its GPIO32..39 bank."
-                             % ", ".join(sorted(CHIP_FAMILIES)))
+                             % ", ".join(chip_names()))
     return parser.parse_args()
 
 def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uart=False,
@@ -342,10 +361,7 @@ def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uar
     if log is None:
         log = (lambda *a: None) if only_uart else print
 
-    chip_name = (chip or "").strip().upper()
-    if chip_name not in CHIP_FAMILIES:
-        raise ValueError("Unknown -chip value: %r. Known chips: %s."
-                         % (chip, ", ".join(sorted(CHIP_FAMILIES))))
+    chip = get_chip(chip)
 
     with open(dump_path, "rb") as f:
         raw_data = f.read()
@@ -354,7 +370,7 @@ def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uar
     # window at file offset zero.  The flash controller's 32-data + 2-CRC
     # mapping makes this CPU/XIP address 0x10000: it is an app-only image, not
     # a full dump whose first bytes belong at address zero.
-    app_window = detect_bk7252_app_only(raw_data) if chip_name == "BK7252" else None
+    app_window = detect_bk7252_app_only(raw_data) if chip.app_only_phys is not None else None
     if app_window is not None:
         if key is not None:
             raise ValueError("Detected a plaintext BK7252 app-only dump; do not pass -key.")
@@ -366,36 +382,41 @@ def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uar
         bootloader = None
 
         # Keep the application at its linked address.  The ARM968E-S vector
-        # base is 0x10000 in this direct-app configuration, so the omitted low
-        # bootloader region remains erased rather than containing a fake copy.
-        if 0x10000 + len(app) > BekenEmulator.FLASH_SIZE:
+        # base is the CPU address of the dump in this direct-app configuration,
+        # so the omitted low bootloader region remains erased rather than
+        # containing a fake copy.
+        base = chip.app_only_cpu
+        if base + len(app) > BekenEmulator.FLASH_SIZE:
             raise ValueError("Decoded BK7252 application does not fit the 2 MiB XIP window.")
         logical_flash = bytearray(b"\xff" * BekenEmulator.FLASH_SIZE)
-        logical_flash[0x10000:0x10000 + len(app)] = app
+        logical_flash[base:base + len(app)] = app
         flash_data = bytes(logical_flash)
 
         # Software flash-controller operations use physical addresses.  File
-        # offset zero came from 0x11000, so represent the omitted low region as
-        # erased rather than shifting config/filesystem reads down by 0x11000.
-        physical_data = (b"\xff" * 0x11000) + raw_data
-        log("Detected BK7252 app-only dump: file offset 0 is physical 0x11000 / "
-            "CPU 0x10000.")
+        # offset zero came from app_only_phys, so represent the omitted low
+        # region as erased rather than shifting config/filesystem reads down.
+        physical_data = (b"\xff" * chip.app_only_phys) + raw_data
+        log("Detected BK7252 app-only dump: file offset 0 is physical 0x%X / "
+            "CPU 0x%X." % (chip.app_only_phys, base))
         log("Decoded CRC-framed app prefix: %d bytes from %d encoded bytes."
             % (len(app), encoded_size))
     else:
         flash_data = strip_crcs(raw_data)
-        bootloader = extract_and_decrypt(flash_data, "bootloader", key)
-        app = extract_and_decrypt(flash_data, "app", key)
+        bootloader = extract_and_decrypt(flash_data, "bootloader", key,
+                                         chip.bootloader_addr, chip.app_addr)
+        app = extract_and_decrypt(flash_data, "app", key,
+                                  chip.bootloader_addr, chip.app_addr)
         physical_data = raw_data
+    physical_data = fit_flash(physical_data, chip)
 
     if app and save_decrypted and not os.environ.get("EMU_REPORT"):
         with open("app_decrypted.bin", "wb") as f:
             f.write(app)
 
     if app_window is not None:
-        log("Bootloader region is absent; starting the app directly at 0x10000.")
+        log("Bootloader region is absent; starting the app directly at 0x%X." % chip.app_addr)
     elif bootloader is None:
-        log("Warning: Could not find 'bootloader' RBL container. Booting from 0x10000.")
+        log("Warning: Could not find 'bootloader' RBL container. Booting from 0x%X." % chip.app_addr)
     else:
         log(f"Loaded 'bootloader' payload, size: {len(bootloader)} bytes")
     if app is None:
@@ -412,15 +433,14 @@ def build_emulator(dump_path, key=None, chip="BK7231", with_boot=False, only_uar
 
     return BekenEmulator(raw_flash=flash_data, bootloader=bootloader, app=app,
                          with_boot=with_boot, only_uart=only_uart,
-                         chip_identity=CHIP_FAMILIES[chip_name], uart1_hex=uart1_hex,
+                         chip=chip, uart1_hex=uart1_hex,
                          physical_flash=physical_data, uart1_rx=uart1_rx,
                          uart1_rx_delay=uart1_rx_delay, tuyamcu_enabled=tuyamcu,
                          tuyamcu_pid=tuyamcu_pid, tuyamcu_raw=tuyamcu_raw,
                          xvr_selfclear=xvr_selfclear, tuyamcu_dps=tuyamcu_dps,
                          tuyamcu_injects=tuyamcu_injects, uart_sink=uart_sink,
                          ble_core=ble_core, wifi=wifi,
-                         exception_vector_base=0x10000 if app_window is not None else 0,
-                         chip_variant=chip_name,
+                         exception_vector_base=chip.app_only_cpu if app_window is not None else 0,
                          deep_sleep_wakes=deep_sleep_wakes,
                          gpio_inputs=gpio_inputs,
                          adc_inputs=adc_inputs)

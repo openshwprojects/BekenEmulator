@@ -321,8 +321,11 @@ def detect_bk7252_app_only(data: bytes):
         return None
     return app, encoded_size
 
-def extract_and_decrypt(data: bytes, target_name: str = "bootloader", coefs=None):
+def extract_and_decrypt(data: bytes, target_name: str = "bootloader", coefs=None,
+                        bootloader_addr: int = 0x00000000, app_addr: int = 0x00010000):
     """Extract the bootloader/app slice, decrypting it with `coefs` if given.
+
+    bootloader_addr and app_addr are the chip's partition addresses (Chip fields).
 
     coefs is a 4-tuple of cipher coefficients from parse_key(), or None for
     no decryption (plaintext images, e.g. BK7238/BK7231M/U/BK7252 built from
@@ -355,7 +358,7 @@ def extract_and_decrypt(data: bytes, target_name: str = "bootloader", coefs=None
 
         name = name_bytes.split(b"\x00")[0].decode("ascii", "ignore").strip()
         if name == target_name:
-            mapped_address = 0x00000000 if target_name == "bootloader" else 0x00010000
+            mapped_address = bootloader_addr if target_name == "bootloader" else app_addr
             payload = data[mapped_address:mapped_address+size_package]
 
             # If NONE, it's not OTA compressed/encrypted, but still flash-encrypted
@@ -373,11 +376,11 @@ def extract_and_decrypt(data: bytes, target_name: str = "bootloader", coefs=None
 
     # No RBL container found: fall back to fixed slices of the raw image.
     if target_name == "bootloader":
-        payload, mapped_address = data[0:0x10000], 0x00000000
-        vector_offsets = (0,)          # bootloader vectors at 0x0
+        payload, mapped_address = data[bootloader_addr:app_addr], bootloader_addr
+        vector_offsets = (0,)          # bootloader vectors at its start
     else:
-        payload, mapped_address = data[0x10000:0x200000], 0x00010000
-        vector_offsets = (0, 0x100, 0x1000)   # app vectors at 0x10000, 0x10100, or 0x11000
+        payload, mapped_address = data[app_addr:0x200000], app_addr
+        vector_offsets = (0, 0x100, 0x1000)   # app vectors at its start, +0x100 or +0x1000
 
     if coefs is None:
         print(f"Warning: '{target_name}' RBL container not found. No key given, using raw slice without decryption.")

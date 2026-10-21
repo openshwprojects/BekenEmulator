@@ -118,7 +118,7 @@ def test_app_window_detection_and_mapping():
     assert emu.raw_flash[0x10000:0x20000] == app
     assert emu.raw_flash[0x20000:] == b"\xff" * (emu.FLASH_SIZE - 0x20000)
     assert emu.physical_flash[:0x11000] == b"\xff" * 0x11000
-    assert emu.physical_flash[0x11000:] == raw
+    assert emu.physical_flash[0x11000:0x11000 + len(raw)] == raw
     assert struct.unpack_from("<I", emu.app, 0x200)[0] == 0x00080BDD
     assert any("physical 0x11000" in line for line in logs)
 
@@ -133,7 +133,7 @@ def test_app_window_detection_and_mapping():
     other = _build_from_bytes(raw, chip="BK7252N", only_uart=True,
                               save_decrypted=False)
     assert other.exception_vector_base == 0
-    assert bytes(other.physical_flash) == raw
+    assert bytes(other.physical_flash[:len(raw)]) == raw
 
     # Exercise all three manually injected exception types at the relocated
     # table; this is the behaviour the real app needs after its first tick.
@@ -160,11 +160,47 @@ def test_full_image_precedence_and_false_positive_guard():
     emu = build_emulator(full_path, chip="BK7252", only_uart=True,
                          save_decrypted=False)
     assert emu.exception_vector_base == 0
-    assert bytes(emu.physical_flash) == full
+    assert bytes(emu.physical_flash[:len(full)]) == full
+    assert emu.physical_flash[len(full):] == b"\xff" * (len(emu.physical_flash) - len(full))
 
     low_app = bytearray(b"\xff" * 0x10000)
     low_app[:0x40] = _vectors(app_linked=False)
     assert detect_bk7252_app_only(_crc_encode(low_app)) is None
+
+
+def test_flash_size():
+    """Physical flash is the whole chip, not just the bytes the file carried."""
+    MiB = 1024 * 1024
+    app, raw = _synthetic_app_window()
+
+    # An app-only build is ~1 MB, but firmware keeps data at the top of the
+    # chip (the A9 camera stores its MAC in the last 4K sector, 0x1FF000).
+    emu = _build_from_bytes(raw, chip="BK7252", only_uart=True,
+                            save_decrypted=False)
+    assert len(emu.physical_flash) == 4 * MiB
+    assert emu.physical_flash[0x11000:0x11000 + len(raw)] == raw
+    assert emu.physical_flash[0x11000 + len(raw):] == b"\xff" * (4 * MiB - 0x11000 - len(raw))
+    emu._flash_erase(0x1FF000, 0x1000)
+    emu._flash_program(0x1FF000, [0x8C47C8A5, 0xC6B4508C])
+    assert emu.physical_flash[0x1FF000:0x1FF008] == bytes.fromhex("a5c8478c8c50b4c6")
+
+    # Dumps of both module sizes load (the bundled 2 MiB app-only read, which
+    # runs past 2 MiB once placed at 0x11000, and the 4 MiB full dumps); a dump
+    # that fills the BK7252's flash fits and one byte more is rejected rather
+    # than truncated.
+    for size in (2 * MiB, 2 * MiB + 0x11000, 4 * MiB):
+        assert len(_build_from_bytes(b"\xa5" * size, chip="BK7252", only_uart=True,
+                                     save_decrypted=False).physical_flash) == 4 * MiB
+    _assert_raises("does not fit", lambda: _build_from_bytes(
+        b"\xa5" * (4 * MiB + 1), chip="BK7252", only_uart=True, save_decrypted=False))
+
+    # A chip without a flash size takes the smallest power of two that holds
+    # the dump, at least 2 MiB.
+    for size, want in ((1 * MiB, 2 * MiB), (2 * MiB, 2 * MiB), (3 * MiB, 4 * MiB),
+                       (4 * MiB, 4 * MiB)):
+        emu = _build_from_bytes(b"\xff" * size, chip="BK7231N", only_uart=True,
+                                save_decrypted=False)
+        assert len(emu.physical_flash) == want, size
 
 
 def test_ble_core_selection():
@@ -193,9 +229,9 @@ def test_ble_core_selection():
     # hardware out of the unrelated BLE 5.1 model.
     bk7231u = _build_from_bytes(raw, chip="BK7231U", only_uart=True,
                                save_decrypted=False)
-    assert bk7231u.has_extended_gpio and bk7231u.gpio_pin_count == 40
+    assert bk7231u.gpio_pin_count == 40
     assert bk7231u.blecore is None
-    assert not ambiguous.has_extended_gpio and ambiguous.gpio_pin_count == 32
+    assert ambiguous.gpio_pin_count == 32
     _assert_raises("this chip has no such core", lambda: _build_from_bytes(
         raw, chip="BK7231U", only_uart=True, save_decrypted=False,
         ble_core=True))
@@ -262,6 +298,7 @@ if __name__ == "__main__":
     test_crc_prefix()
     test_app_window_detection_and_mapping()
     test_full_image_precedence_and_false_positive_guard()
+    test_flash_size()
     test_ble_core_selection()
     optional_real_bk7252u_smoke()
     print("All image-loader self-tests passed.")

@@ -8,3 +8,5 @@ report/
 build/
 dist/
 *.spec
+.venv
+

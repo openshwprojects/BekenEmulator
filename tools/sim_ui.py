@@ -55,7 +55,8 @@ sys.path.insert(0, ROOT_DIR)
 
 from src import netstack, tuya_config
 from src.crypto import KNOWN_KEYS, parse_key
-from src.emulator import CHIP_FAMILIES, SLOW_TICK_INSNS, SLOW_TICK_MS
+from src.chips import CHIPS, chip_names
+from src.emulator import SLOW_TICK_INSNS, SLOW_TICK_MS
 from src.main import (WIFI_ROLES, build_emulator, check_tuyamcu_pid, check_wifi_pass,
                       parse_forwards, parse_hex_blobs, parse_http_gets, parse_mqtt_pubs)
 # One decoder for the GPIO/PWM registers, shared with the self-test report -
@@ -346,7 +347,7 @@ class SimulatorUI:
 
         ttk.Label(cfg, text="chip").pack(side="left")
         self.var_chip = tk.StringVar(value=guess_chip(initial_image))
-        ttk.Combobox(cfg, textvariable=self.var_chip, values=sorted(CHIP_FAMILIES),
+        ttk.Combobox(cfg, textvariable=self.var_chip, values=chip_names(),
                      state="readonly", width=9).pack(side="left", padx=(3, 10))
 
         ttk.Label(cfg, text="key").pack(side="left")
@@ -1102,7 +1103,7 @@ class SimulatorUI:
             # Checked as str first: a list or dict here would make the
             # membership tests raise, and the window would never open.
             chip, key = data.get("chip"), data.get("key")
-            if isinstance(chip, str) and chip in CHIP_FAMILIES:
+            if isinstance(chip, str) and chip in CHIPS:
                 self.var_chip.set(chip)
             if isinstance(key, str) and (key in KNOWN_KEYS or key == "(none)"):
                 self.var_key.set(key)
@@ -1550,11 +1551,21 @@ class SimulatorUI:
         # presenting a guess as decoded hardware metadata.
         return 0, "no pull; defaulting the simulated press to LOW"
 
+    def _emu_chip_name(self):
+        """Name of the running emulator's chip, or None when nothing is running."""
+        chip = getattr(self.emu, "chip", None)
+        return chip.name if chip is not None else None
+
+    def _emu_gpio_pins(self):
+        """GPIO pin count of the running emulator's chip (base bank if unknown)."""
+        chip = getattr(self.emu, "chip", None)
+        return chip.gpio_pins if chip is not None else periph.PIN_COUNT
+
     def _gpio_config(self, pin):
         """Return one logical pin's live config, including BK7252's upper bank."""
         if self.emu is None:
             return None
-        slot = periph.gpio_slot(pin, extended=getattr(self.emu, "has_extended_gpio", False))
+        slot = periph.gpio_slot(pin, self._emu_gpio_pins())
         return getattr(self.emu.state, "gpio_cfg", {}).get(slot)
 
     def _selected_gpio(self):
@@ -1801,8 +1812,7 @@ class SimulatorUI:
         """Parse and apply the UI's SARADC channel + sample value."""
         ch_tok = self.var_adc_ch.get().strip().split()[0] if self.var_adc_ch.get().strip() else "0"
         val_tok = self.var_adc_val.get().strip()
-        chip = ((getattr(self.emu, "chip_variant", None) if self.emu is not None else None)
-                or self.var_chip.get())
+        chip = self._emu_chip_name() or self.var_chip.get()
         try:
             ch, raw = periph.parse_adc_spec("%s:%s" % (ch_tok, val_tok), chip=chip)
         except ValueError as exc:
@@ -1825,8 +1835,7 @@ class SimulatorUI:
         if adc_info and adc_info.get("summary"):
             self.var_adc.set(adc_info["summary"])
             return
-        chip = ((getattr(self.emu, "chip_variant", None) if self.emu is not None else None)
-                or self.var_chip.get())
+        chip = self._emu_chip_name() or self.var_chip.get()
         info = periph.describe_adc(adc_inputs=self._adc_overrides, chip=chip)
         self.var_adc.set(info["summary"])
 
@@ -1985,12 +1994,10 @@ class SimulatorUI:
         # image selected in the header.
         image = self._run_image or self.var_image.get()
         tuya_cfg = self._run_tuya_config if self._running() else self.tuya_config
-        if getattr(self.emu, "has_extended_gpio", False):
-            chip = (getattr(self.emu, "chip_variant", "")
-                    or ("BK7252" if getattr(self.emu, "is_bk7252", False)
-                        else "BK7231U"))
+        if self._emu_gpio_pins() > periph.PIN_COUNT:
+            chip = self.emu.chip.name
         else:
-            chip = periph.chip_from_name(image) or getattr(self.emu, "chip_variant", "")
+            chip = periph.chip_from_name(image) or self._emu_chip_name() or ""
         data = periph.decode_state(
             gpio, pwm, chip,
             i2c_frames=i2c_frames, i2c_last_on=i2c_last_on,
@@ -2858,7 +2865,7 @@ def _run_selftests():
           == ["Quick run:", "Real Tuya reconnect (owned IDs only; sends to cloud):"],
           "proven paired callers have their own clearly labelled launcher row")
     check(all(os.path.isfile(os.path.join(FIRMWARE_DIR, p["file"]))
-              and p["chip"] in CHIP_FAMILIES
+              and p["chip"] in CHIPS
               and (p["key"] == "(none)" or p["key"] in KNOWN_KEYS)
               for p in INTERESTING_DUMPS),
           "every quick-run profile names a bundled image and a valid chip/key combination")
@@ -3259,9 +3266,7 @@ def _run_selftests():
     # BK7252 puts logical P32..P39 at physical slots 48..55.  The table and
     # action API must expose the logical number, without mistaking FUNC_CFG at
     # slot 32 for a pin.
-    gpio_emu.is_bk7252 = True
-    gpio_emu.has_extended_gpio = True
-    gpio_emu.chip_variant = "BK7252"
+    gpio_emu.chip = CHIPS["BK7252"]
     gpio_emu.state.gpio_cfg.update({32: 0xA5A5, 48: 0x3C})
     ui._run_image = "BK7252_upper_bank.bin"
     ui._periph_key = None
@@ -3275,9 +3280,7 @@ def _run_selftests():
     check(gpio_emu.inputs[-1] == (32, 0),
           "the BK7252 upper-bank Press action drives logical P32")
     ui._toggle_gpio_input()
-    gpio_emu.is_bk7252 = False
-    gpio_emu.has_extended_gpio = False
-    gpio_emu.chip_variant = "BK7231"
+    gpio_emu.chip = CHIPS["BK7231"]
     del gpio_emu.state.gpio_cfg[48]
     ui._run_image = None
     ui._periph_key = None
@@ -3670,7 +3673,7 @@ def _run_selftests():
 
         # SARADC analog input controls & live status:
         adc_pushed = []
-        ui.emu.chip_variant = "BK7231T"
+        ui.emu.chip = SimpleNamespace(name="BK7231T", gpio_pins=32)
         ui.emu.set_adc_input = lambda ch, val: adc_pushed.append((ch, val))
         ui.var_adc_ch.set("3 (P23)")
         ui.var_adc_val.set("512")
