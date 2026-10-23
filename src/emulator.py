@@ -756,6 +756,8 @@ class BekenEmulator:
             if state.rx_next_line_insn:
                 return state.insn_count >= state.rx_next_line_insn
             return state.insn_count >= max(self.uart1_rx_delay, 25_000_000)
+        if state.rx_next_line_insn and state.insn_count < state.rx_next_line_insn:
+            return False
         return state.insn_count >= self.uart1_rx_delay
 
     def _rx_active(self):
@@ -1577,6 +1579,10 @@ class BekenEmulator:
                 state.rtt_boot_seen = True
                 state.msh_prompt_seen = True
                 state.msh_uart_port = port
+            if b"[THD]cli_main:" in state.uart_line_tail or b"power on" in state.uart_line_tail:
+                state.msh_uart_port = port
+                if self.uart1_rx and self.tuyamcu is None:
+                    state.rx_next_line_insn = max(state.rx_next_line_insn, state.insn_count + 2_500_000)
 
     def _camera_i2c_read(self, slave_id, reg_addr):
         """Read one register from the simulated DVP camera sensor (GC0328C at 0x21)."""
@@ -1811,6 +1817,12 @@ class BekenEmulator:
                    state.camera_height, len(jpeg_bytes), state.ejpeg_dma_ch,
                    state.ejpeg_dma_dst))
 
+    def _ensure_vector_page(self):
+        page0 = getattr(self, "_flash_page0", None)
+        if page0 is not None and self.state.msh_uart_port == 2:
+            if bytes(self.mu.mem_read(0, 4)) != page0[:4]:
+                self.mu.mem_write(0, page0)
+
     def trigger_irq(self):
         if self.state.icu_global_int_en == 0:
             return # Global interrupts disabled
@@ -1818,6 +1830,7 @@ class BekenEmulator:
         read, write = self._reg_read, self._reg_write
         cpsr = read(UC_ARM_REG_CPSR)
         if (cpsr & 0x80) == 0:  # I bit is clear (IRQs enabled)
+            self._ensure_vector_page()
             pc = read(UC_ARM_REG_PC)
 
             # Switch to IRQ mode (0x12), disable IRQs (0x80), clear Thumb bit (0x20)
@@ -1846,6 +1859,7 @@ class BekenEmulator:
         cpsr = read(UC_ARM_REG_CPSR)
         if cpsr & 0x40:
             return
+        self._ensure_vector_page()
         pc = read(UC_ARM_REG_PC)
         new_cpsr = (cpsr & ~0x3F) | 0x11 | 0xC0
         write(UC_ARM_REG_CPSR, new_cpsr)
@@ -1857,6 +1871,7 @@ class BekenEmulator:
     def hook_intr(self, mu, intno, user_data):
         pc = mu.reg_read(UC_ARM_REG_PC)
         if intno == 2: # EXCP_SWI
+            self._ensure_vector_page()
             cpsr = mu.reg_read(UC_ARM_REG_CPSR)
             new_cpsr = (cpsr & ~0x3F) | 0x13 | 0x80
             mu.reg_write(UC_ARM_REG_CPSR, new_cpsr)
@@ -3058,9 +3073,7 @@ class BekenEmulator:
 
         if address == self.UART2_FIFO_PORT and self._rx_active_uart2():
             b = self.uart1_rx.pop(0)
-            if (b == 0x0A and self.uart1_rx and self.tuyamcu is None
-                    and (self.state.rtt_boot_seen
-                         or ((self.is_bk7252 or self.is_bk7252n) and not self.state.obk_boot_seen))):
+            if b == 0x0A and self.uart1_rx and self.tuyamcu is None and not self.state.obk_boot_seen:
                 self.state.msh_prompt_seen = False
                 self.state.rx_next_line_insn = self.state.insn_count + 3_000_000
             mu.mem_write(address, struct.pack("<I", (b & 0xFF) << 8))
@@ -3214,6 +3227,14 @@ class BekenEmulator:
         self._tick_hook = (self.mu.hook_add(UC_HOOK_BLOCK, self.hook_block)
                            if self._block_pacing else None)
         self.mu.hook_add(UC_HOOK_INTR, self.hook_intr)
+        if self.uart1_rx and (self.is_bk7252 or self.is_bk7252n) and self.tuyamcu is None:
+            app_mem = bytes(self.mu.mem_read(0x10000, min(0x180000, self.FLASH_SIZE - 0x10000)))
+            if b"tshell\x00" in app_mem and b"no_uart\x00" in app_mem:
+                idx = app_mem.find(b"no_uart\x00")
+                while idx >= 0:
+                    self.mu.mem_write(0x10000 + idx, b"uart1\x00\x00\x00")
+                    idx = app_mem.find(b"no_uart\x00", idx + 1)
+        self._flash_page0 = bytes(self.mu.mem_read(0, 0x800))
         # A watchdog reset restores every banked CPU register, not just PC.
         # Unicorn contexts include those banked registers, so the pristine
         # post-setup context is the exact reset value and is reusable.
@@ -3470,6 +3491,9 @@ class BekenEmulator:
         skip = self.idle_skip
         grid = state.insn_count // IDLE_SCAN_INSNS
         streak = 0
+        masked_streak = 0
+        page0 = getattr(self, "_flash_page0", None)
+        page0_head = page0[:4] if page0 else None
         while True:
             emu_start(pc | thumb, 0xFFFFFFFF, 0, chunk_for[thumb])
             self.chunks_run += 1
@@ -3479,6 +3503,8 @@ class BekenEmulator:
             state.insn_count += step_for[was_thumb][thumb]
             # Where execution is, for the GUI status bar in another thread.
             state.last_pc = pc
+            if page0 is not None and state.msh_uart_port == 2 and bytes(mu.mem_read(0, 4)) != page0_head:
+                mu.mem_write(0, page0)
             epoch = self._exc_epoch
             armed = self._snapshot_path is not None
             pacing(state)
@@ -3490,6 +3516,7 @@ class BekenEmulator:
                 pc = reg_read(UC_ARM_REG_PC)
                 thumb = 1 if reg_read(UC_ARM_REG_CPSR) & 0x20 else 0
                 streak = 0
+                masked_streak = 0
             elif skip and armed:
                 # Nothing is skipped or searched for while a snapshot is armed
                 # (that includes the chunk it was just taken after), so the run
@@ -3497,6 +3524,7 @@ class BekenEmulator:
                 # from it the way a resumed run's does. A resume then reproduces
                 # the original byte for byte, which the harness checks.
                 streak = 0
+                masked_streak = 0
                 grid = state.insn_count // IDLE_SCAN_INSNS
             elif skip:
                 idle = state.idle_task
@@ -3504,6 +3532,16 @@ class BekenEmulator:
                     if state.insn_count // IDLE_SCAN_INSNS != grid:
                         grid = state.insn_count // IDLE_SCAN_INSNS
                         state.idle_task = self._find_idle_task()
+                    if (self.is_bk7252 or self.is_bk7252n) and (cpsr & 0x80) and (state.icu_global_int_en & 1):
+                        masked_streak += 1
+                        if masked_streak >= 8:
+                            masked_streak = 0
+                            emu_start(pc | thumb, 0xFFFFFFFF, 0, 31)
+                            pc = reg_read(UC_ARM_REG_PC)
+                            cpsr = reg_read(UC_ARM_REG_CPSR)
+                            thumb = 1 if cpsr & 0x20 else 0
+                    else:
+                        masked_streak = 0
                 # In the idle task, in task context (not an IRQ/FIQ handler),
                 # with IRQs on at the ICU, so the interrupt that ends the wait
                 # can be delivered once the CPU has them open.
