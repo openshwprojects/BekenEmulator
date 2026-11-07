@@ -107,9 +107,11 @@ struct SimState {
     /* bus state: (scl,sda) -> [in_tx,cur_byte,bits, frame] */
     struct I2cBus {
         bool in_tx;
+        bool in_ack;
         int cur_byte, bits;
+        int last_reg;
         Bytes frame;
-        I2cBus() : in_tx(false), cur_byte(0), bits(0) {}
+        I2cBus() : in_tx(false), in_ack(false), cur_byte(0), bits(0), last_reg(0) {}
     };
     std::map<std::pair<int, int>, I2cBus> i2c_buses;
     std::map<std::pair<int, int>, Bytes> i2c_frames;

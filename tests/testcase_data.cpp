@@ -550,8 +550,582 @@ static const char *const c182_args[] = {"--only-uart","-chip","BK7238","--ble-co
 static const ExpectStr c182_exp[] = {{"[MEM DBG] heap init-------size:193344 addr:0x410cc0---------",1,0},{"temp_code:86 - adc_code:129 - adc_trend:[13]:258->[23]:158",1,0},{"COMPILE_PLATFORM_TEMPLATE V1.6.9 BK7238 Build @Oct 27 2025 17:34:29",1,0},{"I[33]qne_kernel:QNE kernel init ok",1,0},{"0xa8 0x3 0xa 0xfd 0xc6 0x16 0x7b 0xda 0x61 0xe8 0xb 0xf3 0x88 0xef 0x92 0x6f",1,0},{"W[99]tuya_temphum:u32AdcValue      330",1,0},{"tuya_tls_rand_init ok!",1,0},{"mf_init APP_BIN_NAME[COMPILE_PLATFORM_TEMPLATE] USER_SW_VER[1.6.9]",1,0},{"mac e4:ae:e4:1b:92:c9",1,0},{"I[321]tuya_temphum:vTyWifi_TempHumNetChange",1,0},{"ble mac:e4-ae-e4-1b-92-ca",1,0}};
 static const char *const c182_unexp[] = {"adc ddev_open error:1"};
 static const PinWant c182_pins[] = {{0,120},{1,60},{10,120},{11,120},{17,2},{21,0},{22,60},{24,2},{26,8}};
+static const char *const c183_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c183_exp[] = {{"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},{"www.sparkleiot.com",1,0},{"ready",1,0}};
+static const PinWant c183_pins[] = {{0,120},{1,120},{10,120},{11,120}};
+static const char *const c184_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c184_exp[] = {{"prvHeapInit-start addr:0x414e60, size:176544",1,0},{"< TuyaOS V:3.11.11 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",1,0},{"name:tuyaos_curtain_switch_wifi:1.0.6",1,0},{"0x32 0x6e 0x0 0xdc 0x93 0x70 0x1e 0x6e 0x33 0x11 0x6b 0xb6 0x7e 0xde 0x9d 0x88",1,0},{"gw_cntl->gw_if.product_key:ocz3mqv0v4ntkzva, input:ocz3mqv0v4ntkzva",1,0},{"serial_no:80647ce3c90b",1,0},{"ssid:SmartLife-C90B, key:, channel: 6",1,0},{"ble mac:80-64-7c-e3-c9-0c",1,0},{"ty bt sdk init success finish",1,0},{"[BLE_ADV]   Service Data               50 fd 43 04 00 10 6f 63 7a 33 6d 71 ..  P.C...ocz3mqv0v4ntkzva  uuid=0xFD50",1,0},{"------ clear local config start ------",1,0}};
+static const PinWant c184_pins[] = {{0,120},{1,120},{10,120},{11,120},{14,840},{15,842},{16,840},{17,840}};
+static const char *const c185_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c185_exp[] = {{"prvHeapInit-start addr:0x415120, size:175840",1,0},{"< TuyaOS V:3.8.31 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",1,0},{"name:oem_t1_switch:1.1.9",1,0},{"init protected data length 505 wr_cnt 8",1,0},{"tuya_tls_rand_init ok!",1,0},{"mf_init succ",1,0},{"sg_net_led.is_mux:2",1,0},{"sg_net_led.sg_net_led_count:2",1,0},{"mac 80:64:7c:c9:ff:10",1,0},{"wifi soc init. pid:keyfxuj3d5wg53wx firmwarekey:keyfxuj3d5wg53wx ver:1.1.9",1,0},{"serial_no:80647cc9ff10",1,0}};
+static const PinWant c185_pins[] = {{0,120},{1,120},{8,0},{9,0},{10,120},{11,120},{20,0},{22,0},{23,0}};
+static const char *const c186_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c186_exp[] = {{"[MEM DBG] heap init-------size:199688 addr:0x40f3f8---------",1,0},{"< TuyaOS V:3.11.16 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",1,0},{"oem_t1_cutout_self_switch:1.0.3",1,0},{"IoT config ov_cur: 50000",1,0},{"0x74 0xd3 0xd1 0x81 0x21 0xe3 0xd3 0xbf 0x73 0x4c 0x48 0xb 0xbf 0x37 0xb8 0x2",1,0},{"tuya_tls_rand_init ok!",1,0},{"mf_init succ",1,0},{"[switch] wifi led init ok",1,0},{"tuya_ele_hw_init success",1,0},{"dltj rslt ok!",1,0},{"mac bc:35:1e:79:93:28",1,0}};
+static const PinWant c186_pins[] = {{0,120},{1,120},{6,0},{10,120},{11,120},{15,2},{17,2},{21,60},{26,0}};
+static const char *const c187_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c187_exp[] = {{"prvHeapInit-start addr:0x415120, size:175840",1,0},{"< TuyaOS V:3.8.31 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",1,0},{"name:oem_t1_switch:1.1.9",1,0},{"init protected data length 670 wr_cnt 33",1,0},{"tuya_tls_rand_init ok!",1,0},{"mf_init succ",1,0},{"sg_net_led.sg_net_led_count:1",1,0},{"mac 80:64:7c:fa:34:66",1,0},{"serial_no:80647cfa3466",1,0},{"ssid:SmartLife-3466, key:, channel: 6",1,0},{"--->net state change to:13",1,0}};
+static const PinWant c187_pins[] = {{0,120},{1,120},{6,0},{8,60},{9,0},{10,120},{11,120},{24,2},{26,60}};
+static const char *const c188_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi","--tuyamcu","--tuyamcu-raw","--tuyamcu-pid","b8vqmdjmpswbap1q","--uart1-hex"};
+static const ExpectStr c188_exp[] = {{"prvHeapInit-start addr:0x416278, size:171400",1,0},{"< TuyaOS V:3.11.11 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",1,0},{"t1_common_user_config_ty sw ver:3.0.22",1,0},{"0x38 0xb1 0x61 0x32 0xb7 0x7c 0x63 0x85 0xf7 0xe2 0x0 0x53 0x67 0xee 0xb0 0x24",1,0},{"read baud rate 9600",1,0},{"VER:1.0.0,mcu tp :9",1,0},{"gw_cntl->gw_if.product_key:b8vqmdjmpswbap1q, input:b8vqmdjmpswbap1q",1,0},{"enter success_proc",1,0},{"serial_no:bc351e663469",1,0},{"mac bc:35:1e:66:34:69",1,0}};
+static const PinWant c188_pins[] = {{0,120},{1,120},{10,120},{11,120},{14,840},{15,842},{16,840},{17,840}};
+static const char *const c189_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi","--tuyamcu","--tuyamcu-raw","--tuyamcu-pid","lwt5eraqqvwh3pfw","--uart1-hex"};
+static const ExpectStr c189_exp[] = {{"prvHeapInit-start addr:0x416278, size:171400",1,0},{"< TuyaOS V:3.11.11 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",1,0},{"t1_common_user_config_ty sw ver:3.0.22",1,0},{"0x23 0x59 0xf3 0x1 0x20 0xa8 0xd6 0x84 0x6b 0x71 0x6f 0x3e 0x39 0xe6 0xfb 0x34",1,0},{"read baud rate 9600",1,0},{"VER:1.0.0,mcu tp :9",1,0},{"gw_cntl->gw_if.product_key:lwt5eraqqvwh3pfw, input:lwt5eraqqvwh3pfw",1,0},{"enter success_proc",1,0},{"serial_no:80647cd8a040",1,0},{"mac 80:64:7c:d8:a0:40",1,0}};
+static const PinWant c189_pins[] = {{0,120},{1,120},{10,120},{11,120},{14,840},{15,842},{16,840},{17,840}};
+static const char *const c190_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c190_exp[] = {{"[MEM DBG] heap init-------size:199672 addr:0x40f408---------",1,0},{"< TuyaOS V:3.11.16 BS:40.00_PT:2.3_LAN:3.5_CAD:1.0.5_CD:1.0.0 >",1,0},{"oem_t1_cutout_self_switch:1.1.0",1,0},{"IoT config ov_cur: 63000",1,0},{"0x36 0x9b 0xa1 0x34 0x5 0x67 0x4d 0x42 0xc4 0xd9 0x45 0xa7 0x5b 0x45 0x5 0x89",1,0},{"tuya_tls_rand_init ok!",1,0},{"mf_init succ",1,0},{"[switch] wifi led init ok",1,0},{"tuya_ele_hw_init success",1,0},{"current product ssid name:tuya_mdev_test1",1,0},{"mac  0:33:7a:68:84:e5",1,0}};
+static const PinWant c190_pins[] = {{0,120},{1,120},{6,0},{8,0},{10,120},{11,120},{15,2},{17,60},{21,2}};
+static const char *const c191_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c191_exp[] = {{"[MEM DBG] heap init-------size:202792 addr:0x40e7d8---------",1,0},{"0x70 0xd0 0x25 0x72 0xa0 0x44 0xaf 0x3d 0xc 0x7d 0xd9 0xb0 0x85 0x32 0x16 0xf4",1,0},{"name:WIFI_THS_T1U:1.0.3",1,0},{"wifi soc init. pid:0apiv8a0c4gnk0km firmwarekey:NULL ver:1.0.3",1,0},{"gw_cntl->gw_if.product_key:0apiv8a0c4gnk0km, input:0apiv8a0c4gnk0km",1,0},{"Software timer for tdl_sensor_hub has started.",1,0},{"Status <last command>: 0.",1,0},{"---------- sensor data callback ----------",1,0},{"Temp: 26.0",1,0},{"Humi: 50.0",1,0}};
+static const char *const c191_unexp[] = {"i2c wait ack timeout"};
+static const PinWant c191_pins[] = {{0,120},{1,60},{10,120},{11,120}};
+static const char *const c192_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c192_exp[] = {{"prvHeapInit-start addr:0x415120, size:175840",1,0},{"name:oem_t1_switch:1.1.9",1,0},{"tuya_tls_rand_init ok!",1,0},{"mf_init succ",1,0},{"dctrl channel_num:4",1,0},{"mac 80:64:7c:e4:f3:ce",1,0},{"ssid:SmartLife-F3CE, key:, channel: 6",1,0},{"[BLE_ADV]   Service Data               50 fd 43 04 00 10 6b 65 79 66 78 75 ..  P.C...keyfxuj3d5wg53wx  uuid=0xFD50",1,0}};
+static const PinWant c192_pins[] = {{0,120},{1,120},{10,60},{11,2}};
 
-static TestCase g_cases_arr[] = {
+static const char *const c193_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi","--tuyamcu","--tuyamcu-raw","--tuyamcu-pid","z3jngbyubvwgfrcv"};
+static const ExpectStr c193_exp[] = {
+  {"prvHeapInit-start addr:0x416278, size:171400",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"**********tuya_upgrade_main need upgrade? [255]**********",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"tkl_ethernetif_init",1,0},
+  {"[FUNC]rwnxl_init",1,0},
+  {"IP Rev: 90d35d1",1,0}
+};
+static const PinWant c193_pins[] = {{0,120},{1,120},{10,120},{11,120},{14,840},{15,842},{16,840},{17,840}};
+
+static const char *const c194_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c194_exp[] = {
+  {"prvHeapInit-start addr:0x4150d8, size:175912",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"bk_timer_init exit",1,0},
+  {"spi_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"**********tuya_upgrade_main need upgrade? [255]**********",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[FUNC]rwnxl_init",1,0},
+  {"tkl_ethernetif_init",1,0}
+};
+static const PinWant c194_pins[] = {{0,120},{1,120},{10,120},{11,120}};
+
+static const char *const c195_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c195_exp[] = {
+  {"prvHeapInit-start addr:0x4150d8, size:175912",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"bk_timer_init exit",1,0},
+  {"spi_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"**********tuya_upgrade_main need upgrade? [255]**********",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[FUNC]rwnxl_init",1,0},
+  {"tkl_ethernetif_init",1,0}
+};
+static const PinWant c195_pins[] = {{0,120},{1,120},{10,120},{11,120}};
+
+static const char *const c196_args[] = {"--only-uart","-key","0000000000000000376e7eff01000b63","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c196_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode, every frame on air accepted (sniffing, as in EZ pairing)",1,0},
+  {"uuid=0x180A",1,0}
+};
+static const PinWant c196_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{24,2},{26,8}};
+
+static const char *const c197_args[] = {"--only-uart","-key","0000000000000000b8bff72e01001b63","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c197_exp[] = {
+  {"LibreTiny v1.0.2+sha.f7c28ee on cb2l",1,0},
+  {"[I][logger:299]: Log initialized",1,0},
+  {"[C][ota:477]: There have been 6 suspected unsuccessful boot attempts.",1,0},
+  {"[D][lt.preferences:104]: Saving 1 preferences to flash...",1,0},
+  {"[D][lt.preferences:132]: Saving 1 preferences to flash",1,0},
+  {"[I][app:029]: Running through setup()...",1,0},
+  {"[C][wifi:038]: Setting up WiFi...",1,0},
+  {"[V][wifi_lt:039]: Enabling AP.",1,0}
+};
+static const PinWant c197_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c198_args[] = {"--only-uart","-key","00000000000000007cb5072101000b63","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c198_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x411948, size:124600",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xa5f11] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Debug][lr:0xaeea7] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xaf01b] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xaf01b] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0}
+};
+static const PinWant c198_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c199_args[] = {"--only-uart","-key","00000000000000003fa7a2df01001b63","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c199_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode, every frame on air accepted (sniffing, as in EZ pairing)",1,0},
+  {"Cannot publish message to the topic",1,0}
+};
+static const PinWant c199_pins[] = {{0,120},{1,120},{6,60},{8,60},{9,2},{10,120},{11,120},{12,120},{13,120},{16,60},{26,72}};
+
+static const char *const c200_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c200_exp[] = {
+  {"prvHeapInit-start addr:0x41fa88, size:132472",1,0},
+  {"[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][log_seq.c:732] read from uf. max:1 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success",1,0},
+  {"[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1",1,0},
+  {"[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935",1,0}
+};
+static const PinWant c200_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c201_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c201_exp[] = {
+  {"prvHeapInit-start addr:0x41fa88, size:132472",1,0},
+  {"[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][log_seq.c:732] read from uf. max:2 first:0 last:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success",1,0},
+  {"[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1",1,0},
+  {"[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935",1,0}
+};
+static const PinWant c201_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c202_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c202_exp[] = {
+  {"prvHeapInit-start addr:0x41fa88, size:132472",1,0},
+  {"[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2",1,0},
+  {"[01-01 18:12:15 TUYA Debug][log_seq.c:732] read from uf. max:0 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success",1,0},
+  {"[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1",1,0},
+  {"[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935",1,0}
+};
+static const PinWant c202_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c203_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c203_exp[] = {
+  {"prvHeapInit-start addr:0x41e650, size:137648",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:303] read from uf. max:0 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:540] log serv init success",1,0},
+  {"[01-01 18:12:15 TUYA Debug][tuya_device.c:192] < TUYA IOT SDK V:2.0.0 BS:30.06_PT:2.2_LAN:3.3_CAD:1.0.2_CD:1.0.0 >",1,0},
+  {"< tuya_iot_lib BUILD AT:2018_12_05_17_03_30 BY tuya_iot_team AT 8710_2M >",1,0},
+  {"IOT DEFS < WIFI_GW:1 DEBUG:1 KV_FILE:0 SHUTDOWN_MODE:0 LITTLE_END:1 TLS_MODE:2 ENABLE_LOCAL_LINKAGE:0 ENABLE_CLOUD_OPERATION:0 ENABLE_SUBDEVICE:0 ENABLE_ENGINEER_TO_NORMAL:0 OPERATING_SYSTEM:2 ENABLE_SYS_RPC:0 TY_SECURITY_CHIP:0 RELIABLE_TRANSFER:RELIABLE_TRANSFER ENABLE_LAN_ENCRYPTION:1 ENABLE_SIGMESH:0 >",1,0},
+  {"[01-01 18:12:15 TUYA Debug][tuya_device.c:193] oem_bk7231s_rnd_switch:1.0.7",1,0},
+  {"[01-01 18:12:15 TUYA Notice][tuya_device.c:194] firmware compiled at Jun 10 2020 15:59:57",1,0}
+};
+static const PinWant c203_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c204_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c204_exp[] = {
+  {"prvHeapInit-start addr:0x4203d0, size:130096",1,0},
+  {"[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2",1,0},
+  {"[01-01 18:12:15 TUYA Debug][log_seq.c:732] read from uf. max:0 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success",1,0},
+  {"[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1",1,0},
+  {"[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935",1,0}
+};
+static const PinWant c204_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c205_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c205_exp[] = {
+  {"prvHeapInit-start addr:0x4203f8, size:130056",1,0},
+  {"[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][log_seq.c:732] read from uf. max:0 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success",1,0},
+  {"[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1",1,0},
+  {"[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935",1,0}
+};
+static const PinWant c205_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c206_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c206_exp[] = {
+  {"prvHeapInit-start addr:0x41f1d8, size:134696",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:303] read from uf. max:0 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:540] log serv init success",1,0},
+  {"[01-01 18:12:15 TUYA Notice][light_system.c:1425] go to pre device!",1,0}
+};
+static const PinWant c206_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c207_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c207_exp[] = {
+  {"prvHeapInit-start addr:0x41f380, size:134272",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:303] read from uf. max:0 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:540] log serv init success",1,0},
+  {"[01-01 18:12:15 TUYA Notice][light_system.c:1667] go to pre device!",1,0}
+};
+static const PinWant c207_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c208_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c208_exp[] = {
+  {"prvHeapInit-start addr:0x41f7b8, size:133192",1,0},
+  {"[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2",1,0},
+  {"[01-01 18:12:15 TUYA Debug][log_seq.c:732] read from uf. max:1 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success",1,0},
+  {"[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1",1,0},
+  {"[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935",1,0}
+};
+static const PinWant c208_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c209_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c209_exp[] = {
+  {"prvHeapInit-start addr:0x41ef98, size:135272",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:303] read from uf. max:1 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:540] log serv init success",1,0},
+  {"[01-01 18:12:15 TUYA Notice][light_system.c:1034] go to pre device!",1,0}
+};
+static const PinWant c209_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c210_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c210_exp[] = {
+  {"prvHeapInit-start addr:0x426e98, size:102760",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:303] read from uf. max:0 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][online_log_serv.c:540] log serv init success",1,0},
+  {"[01-01 18:12:15 TUYA Notice][light_system.c:1370] go to pre device!",1,0}
+};
+static const PinWant c210_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c211_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c211_exp[] = {
+  {"prvHeapInit-start addr:0x41f700, size:133376",1,0},
+  {"[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Debug][log_seq.c:732] read from uf. max:0 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success",1,0},
+  {"[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1",1,0},
+  {"[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935",1,0}
+};
+static const PinWant c211_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c212_args[] = {"--only-uart","-key","TUYA","--ble-core","--wifi"};
+static const ExpectStr c212_exp[] = {
+  {"prvHeapInit-start addr:0x421ff8, size:122888",1,0},
+  {"[01-01 18:12:15 TUYA Info][mqc_app.c:175] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Debug][uni_thread.c:215] Thread:sys_timer Exec Start. Set to Running Status",1,0},
+  {"[01-01 18:12:15 TUYA Info][sf_mqc_cb.c:42] register mqc app callback",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:5 mqc_handler_cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA Debug][mqc_app.c:118] mq_pro:31 mqc_handler_cnt:2",1,0},
+  {"[01-01 18:12:15 TUYA Debug][log_seq.c:732] read from uf. max:1 first:0 last:0",1,0},
+  {"[01-01 18:12:15 TUYA Debug][svc_online_log.c:288] svc online log init success",1,0},
+  {"[01-01 18:12:15 TUYA Err][tuya_ws_db.c:314] kvs_read fails gw_bi -1",1,0},
+  {"[01-01 18:12:15 TUYA Err][ws_db_gw.c:111] gw base read fails -935",1,0}
+};
+static const PinWant c212_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120}};
+
+static const char *const c213_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c213_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x410958, size:128680",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xa081d] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xab803] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xab68f] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xab803] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa0737] mq_pro:5 cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa0737] mq_pro:31 cnt:2",1,0}
+};
+static const PinWant c213_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c214_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c214_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x4111b0, size:126544",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xa584d] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb087b] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xb0707] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb087b] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa5767] mq_pro:5 cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa5767] mq_pro:31 cnt:2",1,0}
+};
+static const PinWant c214_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c215_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c215_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x4112e8, size:126232",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xbb561] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb8b33] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xb89bf] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb8b33] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0}
+};
+static const PinWant c215_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c216_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c216_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"enter driver_init !",1,0},
+  {"[MEM DBG] heap init-------size:148744 addr:0x40baf8---------",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"out driver_init !",1,0},
+  {"tkl_ethernetif_init",1,0},
+  {"tkl_ethernetif_output: invalid vif: 255!",1,0}
+};
+static const PinWant c216_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c217_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c217_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x411048, size:126904",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb7e0d] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb53cf] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xb525b] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb53cf] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0}
+};
+static const PinWant c217_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c218_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c218_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x410958, size:128680",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xa081d] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xab803] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xab68f] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xab803] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa0737] mq_pro:5 cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa0737] mq_pro:31 cnt:2",1,0}
+};
+static const PinWant c218_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c219_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c219_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x411a30, size:124368",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xa79d1] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xb0b1f] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA Debug][lr:0xb09ab] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xb0b1f] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0}
+};
+static const PinWant c219_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c220_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c220_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x412008, size:122872",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xbcb09] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0x9ef0b] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA Debug][lr:0x9ed97] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0x9ef0b] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0}
+};
+static const PinWant c220_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c221_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c221_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x411988, size:124536",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xa5e25] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xaef6b] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xaef6b] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA Debug][lr:0xa5dd3] mq_pro:5 cnt:1",1,0}
+};
+static const PinWant c221_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c222_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c222_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"enter driver_init !",1,0},
+  {"[MEM DBG] heap init-------size:155648 addr:0x40a000---------",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"out driver_init !",1,0},
+  {"tkl_ethernetif_init",1,0},
+  {"tkl_ethernetif_output: invalid vif: 255!",1,0}
+};
+static const PinWant c222_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c223_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c223_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x411988, size:124536",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xa5e25] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xaef6b] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xaef6b] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA Debug][lr:0xa5dd3] mq_pro:5 cnt:1",1,0}
+};
+static const PinWant c223_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c224_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c224_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x4126b0, size:121168",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"irda_init",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xa01a1] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xab0c3] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xaaf4f] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xab0c3] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa00bb] mq_pro:5 cnt:1",1,0}
+};
+static const PinWant c224_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c225_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c225_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"[MEM DBG] heap init-------size:157776 addr:0x4097b0---------",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"tkl_ethernetif_init",1,0},
+  {"tkl_ethernetif_output: invalid vif: 255!",1,0}
+};
+static const PinWant c225_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c226_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c226_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x410a88, size:128376",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0x9d87d] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xa884b] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa86d7] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xa884b] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0x9d797] mq_pro:5 cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0x9d797] mq_pro:31 cnt:2",1,0}
+};
+static const PinWant c226_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c227_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c227_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x411fa0, size:122976",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0x9fc21] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xb2e6b] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xb2e6b] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA Debug][lr:0x9fbcf] mq_pro:5 cnt:1",1,0}
+};
+static const PinWant c227_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c228_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c228_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x411fa0, size:122976",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"don't config this flash, choose default config",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"cset:0 0 0 0",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0x9fc21] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xb2e6b] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA Info][lr:0xb2e6b] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA Debug][lr:0x9fbcf] mq_pro:5 cnt:1",1,0}
+};
+static const PinWant c228_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c229_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c229_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"enter driver_init !",1,0},
+  {"[MEM DBG] heap init-------size:155624 addr:0x40a018---------",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"out driver_init !",1,0},
+  {"tkl_ethernetif_init",1,0},
+  {"tkl_ethernetif_output: invalid vif: 255!",1,0}
+};
+static const PinWant c229_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c230_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c230_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"enter driver_init !",1,0},
+  {"[MEM DBG] heap init-------size:155648 addr:0x40a000---------",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"out driver_init !",1,0},
+  {"tkl_ethernetif_init",1,0},
+  {"tkl_ethernetif_output: invalid vif: 255!",1,0}
+};
+static const PinWant c230_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c231_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c231_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x411a00, size:124416",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0}
+};
+static const PinWant c231_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+static const char *const c232_args[] = {"--only-uart","-key","TUYA","-chip","BK7231N","--ble-core","--wifi"};
+static const ExpectStr c232_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x4111b8, size:126536",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"choose default config",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xa5919] mqc app init ...",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb0947] thread_create name:sys_timer,stackDepth:4096,totalstackDepth:4096,priority:5",1,0},
+  {"[01-01 18:12:15 TUYA I][lr:0xb0947] thread_create name:cmmod,stackDepth:4096,totalstackDepth:8192,priority:4",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xb07d3] Thread:sys_timer Exec Start. Set to Running Stat",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa5833] mq_pro:5 cnt:1",1,0},
+  {"[01-01 18:12:15 TUYA D][lr:0xa5833] mq_pro:31 cnt:2",1,0}
+};
+static const PinWant c232_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
+
+TestCase g_cases_arr[] = {
   {"CLI: invalid -key is rejected","firmwares/OpenBK7231T_QIO_1.18.300.bin",c0_args,3,60,"",0,10,c0_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
    "A bad -key value must be rejected up front by parse_key(), with a message naming the accepted forms (a known key name, 32 hex chars, or base64 of 16 bytes), rather than failing deep inside emulation."},
   {"CLI: invalid -chip is rejected","firmwares/OpenBK7231T_QIO_1.18.300.bin",c1_args,3,60,"",0,10,c1_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
@@ -917,7 +1491,107 @@ static TestCase g_cases_arr[] = {
   {"BK7238 Tuya TH03Pro TempHum sensor (TuyaMCU, T1-3S, 3.0.22) raises SmartLife-A0FC AP and advertises BLE","firmwares/Tuya_TH03Pro_(001TH02T1-3S_schemaID-e1my6fec)_key5s5pkkwnfwgvr_xeagimantb7d7apb_TuyaMCU_T1-3S_3.0.22.bin",c181_args,9,60,"",0,10,c181_exp,12,0,0,c181_pins,8,0,0,0,0,0,0,0,0,0,0,1000,
    "A plaintext BK7238 dump from a TH03Pro temperature and humidity sensor (`t1_common_user_config_ty:3.0.22` on TuyaOS 3.11.11, `T1-3S` module). It completes the TuyaMCU handshake with raw product ID `xeagimantb7d7apb`, recovers its protected flash key, raises its `SmartLife-A0FC` pairing Soft-AP (`192.168.176.1`), and broadcasts Tuya BLE `0xFD50` service data (`xeagimantb7d7apb`)."},
   {"BK7238 Tuya TH06 TempHum sensor (T1-CHL, 1.6.9, --adc 7:258) reads battery ADC on P26 and boots BLE","firmwares/Tuya_TH06_TempHum_C1118_P10_W1_SR03_(schemaID-e1n5ofug)_keyt7q4rh3aycerc_vcbxhbj855zfw5op_T1-CHL_1.6.9.bin",c182_args,7,60,"",0,10,c182_exp,11,c182_unexp,1,c182_pins,9,0,0,0,0,0,0,0,0,0,0,1000,
-   "A plaintext BK7238 dump from a TH06 temperature and humidity sensor (`COMPILE_PLATFORM_TEMPLATE V1.6.9`, `QNE Version: V1.4-cc8a24d`, `T1-CHL` module, PID `vcbxhbj855zfw5op`). Passing `--adc 7:258` completes the background `temp_detect` SARADC channel 7 conversion (`temp_code:86 - adc_code:129`) so `tuya_temphum` opens SARADC on `P26` (`0x08`) cleanly without `adc ddev_open error:1`, reads `u32AdcValue 330`, and initializes BLE (`ble mac:e4-ae-e4-1b-92-ca`)."}
+   "A plaintext BK7238 dump from a TH06 temperature and humidity sensor (`COMPILE_PLATFORM_TEMPLATE V1.6.9`, `QNE Version: V1.4-cc8a24d`, `T1-CHL` module, PID `vcbxhbj855zfw5op`). Passing `--adc 7:258` completes the background `temp_detect` SARADC channel 7 conversion (`temp_code:86 - adc_code:129`) so `tuya_temphum` opens SARADC on `P26` (`0x08`) cleanly without `adc ddev_open error:1`, reads `u32AdcValue 330`, and initializes BLE (`ble mac:e4-ae-e4-1b-92-ca`)."},
+  {"BK7238 NiceMCU WB3S V1 SparkleIOT AT firmware prints ready banner on UART1","firmwares/QIO_NiceMCU_WB3S_V1-piece1_2024-10-12-14-19-05.bin",c183_args,5,60,"",0,10,c183_exp,3,0,0,c183_pins,4,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 factory dump from a NiceMCU WB3S V1 development board running SparkleIOT AT firmware. It configures UART1/UART2 pads (`P0/P1/P10/P11 = 0x78`), opens the Wi-Fi MAC RX filter, and prints `www.sparkleiot.com` and `ready` over UART1."},
+  {"BK7238 Tuya QS-WiFi-S10-C04-c90a curtain switch (1.0.6) raises SmartLife-C90B AP and advertises BLE","firmwares/QS-WiFi-S10-C04-c90a.bin",c184_args,5,60,"",0,10,c184_exp,11,0,0,c184_pins,8,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Lonsonho QS-WiFi-S10-C04 smart curtain switch (`tuyaos_curtain_switch_wifi:1.0.6` on TuyaOS 3.11.11, PID `ocz3mqv0v4ntkzva`). Captured with `count: 5` in `klts4`, it recovers its protected flash key at `0x1F5000`, raises its `SmartLife-C90B` pairing Soft-AP (`192.168.176.1`), broadcasts Tuya BLE `0xFD50` service data (`ocz3mqv0v4ntkzva`), and clears its local `klts4` counter in flash."},
+  {"BK7238 Tuya BSEED 2G switch (T1-3S, 1.1.9) configures dual relay/LED GPIOs and scans","firmwares/Tuya_BSEED_2G_Switch_(schemaID-e1n1f8kg)_keyfxuj3d5wg53wx_oayppk7skuax4j6i_T1-3S_1.1.9.bin",c185_args,5,60,"",0,10,c185_exp,11,0,0,c185_pins,9,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a BSEED 2-gang smart wall switch (`oem_t1_switch:1.1.9` on TuyaOS 3.8.31, `T1-3S` module, PID `oayppk7skuax4j6i`). With `--wifi` completing its initial scan, it recovers its protected flash key (`wr_cnt 8`), configures outputs `P8/P9/P20/P22/P23` (`0x00`), initializes 2 multiplexed network LEDs (`sg_net_led.is_mux:2`), and completes `wifi soc init` (`serial_no:80647cc9ff10`)."},
+  {"BK7238 Tuya MANHOT 63A 1P+N breaker (CBU/T1, 1.0.3) configures bistable relay/metering GPIOs and scans","firmwares/Tuya_MANHOT_63A_1P+N_(schemaID-e1n1p4fk)_key7mapd9sdpyyf9_au6dqazvkxqnpaak_CBU_1.0.3.bin",c186_args,5,60,"",0,10,c186_exp,11,0,0,c186_pins,9,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a MANHOT 63A 1P+N DIN-rail smart circuit breaker and energy meter (`oem_t1_cutout_self_switch:1.0.3` on TuyaOS 3.11.16, PID `au6dqazvkxqnpaak`). It loads its bistable relay and 50000 mA over-current configuration from `uffile`, configures `rl_on1_pin` `P6` (`0x00`), `rl_off1_pin` `P26` (`0x00`), LEDs `P15/P17` (`0x02`) and button `P21` (`0x3C`), completes `tuya_ele_hw_init success` and `dltj rslt ok!`, and scans for `tuya_mdev_test2`."},
+  {"BK7238 Tuya RF Dry WF+RF switch (T1-2S-NL, 1.1.9) configures relay/button GPIOs and raises SmartLife-3466 AP","firmwares/Tuya_RF_Dry_WF+RF_(schemaID-e1n154og)_keyfxuj3d5wg53wx_dcbah0xg2uxpaman_T1-2S-NL_1.1.9.bin",c187_args,5,60,"",0,10,c187_exp,11,0,0,c187_pins,9,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya Wi-Fi + 433 MHz RF dry-contact relay switch (`oem_t1_switch:1.1.9` on TuyaOS 3.8.31, `T1-2S-NL` module, PID `dcbah0xg2uxpaman`). With `--wifi` completing its initial scan, it recovers its protected flash key (`wr_cnt 33`), configures outputs `P6/P9` (`0x00`) and `P24` (`0x02`) plus inputs `P8/P26` (`0x3C`), raises its `SmartLife-3466` pairing Soft-AP (`192.168.176.1`), and transitions `--->net state change to:13`."},
+  {"BK7238 Tuya TH08 TempHum LCD sensor (TuyaMCU, T1-U-HL, 3.0.22) completes 9600-baud MCU handshake and scans","firmwares/Tuya_TH08_TempHumLCD_(schemaID-e1mtra8c)_key5s5pkkwnfwgvr_iunivahp92zlld0d_T1-U-HL_3.0.22.bin",c188_args,10,60,"",0,10,c188_exp,10,0,0,c188_pins,8,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya TH08 LCD temperature and humidity sensor (`t1_common_user_config_ty:3.0.22` on TuyaOS 3.11.11, `T1-U-HL` module). It recovers its protected flash key at `0x1F5000`, completes the 9600-baud TuyaMCU handshake (`VER:1.0.0,mcu tp :9`) with its provisioned product key `b8vqmdjmpswbap1q` (`enter success_proc`), and initializes Wi-Fi (`mac bc:35:1e:66:34:69`)."},
+  {"BK7238 Tuya TMWF02 fan switch (TuyaMCU, CB2S/T1, 3.0.22) completes 9600-baud MCU handshake and scans","firmwares/Tuya_TMWF02_FanSwitch_(LG01-WF_schemaID-f5ai2w)_key5s5pkkwnfwgvr_lwt5eraqqvwh3pfw_TuyaMCU_CB2S_3.0.22.bin",c189_args,10,60,"",0,10,c189_exp,10,0,0,c189_pins,8,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a TMWF02 (LG01-WF) smart ceiling fan and light switch (`t1_common_user_config_ty:3.0.22` on TuyaOS 3.11.11, PID `lwt5eraqqvwh3pfw`). It recovers its protected flash key (`wr_cnt 40`), completes the 9600-baud TuyaMCU handshake (`VER:1.0.0,mcu tp :9`, `enter success_proc`), and initializes Wi-Fi (`mac 80:64:7c:d8:a0:40`)."},
+  {"BK7238 Tuya TOMZN TOB9-63M breaker (T1-U-HL, 1.1.0) configures 63A metering/relay GPIOs and scans","firmwares/Tuya_TOMZN_TOB9-63M_(schemaID-e1n4le4w)_key7mapd9sdpyyf9_lo1i5edez6e6oyx6_T1-U-HL_1.1.0.bin",c190_args,5,60,"",0,10,c190_exp,11,0,0,c190_pins,9,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a TOMZN TOB9-63M 63A DIN-rail smart circuit breaker and energy meter (`oem_t1_cutout_self_switch:1.1.0` on TuyaOS 3.11.16, `T1-U-HL` module, PID `lo1i5edez6e6oyx6`). It loads its 63000 mA over-current configuration from `uffile`, configures outputs `P6/P8` (`0x00`), `P15/P21` (`0x02`) and input `P17` (`0x3C`), completes `tuya_ele_hw_init success`, and scans for `tuya_mdev_test1`."},
+  {"BK7238 Tuya TempHum T1U sensor (T1-U-HL, 1.0.3) reads CHT8305 over bit-banged I2C (P23/P22)","firmwares/Tuya_TempHum_T1U_(schemaID-e1n1433o)_keypg4k4mhsvuvsx_0apiv8a0c4gnk0km_T1-U-HL_1.0.3.bin",c191_args,5,60,"",0,10,c191_exp,10,c191_unexp,1,c191_pins,4,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya temperature and humidity sensor (`WIFI_THS_T1U:1.0.3` on TuyaOS 3.11.25, `T1-U-HL` module, PID `0apiv8a0c4gnk0km`). It recovers its protected flash key at `0x1F5000`, starts `tdl_sensor_hub`, bit-bangs I2C on `SCL=P23, SDA=P22` to read the emulated CHT8305 sensor at slave `0x40` (`0x80`/`0x81`) without `i2c wait ack timeout`, and reports `Temp: 26.0` and `Humi: 50.0` via `example_drv_sensor.c`."},
+  {"BK7238 Tuya WK604 4CH switch (CB3S/T1, 1.1.9) configures 4-gang GPIOs, raises SmartLife-F3CE AP and advertises BLE","firmwares/Tuya_WK604_4CH_(schemaID-e1n0qoxc)_keyfxuj3d5wg53wx_sjepnpg4qk9aqm6k_CB3S(T1)_1.1.9.bin",c192_args,5,60,"",0,10,c192_exp,8,0,0,c192_pins,4,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a WK604 4-gang smart switch (`oem_t1_switch:1.1.9` on TuyaOS 3.8.31, `CB3S(T1)` module, PID `sjepnpg4qk9aqm6k`). It recovers its protected flash key at `0x1F5000`, configures 4 channels (`dctrl channel_num:4`), raises its `SmartLife-F3CE` pairing Soft-AP (`192.168.176.1`), and broadcasts Tuya BLE `0xFD50` service data (`keyfxuj3d5wg53wx`)."},
+  {"BK7238 Tuya WTDZW-63A breaker (T1, 3.0.22) completes TuyaMCU handshake and scans","firmwares/WTDZW-63A_BK7238_QIO_2026-12-7-11-34-52.bin",c193_args,9,60,"",0,10,c193_exp,10,0,0,c193_pins,8,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a WTDZW-63A smart breaker. It boots TuyaOS, initializes system timers and Wi-Fi monitor mode."},
+  {"BK7238 Tuya wall touch switch 1G (T1, 1.1.4) boots TuyaOS and initializes Wi-Fi","firmwares/tuya-wall-touch-switch-1g-D8FC922D2222_1_backup_2026_12_4_17_59_45.bin",c194_args,5,60,"",0,10,c194_exp,10,0,0,c194_pins,4,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya 1-gang wall touch switch (oem_t1_switch:1.1.4). It boots TuyaOS and initializes Wi-Fi."},
+  {"BK7238 Tuya wall touch switch 2G (T1, 1.1.4) boots TuyaOS and initializes Wi-Fi","firmwares/tuya-wall-touch-switch-2g-D8FC920F96D5_1_backup_2026_12_4_16_19_41.bin",c195_args,5,60,"",0,10,c195_exp,10,0,0,c195_pins,4,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya 2-gang wall touch switch (oem_t1_switch:1.1.4). It boots TuyaOS and initializes Wi-Fi."},
+  {"BK7231N SBER Bulb E14 (SBDV-00117) decrypts flash and broadcasts BLE advertisement","firmwares/SBER_Bulb_E14_SBDV-00117.bin",c196_args,7,60,"",0,10,c196_exp,2,0,0,c196_pins,8,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from an E14 SBER smart bulb. It decrypts via hardware cipher, starts Wi-Fi monitor mode, configures I2C pins P24/P26, and advertises BLE service data SBDV-00117."},
+  {"BK7231N SBER Lamp RGBWW E27 (SBDV-00115) boots LibreTiny v1.0.2 and starts Soft-AP","firmwares/SBER_Lamp_RGBWW_E27_SBDV-00115.bin",c197_args,7,60,"",0,10,c197_exp,8,0,0,c197_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from a SBER RGBWW E27 lamp running LibreTiny v1.0.2. It initializes logger, configures flash preferences, and enables Soft-AP mode."},
+  {"BK7231N SBER Relay (SBDV-00027) boots TuyaOS and initializes BLE SDK","firmwares/SBER_Relay_SBDV-00027.bin",c198_args,7,60,"",0,10,c198_exp,10,0,0,c198_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from a SBER smart relay. It decrypts via hardware cipher, initializes TuyaOS services, and brings up the RivieraWaves BLE controller."},
+  {"BK7231N SBER Relay (SBDV-00050) boots TuyaOS and starts Wi-Fi monitor mode","firmwares/SBER_Relay_SBDV-00050.bin",c199_args,7,60,"",0,10,c199_exp,2,0,0,c199_pins,11,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from a SBER smart relay. It decrypts via hardware cipher, initializes Wi-Fi monitor mode, and starts MQTT telemetry services."},
+  {"BK7231T Tuya 2CH light switch (WB3S, 1.0.7) boots TuyaOS and inits BLE","firmwares/Tuya_2CH-Light_Switch_(WB_SW02_schemaID-000002m55m)_key7axydcvmea3x9_iygayy3dur6ccybl_WB3S_1.0.7.bin",c200_args,5,60,"",0,10,c200_exp,10,0,0,c200_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a 2-channel light switch. It initializes mqc app, timers, and the Tuya BLE stack."},
+  {"BK7231T Tuya 3CH light switch (WB3S, 1.0.7) boots TuyaOS and inits BLE","firmwares/Tuya_3CH-Light_Switch_(WB_SW03_schemaID-000002m6pz)_key7axydcvmea3x9_wsg2wx9altyhxhee_WB3S_1.0.7.bin",c201_args,5,60,"",0,10,c201_exp,10,0,0,c201_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a 3-channel light switch. It initializes mqc app, timers, and the Tuya BLE stack."},
+  {"BK7231T Tuya 4CH RF switch (WB3S, 1.0.7) boots TuyaOS and inits BLE","firmwares/Tuya_4CH_RF_Switch_(schemaID-000002gki4)_key7axydcvmea3x9_veiweudlsbxha7b7_WB3S_1.0.7.bin",c202_args,5,60,"",0,10,c202_exp,10,0,0,c202_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a 4-channel RF switch. It initializes mqc app, timers, and the Tuya BLE stack."},
+  {"BK7231T Tuya 4-gang smart switch (WB3S, 1.0.7) boots TuyaOS and online log","firmwares/Tuya_4G_Smart_Switch_(schemaID-000002f1ti)_keya4gvchmtapm8n_xdqh5dxwhlsfm7fk_WB3S_1.0.7.bin",c203_args,5,60,"",0,10,c203_exp,9,0,0,c203_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a 4-gang smart switch. It initializes RTOS heap, sys_timer thread, and online log service."},
+  {"BK7231T Tuya 902002 RGB+CCT bulb (WBLC9, 2.9.6) boots TuyaOS and mqc","firmwares/Tuya_902002-EU-2B_RGB+CCT_Bulb_(schemaID-000002j4ih)_keytg5kq8gvkv9dh_mg0bkk1pvum9oumc_WBLC9_2.9.6.bin",c204_args,5,60,"",0,10,c204_exp,10,0,0,c204_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a 902002 RGB+CCT smart bulb. It boots TuyaOS, initializes mqc app, and starts sys_timer."},
+  {"BK7231T Tuya A60 E27 9W bulb (WB3L, 2.9.3) boots TuyaOS and registers mqc","firmwares/Tuya_A60_E27_9W_230V_(schemaID-000001zaaw)_keytg5kq8gvkv9dh_llb6ogbwtvlvtdvv_WB3L_2.9.3.bin",c205_args,5,60,"",0,10,c205_exp,10,0,0,c205_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from an A60 9W smart bulb. It initializes mqc app callback and starts system timers."},
+  {"BK7231T Tuya A60 RGBCWW smart bulb (WB2L, 1.1.2) boots TuyaOS","firmwares/Tuya_A60_Smart_Bulb_RGBCWW_(schemaID-00000225qx)_keytg5kq8gvkv9dh_mfud0amisxvhtkja_WB2L_1.1.2.bin",c206_args,5,60,"",0,10,c206_exp,5,0,0,c206_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from an A60 RGBCWW smart bulb. It initializes RTOS heap and online log service."},
+  {"BK7231T Tuya Alic RGB+CW lamp (WB3L, 1.1.7) boots TuyaOS","firmwares/Tuya_Alic_Lampara_RGB+CW_(schemaID-000002bi6n)_keytg5kq8gvkv9dh_u22tdsupmibn9o6a_WB3L_1.1.7.bin",c207_args,5,60,"",0,10,c207_exp,5,0,0,c207_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from an Alic RGB+CW lamp. It boots TuyaOS, starts sys_timer, and loads user flash configuration."},
+  {"BK7231T Tuya Calex UK plug (WB2S, 1.1.2) boots TuyaOS and mqc app","firmwares/Tuya_Calex_900011.1-v112_UKPlug_(5202000300_schemaID-000002j1v7)_keya4gvchmtapm8n_xpuiljbzmwjwakvw_WB2S_1.1.2.bin",c208_args,5,60,"",0,10,c208_exp,10,0,0,c208_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a Calex UK plug. It boots TuyaOS, initializes mqc app and registers system callbacks."},
+  {"BK7231T Tuya Calex A60 RGBCW bulb (WB3L, 1.0.1) boots TuyaOS","firmwares/Tuya_Calex_A60_RGBCW_(schemaID-000001mvn0)_keyx7semxnwsecug_rk7scq9ybmlx3i4h_WB3L_1.0.1.bin",c209_args,5,60,"",0,10,c209_exp,5,0,0,c209_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a Calex A60 RGBCW smart bulb. It boots TuyaOS and starts online log service."},
+  {"BK7231T Tuya CleverLife A60 RGBCW bulb (WB3L, 1.0.8) boots TuyaOS","firmwares/Tuya_CleverLife_A60_RGBCW_(schemaID-000001iaa6)_keytg5kq8gvkv9dh_jemt5kgdokncxwf7_WB3L_1.0.8.bin",c210_args,5,60,"",0,10,c210_exp,5,0,0,c210_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a CleverLife A60 RGBCW smart bulb. It initializes RTOS memory and online log service."},
+  {"BK7231T Tuya DETA 6014HA switch (WB3S, 1.1.0) boots TuyaOS and mqc app","firmwares/Tuya_DETA_6014HA_Switch_(S702D-WF_schemaID-000001z6j8)_keya4gvchmtapm8n_taggrjpimvz6vn31_WB3S_1.1.0.bin",c211_args,5,60,"",0,10,c211_exp,10,0,0,c211_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from a DETA 6014HA wall switch. It boots TuyaOS, initializes mqc app and registers callbacks."},
+  {"BK7231T Tuya Daybetter strip lights (1.1.9) boots TuyaOS","firmwares/Tuya_Daybetter_Strip_lights_with_IR_and_Mic_(schemaID-000002ok5q)_keyexgh3aw8hjrcn_cxwfwenub0ahkhxr_1.1.9.bin",c212_args,5,60,"",0,10,c212_exp,10,0,0,c212_pins,6,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231T dump from Daybetter strip lights with IR and mic. It boots TuyaOS and initializes system timers."},
+  {"BK7231N Tuya 72-087 module boots TuyaOS and brings up BLE stack","firmwares/BK7231N_QIO_72-087_2024-19-12-12-47-55.bin",c213_args,7,60,"",0,10,c213_exp,10,0,0,c213_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a 72-087 module. It initializes RTOS heap, creates system threads, and registers the BLE stack."},
+  {"BK7231N Tuya Adelid MPD-B dry relay boots TuyaOS and inits BLE","firmwares/BK7231N_QIO_Adelid_DryRelay_MPD-B_2024-23-10-17-55-38.bin",c214_args,7,60,"",0,10,c214_exp,10,0,0,c214_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an Adelid MPD-B dry-contact relay. It boots TuyaOS and initializes the BLE controller."},
+  {"BK7231N Tuya Aldi corner lamp boots TuyaOS and starts BLE","firmwares/BK7231N_QIO_AldiCornerLamp_2023-29-11-23-47-46.bin",c215_args,7,60,"",0,10,c215_exp,10,0,0,c215_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an Aldi corner lamp. It boots TuyaOS, creates worker threads, and brings up the BLE stack."},
+  {"BK7231N Tuya AliExpress RGB 5V LED strip boots TuyaOS driver","firmwares/BK7231N_QIO_AliexpressLEDStripRGB5V_2026-17-1-15-53-42.bin",c216_args,7,60,"",0,10,c216_exp,8,0,0,c216_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an AliExpress 5V RGB LED strip. It enters driver_init and sets up peripheral channels."},
+  {"BK7231N Tuya AVATTO N-WOT10 smart socket boots TuyaOS","firmwares/BK7231N_QIO_AVATTO N-WOT10-EU-W_2024-31-1-16-19-35.bin",c217_args,7,60,"",0,10,c217_exp,10,0,0,c217_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an AVATTO N-WOT10-EU-W wall socket. It boots TuyaOS, initializes RTOS heap, and starts BLE."},
+  {"BK7231N Tuya AVATTO TS02-EU-B2 2-gang switch boots TuyaOS","firmwares/BK7231N_QIO_AVATTO TS02-EU-B2_2024-31-1-00-11-18.bin",c218_args,7,60,"",0,10,c218_exp,10,0,0,c218_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an AVATTO TS02 2-gang touch switch. It boots TuyaOS and brings up the BLE controller."},
+  {"BK7231N Tuya AVATTO TS02-EU-W3 3-gang switch boots TuyaOS","firmwares/BK7231N_QIO_AVATTO TS02-EU-W3_2024-31-1-22-05-42.bin",c219_args,7,60,"",0,10,c219_exp,10,0,0,c219_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an AVATTO TS02 3-gang touch switch. It boots TuyaOS and brings up the BLE controller."},
+  {"BK7231N Tuya brand new CB2S module boots TuyaOS factory firmware","firmwares/BK7231N_QIO_brand_new_CB2S_module_2024-07-6-22-17-00.bin",c220_args,7,60,"",0,10,c220_exp,10,0,0,c220_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a brand new CB2S module. It boots factory TuyaOS firmware and initializes BLE."},
+  {"BK7231N Tuya brand new CB3S module boots TuyaOS factory firmware","firmwares/BK7231N_QIO_brand_new_module_cb3s_2024-05-6-18-20-59.bin",c221_args,7,60,"",0,10,c221_exp,10,0,0,c221_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a brand new CB3S module. It boots factory TuyaOS firmware and initializes BLE."},
+  {"BK7231N Tuya CB2L TY-A60 18W bulb boots TuyaOS","firmwares/BK7231N_QIO_CB2L_TY-A60-18W-220V_C3009_2025-28-2-16-37-50.bin",c222_args,7,60,"",0,10,c222_exp,8,0,0,c222_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a TY-A60 18W bulb. It boots TuyaOS and initializes system timers."},
+  {"BK7231N Tuya CB3S new module (2023) boots TuyaOS","firmwares/BK7231N_QIO_CB3S_NEW_MODULE_2023-28-10-16-35-35.bin",c223_args,7,60,"",0,10,c223_exp,10,0,0,c223_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a new CB3S module. It boots TuyaOS and starts BLE."},
+  {"BK7231N Tuya CTree-001 smart device boots TuyaOS","firmwares/BK7231N_QIO_CTree-001_2024-13-12-00-04-07.bin",c224_args,7,60,"",0,10,c224_exp,10,0,0,c224_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a CTree-001 smart device. It boots TuyaOS and brings up system threads."},
+  {"BK7231N Tuya EC79901 smart device boots TuyaOS","firmwares/BK7231N_QIO_EC79901_2025-11-6-18-19-31.bin",c225_args,7,60,"",0,10,c225_exp,6,0,0,c225_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an EC79901 smart device. It boots TuyaOS and initializes BLE."},
+  {"BK7231N Tuya FS-05R fan switch boots TuyaOS","firmwares/BK7231N_QIO_FS-05R_2024-29-2-16-53-36.bin",c226_args,7,60,"",0,10,c226_exp,10,0,0,c226_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an FS-05R smart fan switch. It boots TuyaOS and starts BLE."},
+  {"BK7231N Tuya MiBoxer FUT035W dual-white controller boots TuyaOS","firmwares/BK7231N_QIO_FUT035W_2024-05-1-16-21-24.bin",c227_args,7,60,"",0,10,c227_exp,10,0,0,c227_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a MiBoxer FUT035W dual-white LED controller. It boots TuyaOS and sets up PWM."},
+  {"BK7231N Tuya MiBoxer FUT037W RGB controller boots TuyaOS","firmwares/BK7231N_QIO_FUT037W_2024-05-1-20-15-07.bin",c228_args,7,60,"",0,10,c228_exp,10,0,0,c228_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a MiBoxer FUT037W RGB LED controller. It boots TuyaOS and sets up PWM."},
+  {"BK7231N Tuya 24W ceiling lamp boots TuyaOS","firmwares/BK7231N_QIO_lamp_24W_5001_2025-12-12-21-28-39.bin",c229_args,7,60,"",0,10,c229_exp,8,0,0,c229_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from a 24W ceiling lamp. It boots TuyaOS and brings up BLE."},
+  {"BK7231N Tuya RGB plafon lamp boots TuyaOS","firmwares/BK7231N_QIO_ledRGBPlafon_2024-08-12-00-21-57.bin",c230_args,7,60,"",0,10,c230_exp,8,0,0,c230_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an RGB ceiling plafon lamp. It boots TuyaOS and initializes PWM channels."},
+  {"BK7231N Tuya LSC 3206306 CW + SM16703 controller boots TuyaOS","firmwares/BK7231N_QIO_LSC_3206306_CW_and_SM16703_2024-30-12-15-35-37.bin",c231_args,7,60,"",0,10,c231_exp,4,0,0,c231_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an LSC 3206306 LED strip with SM16703 driver. It boots TuyaOS and starts BLE."},
+  {"BK7231N Tuya LSPA9 gray T34 BL0937 metering plug boots TuyaOS","firmwares/BK7231N_QIO_LSPA9_Gray_T34_BL0937_2025-18-3-19-35-58.bin",c232_args,7,60,"",0,10,c232_exp,10,0,0,c232_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
+   "A Tuya-encrypted BK7231N dump from an LSPA9 smart metering plug with BL0937. It boots TuyaOS and configures metering GPIOs."}
 };
 TestCase *g_cases = g_cases_arr;
-int g_case_count = 183;
+int g_case_count = 233;

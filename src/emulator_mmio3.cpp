@@ -150,11 +150,47 @@ void BekenEmulator::mmio_read(u32 address, int size)
         }
         if (!state.i2c_buses.empty() && (cfg & 0x08)) {
             for (std::map<std::pair<int, int>, SimState::I2cBus>::iterator it = state.i2c_buses.begin();
-                 it != state.i2c_buses.end(); ++it)
-                if (pin == it->first.second && it->second.in_tx && it->second.bits == 8) {
-                    cfg &= ~1u;
-                    break;
+                 it != state.i2c_buses.end(); ++it) {
+                const SimState::I2cBus &bs = it->second;
+                if (pin != it->first.second || !bs.in_tx)
+                    continue;
+                if (bs.in_ack || bs.bits == 8) {
+                    if (bs.frame.empty() || (((u8)bs.frame[0]) & 1) == 0 || bs.frame.size() == 1) {
+                        cfg &= ~1u;
+                        break;
+                    }
+                } else if (!bs.frame.empty() && (((u8)bs.frame[0]) & 1) != 0) {
+                    u8 addr_byte = (u8)bs.frame[0];
+                    if (addr_byte == 0x81 || addr_byte == 0x89) {
+                        size_t idx = bs.frame.size() - 1;
+                        u8 rx_byte = 0xFF;
+                        if (addr_byte == 0x81) {
+                            if (bs.last_reg == 0xFE) {
+                                static const u8 id_fe[2] = {0x59, 0x59};
+                                rx_byte = idx < 2 ? id_fe[idx] : 0xFF;
+                            } else if (bs.last_reg == 0xFF) {
+                                static const u8 id_ff[2] = {0x83, 0x05};
+                                rx_byte = idx < 2 ? id_ff[idx] : 0xFF;
+                            } else if (bs.last_reg == 0x01) {
+                                static const u8 hum[2] = {0x40, 0x00};
+                                rx_byte = idx < 2 ? hum[idx] : 0xFF;
+                            } else {
+                                static const u8 th[4] = {0x1A, 0x00, 0x40, 0x00};
+                                rx_byte = idx < 4 ? th[idx] : 0xFF;
+                            }
+                        } else {
+                            static const u8 sht30[6] = {0x66, 0x66, 0x93, 0x80, 0x00, 0xA2};
+                            rx_byte = idx < 6 ? sht30[idx] : 0xFF;
+                        }
+                        int bit_idx = (bs.bits <= 0) ? 7 : (8 - bs.bits);
+                        if (((rx_byte >> bit_idx) & 1) == 0)
+                            cfg &= ~1u;
+                        else
+                            cfg |= 1u;
+                        break;
+                    }
                 }
+            }
         }
         W(address, cfg);
         return;

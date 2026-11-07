@@ -452,7 +452,7 @@ static inline u32 gen_pn16(u32 index_mask, bool flag)
     u32 xor_lhs = ((index_mask & 0x3FF) << 7) + ((index_mask >> 10) & 0x7F);
     u32 xor_rhs = (((index_mask >> 4) & 1) * 0x10000) + (part1 * 0x1111u);
     xor_rhs &= AND_CONST;
-    return xor_lhs ^ xor_rhs;
+    return u16m(xor_lhs ^ xor_rhs);
 }
 
 static inline u32 gen_pn32(u32 index_mask, bool flag)

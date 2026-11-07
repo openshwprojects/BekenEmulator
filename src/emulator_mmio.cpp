@@ -53,9 +53,11 @@ void BekenEmulator::i2c_pin_edge(int pin, u32 old_cfg, u32 new_cfg)
             std::pair<int, int> pr(pin < state.i2c_last_pin ? pin : state.i2c_last_pin,
                                    pin < state.i2c_last_pin ? state.i2c_last_pin : pin);
             int cnt = ++state.i2c_pair_counts[pr];
-            if (cnt == 32) {
-                state.i2c_buses[std::make_pair(pr.first, pr.second)] = SimState::I2cBus();
-                state.i2c_buses[std::make_pair(pr.second, pr.first)] = SimState::I2cBus();
+            if (cnt == 2 || (cnt == 1 && old_lv == 1 && new_lv == 0 && state.i2c_buses.size() < 16)) {
+                if (!state.i2c_buses.count(std::make_pair(pr.first, pr.second))) {
+                    state.i2c_buses[std::make_pair(pr.first, pr.second)] = SimState::I2cBus();
+                    state.i2c_buses[std::make_pair(pr.second, pr.first)] = SimState::I2cBus();
+                }
             }
         }
         state.i2c_last_pin = pin;
@@ -72,13 +74,18 @@ void BekenEmulator::i2c_pin_edge(int pin, u32 old_cfg, u32 new_cfg)
             int scl_lv = (!(scl_cfg & 0x08) && !(scl_cfg & 0x02)) ? 0 : 1;
             if (scl_lv == 1) {
                 if (old_lv == 1 && new_lv == 0) {
+                    if (bs.in_tx && bs.frame.size() >= 2 && (((u8)bs.frame[0]) & 1) == 0)
+                        bs.last_reg = (u8)bs.frame[1];
                     bs.in_tx = true;
+                    bs.in_ack = false;
                     bs.cur_byte = 0;
                     bs.bits = 0;
                     bs.frame.clear();
                 } else if (old_lv == 0 && new_lv == 1) {
                     if (bs.in_tx && bs.frame.size() >= 2) {
                         Bytes raw = bs.frame;
+                        if ((((u8)raw[0]) & 1) == 0)
+                            bs.last_reg = (u8)raw[1];
                         periph::LedDecode dec = periph::decode_i2c_led(scl, sda, raw);
                         if (dec.valid) {
                             state.i2c_frames[std::make_pair(scl, sda)] = raw;
@@ -89,6 +96,7 @@ void BekenEmulator::i2c_pin_edge(int pin, u32 old_cfg, u32 new_cfg)
                         }
                     }
                     bs.in_tx = false;
+                    bs.in_ack = false;
                 }
             }
         } else if (pin == scl && bs.in_tx) {
@@ -97,13 +105,22 @@ void BekenEmulator::i2c_pin_edge(int pin, u32 old_cfg, u32 new_cfg)
                 u32 sda_cfg = (dit != state.gpio_cfg.end()) ? dit->second : 0x3C;
                 int sda_lv = (!(sda_cfg & 0x08) && !(sda_cfg & 0x02)) ? 0 : 1;
                 if (bs.bits < 8) {
+                    bs.in_ack = false;
                     bs.cur_byte = ((bs.cur_byte << 1) | sda_lv) & 0xFF;
                     bs.bits++;
                 } else {
                     bs.frame += (char)(u8)bs.cur_byte;
+                    if (bs.frame.size() == 2 && (((u8)bs.frame[0]) & 1) == 0)
+                        bs.last_reg = (u8)bs.frame[1];
                     bs.cur_byte = 0;
                     bs.bits = 0;
+                    bs.in_ack = true;
                 }
+            } else if (old_lv == 1 && new_lv == 0) {
+                if (bs.bits == 8)
+                    bs.in_ack = true;
+                else if (bs.bits == 0 && bs.in_ack)
+                    bs.in_ack = false;
             }
         }
     }
