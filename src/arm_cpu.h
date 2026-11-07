@@ -15,11 +15,13 @@
 
 #include "common.h"
 
-/* ARM register indices, matching Unicorn's UC_ARM_REG_* ordering we care about. */
+/* ARM register indices, matching Unicorn's UC_ARM_REG_* ordering we care about.
+ * (REG_R1..REG_R12 are omitted because glibc <sys/ucontext.h> on x86_64 Linux
+ * defines REG_R8..REG_R15 in the global namespace via <signal.h>.) */
 enum {
-    REG_R0 = 0, REG_R1, REG_R2, REG_R3, REG_R4, REG_R5, REG_R6, REG_R7,
-    REG_R8, REG_R9, REG_R10, REG_R11, REG_R12, REG_SP, REG_LR, REG_PC,
-    REG_CPSR, REG_SPSR, REG_COUNT
+    REG_R0 = 0,
+    REG_SP = 13, REG_LR = 14, REG_PC = 15,
+    REG_CPSR = 16, REG_SPSR = 17, REG_COUNT = 18
 };
 
 /* CPU processor modes (CPSR[4:0]). */
