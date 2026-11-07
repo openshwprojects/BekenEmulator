@@ -408,7 +408,7 @@ void BekenEmulator::pacing_inner()
                 max_insns = (u64)v;
         }
     }
-    if (state.insn_count >= max_insns) {
+    if (network_insn_offset_ + state.insn_count >= max_insns) {
         flush_report_periph();
         stop();
     }
