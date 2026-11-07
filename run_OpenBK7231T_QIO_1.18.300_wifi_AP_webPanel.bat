@@ -14,7 +14,7 @@ REM The first run boots from scratch (a few minutes) and saves the device state
 REM to scratch\<image>_ap.snap as soon as the AP is up; later runs resume from
 REM that snapshot and the panel is back within a minute. Delete the .snap file
 REM to boot from scratch again. Close this window to stop the device.
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set "TARGET_FILE="
 set "PORT="
 for %%A in (%*) do (
@@ -28,13 +28,13 @@ if exist "%SNAP%" goto resume
 
 echo First run: booting %TARGET_FILE% from scratch, saving %SNAP% when the AP is up.
 echo The panel will be on http://127.0.0.1:%PORT%/ after the "[NET] ping reply" line.
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart -key TUYA --wifi-peer auto --net-forward %PORT%:80 --snapshot-save "%SNAP%" --snapshot-at "sending broadcast_deauth"
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart -key TUYA --wifi-peer auto --net-forward %PORT%:80 --snapshot-save "%SNAP%" --snapshot-at "sending broadcast_deauth"
 goto end
 
 :resume
 echo Resuming %TARGET_FILE% from %SNAP%.
 echo The panel will be on http://127.0.0.1:%PORT%/ after the "[NET] ping reply" line.
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart -key TUYA --wifi --snapshot-load "%SNAP%" --wifi-peer auto --net-forward %PORT%:80
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart -key TUYA --wifi --snapshot-load "%SNAP%" --wifi-peer auto --net-forward %PORT%:80
 
 :end
 pause

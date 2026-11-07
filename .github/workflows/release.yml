@@ -26,32 +26,11 @@ jobs:
       with:
         ref: ${{ github.event.release.tag_name || github.ref }}
 
-    - name: Set up Python 3.10 x64
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
-        architecture: "x64"
-        cache: pip
-
-    - name: Install emulator dependencies
-      run: python -m pip install -r requirements.txt
-
-    # Unicorn's generated control flow is incompatible with the CFG-enabled
-    # Windows bootloader shipped in PyInstaller wheels. Build the documented
-    # no-CFG bootloader from source; the packaged Unicorn smoke test below
-    # fails with 0xC0000409 if this ever regresses.
-    - name: Install PyInstaller with a no-CFG bootloader
-      shell: pwsh
-      run: |
-        $env:PYINSTALLER_COMPILE_BOOTLOADER = "1"
-        $env:PYINSTALLER_BOOTLOADER_WAF_ARGS = "--no-cfg"
-        python -m pip install --no-cache-dir --no-binary=PyInstaller "PyInstaller==6.22.3"
-
     - name: Build standalone Windows executable
       shell: pwsh
       run: .\tools\build_windows_release.ps1
 
-    - name: Smoke-test packaged Unicorn runtime and firmware resources
+    - name: Smoke-test packaged ARM runtime and firmware resources
       shell: pwsh
       run: |
         $process = Start-Process `
@@ -98,31 +77,14 @@ jobs:
       with:
         ref: ${{ github.event.release.tag_name || github.ref }}
 
-    - name: Set up Python 3.10 x64
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
-        architecture: "x64"
-        cache: pip
-
-    - name: Install system Tk and Xvfb dependencies
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq xvfb python3-tk tk8.6 tcl8.6 binutils
-
-    - name: Install emulator dependencies and PyInstaller
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install -r requirements.txt "PyInstaller==6.22.3"
-
     - name: Build standalone Linux x64 executable
       run: bash ./tools/build_linux_release.sh
 
-    - name: Smoke-test packaged Unicorn runtime and firmware resources
+    - name: Smoke-test packaged ARM runtime and firmware resources
       run: ./dist/BekenEmulator-linux-x64 --package-smoke
 
-    - name: Run packaged GUI self-tests
-      run: xvfb-run -a ./dist/BekenEmulator-linux-x64 --selftest
+    - name: Run packaged self-tests
+      run: ./dist/BekenEmulator-linux-x64 --selftest
 
     - name: Write SHA-256 checksum
       run: |
@@ -181,7 +143,7 @@ jobs:
         fi
 
         SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
-        NOTES="Standalone Windows x64 (\`BekenEmulator.exe\`) and Linux x64 (\`BekenEmulator-linux-x64\`) builds with bundled sample firmwares (commit \`${SHORT_SHA}\`)."
+        NOTES="Standalone Windows x64 (\`BekenEmulator.exe\`) and Linux x64 (\`BekenEmulator-linux-x64\`) C++ builds with bundled sample firmwares (commit \`${SHORT_SHA}\`)."
 
         if ! gh release view "${TAG}" >/dev/null 2>&1; then
           gh release create "${TAG}" \

@@ -8,7 +8,7 @@ REM Regenerate with:
 REM   python tools\make_obk_config.py firmwares\OpenBK7231T_QIO_1.18.300_mathDemo.bin ^
 REM     firmwares\OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_echo.bin ^
 REM     -c "echo Test12343242343243"
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
@@ -16,5 +16,5 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (startup command: echo) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart -key TUYA
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart -key TUYA
 pause

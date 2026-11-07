@@ -5,7 +5,7 @@ REM Exercises the protected key block at 0x1EE000, which lives above the
 REM CRC-stripped logical end of the image and is AES-128-ECB encrypted; the
 REM emulator must serve the raw dump bytes there or the device sees blank flash.
 REM Expect: "key_addr: 0x1ee000" then "get key:" with the real key bytes.
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
@@ -13,5 +13,5 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (UART2 log + UART1 as HEX) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA
 pause

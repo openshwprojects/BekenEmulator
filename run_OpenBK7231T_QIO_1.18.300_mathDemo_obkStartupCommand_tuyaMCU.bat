@@ -19,7 +19,7 @@ REM Regenerate the image with:
 REM   python tools\make_obk_config.py firmwares\OpenBK7231T_QIO_1.18.300_mathDemo.bin ^
 REM     firmwares\OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_tuyaMCU.bin ^
 REM     -c "backlog startDriver TuyaMCU; linkTuyaMCUOutputToChannel 1 bool 1; linkTuyaMCUOutputToChannel 2 val 2; linkTuyaMCUOutputToChannel 4 enum 4; linkTuyaMCUOutputToChannel 20 bool 20; addChangeHandler Channel1 != 0 setChannel 20 1"
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
@@ -27,7 +27,7 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (UART2 log + UART1/TuyaMCU as HEX) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA ^
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA ^
     --tuyamcu ^
     --tuyamcu-dp 1:bool:1 --tuyamcu-dp 2:value:100 --tuyamcu-dp 3:string:HELLO ^
     --tuyamcu-dp 4:enum:2 --tuyamcu-dp 5:bitmap:0x0F ^

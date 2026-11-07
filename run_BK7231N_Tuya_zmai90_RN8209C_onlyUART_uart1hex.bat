@@ -5,7 +5,7 @@ REM TUYA key. UART2 is the text log, UART1 (the RN8209C link) shown as HEX.
 REM NOTE: this firmware reads its protected key (0x1ee000) fine but then drops
 REM into the mf_test manufacturing-test thread and does not reach normal
 REM operation, so no RN8209C polling / UART1 traffic is seen in emulation.
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
@@ -13,5 +13,5 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (UART2 log + UART1 as HEX) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA
 pause

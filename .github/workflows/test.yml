@@ -24,65 +24,50 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Build C++ emulator and test suite
+      run: make -j4 all
 
     - name: TuyaMCU protocol unit self-tests (no firmware)
-      run: python src/tuyamcu.py
+      run: ./unittests tuyamcu
 
-    - name: Tuya flash config parser self-tests (no firmware)
-      run: |
-        python src/tuya_config.py
-        python tests/tuya_config.py
+    - name: Tuya flash config parser self-tests
+      run: ./unittests tuya_config tuya_config_dump
 
     - name: Firmware image loader self-tests
-      run: python tests/image_loader.py
+      run: ./unittests image_loader
 
     - name: BLE core register model self-tests (no firmware)
-      run: python src/blecore.py
+      run: ./unittests blecore
 
     - name: GPIO input and interrupt model self-tests (no firmware)
-      run: |
-        python src/gpio.py
-        python tests/gpio_emulator.py
+      run: ./unittests gpio gpio_emulator
 
     - name: GPIO button-to-relay firmware regression
-      run: python tests/gpio_button.py
+      run: ./unittests gpio_button
 
     - name: Watchdog reboot model self-tests (synthetic firmware)
-      run: python tests/watchdog.py
+      run: ./unittests watchdog
 
     - name: Wi-Fi MAC hardware model self-tests (no firmware)
-      run: python src/wifimac.py
+      run: ./unittests wifimac
 
     - name: Virtual IP network self-tests (no firmware)
-      run: python src/netstack.py
+      run: ./unittests netstack
 
     - name: Virtual 802.11 peer self-tests (no firmware)
-      run: python src/wifipeer.py
+      run: ./unittests wifipeer
 
     - name: WPA2 (protected network) self-tests (no firmware)
-      run: python src/wpa2.py
+      run: ./unittests wpa2
 
-    # The UI needs a display to build its widgets. xvfb gives it one; if it is
-    # unavailable the self-tests report a skip rather than failing the build.
-    - name: Emulator UI self-tests (no firmware)
-      run: |
-        sudo apt-get update -qq && sudo apt-get install -y -qq xvfb python3-tk
-        xvfb-run -a python tools/sim_ui.py --selftest
+    - name: Chip descriptor, peripheral, and timer model self-tests
+      run: ./unittests periph chips timers
 
-    - name: Run self tests (also writes report/index.html)
+    - name: Run full firmware self-tests (also writes report/index.html)
       id: tests
       run: |
         set +e
-        python tests/self_test.py
+        ./self_test
         code=$?
         echo "exit_code=$code" >> "$GITHUB_OUTPUT"
         set -e

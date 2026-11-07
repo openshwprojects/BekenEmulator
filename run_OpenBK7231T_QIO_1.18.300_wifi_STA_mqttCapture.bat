@@ -12,11 +12,11 @@ REM HTTP GET gets a 200 from the offline responder, MQTT talks to the offline
 REM broker, and every request and publish is logged as a [NET] line. Add
 REM --net-out to let its connections reach the real internet instead.
 REM 127.0.0.1:8081 is forwarded to the device's own web server.
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 if "%TARGET_FILE%"=="" (
     set "TARGET_FILE=%~dp0firmwares\OpenBK7231T_QIO_1.18.300_obkConfig_staOpen_BekenSim_netTraffic.bin"
 )
 echo Running simulator (Wi-Fi station, outbound traffic captured) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart -key TUYA --wifi-peer auto --wifi-ssid BekenSim --net-forward 8081:80 --pcap "%~dp0scratch\obk_sta.pcap"
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart -key TUYA --wifi-peer auto --wifi-ssid BekenSim --net-forward 8081:80 --pcap "%~dp0scratch\obk_sta.pcap"
 pause

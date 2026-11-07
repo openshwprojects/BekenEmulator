@@ -19,11 +19,11 @@ REM                                                       SmartLife pairing AP
 REM   BK7231N_Tuya_BEOK_TOL47WIFI_Thermostat_...bin        EZ-mode sniffing
 REM   BK7231T_QIO_Woox_R5111_...bin  with --wifi-ssid tuya_mdev_test1
 REM                                                       enters factory test
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 if "%TARGET_FILE%"=="" (
     set "TARGET_FILE=%~dp0firmwares\BK7231N_Tuya_PC321_3PhaseMeter_TuyaMCU_2.0.2.bin"
 )
 echo Running simulator (stock Tuya, cloud traffic captured offline) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart -key TUYA --xvr-selfclear --tuyamcu --tuyamcu-pid gqmmtjclqb7reg5p --tuyamcu-raw --wifi-peer auto --pcap "%~dp0scratch\tuya_cloud.pcap"
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart -key TUYA --xvr-selfclear --tuyamcu --tuyamcu-pid gqmmtjclqb7reg5p --tuyamcu-raw --wifi-peer auto --pcap "%~dp0scratch\tuya_cloud.pcap"
 pause

@@ -1,5 +1,5 @@
 @echo off
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
@@ -7,5 +7,5 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (Verbose) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" -key TUYA
+"%SIM_BIN%" "%TARGET_FILE%" -key TUYA
 pause

@@ -10,7 +10,7 @@ REM Regenerate with:
 REM   python tools\make_obk_config.py firmwares\OpenBK7231T_QIO_1.18.300_mathDemo.bin ^
 REM     firmwares\OpenBK7231T_QIO_1.18.300_mathDemo_obkStartupCommand_uartSendHex.bin ^
 REM     -c "backlog uartInit 115200; uartSendHex BADF00D12345"
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
@@ -18,5 +18,5 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (UART2 log + UART1 as HEX) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA
 pause

@@ -11,7 +11,7 @@ REM Expect repeated: [UART1/MCU] 55 aa 00 00 00 00 ff
 REM
 REM Also exercises the physical flash-addressing model: both KV copies
 REM (0x1ed000 current, 0x1cf000 mirror) must read valid with matching counts.
-set "SIM_SCRIPT=%~dp0src\main.py"
+set "SIM_BIN=%~dp0bekensim.exe"
 set TARGET_FILE=%~1
 
 if "%TARGET_FILE%"=="" (
@@ -19,5 +19,5 @@ if "%TARGET_FILE%"=="" (
 )
 
 echo Running simulator (UART2 log + UART1/TuyaMCU as HEX) for: %TARGET_FILE%
-python "%SIM_SCRIPT%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart --uart1-hex -key TUYA
 pause
