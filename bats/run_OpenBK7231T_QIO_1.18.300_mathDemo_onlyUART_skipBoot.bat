@@ -1,0 +1,11 @@
+@echo off
+set "SIM_BIN=%~dp0..\bekensim.exe"
+set TARGET_FILE=%~1
+
+if "%TARGET_FILE%"=="" (
+    set "TARGET_FILE=%~dp0..\firmwares\OpenBK7231T_QIO_1.18.300_mathDemo.bin"
+)
+
+echo Running simulator (UART Only) for: %TARGET_FILE%
+"%SIM_BIN%" "%TARGET_FILE%" --only-uart -key TUYA
+pause
