@@ -11,6 +11,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.chips import CHIPS
 from src.emulator import BekenEmulator, SimulatorState
 from src import periph
 
@@ -36,9 +37,7 @@ class FakeMemory:
 def make_emulator(extended=False):
     """Build only the host-side pieces needed by GPIO; no Unicorn instance."""
     emu = BekenEmulator.__new__(BekenEmulator)
-    emu.is_bk7252 = extended
-    emu.has_extended_gpio = extended
-    emu.chip_variant = "BK7252" if extended else "BK7231"
+    emu.chip = CHIPS["BK7231U" if extended else "BK7231"]
     emu.gpio_pin_count = 40 if extended else 32
     emu.state = SimulatorState()
     if extended:
@@ -50,8 +49,6 @@ def make_emulator(extended=False):
     emu.wifimac = None
     emu.blecore = None
     emu.xvr_selfclear = False
-    emu.has_pwm_new = True
-    emu.is_bk7231 = True
     emu.trng_state = None
     emu.chip_id_value = 0
     emu.device_id_value = 0

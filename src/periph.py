@@ -25,9 +25,20 @@ whatever reset state the pad has, and the emulator has not been told otherwise.
 import os
 import re
 
+try:
+    from .chips import CHIPS
+except ImportError:
+    from chips import CHIPS
+
 PIN_COUNT = 32
-BK7252_PIN_COUNT = 40
 BK7252_EXT_SLOT = 48
+
+
+def chip_pin_count(chip):
+    """GPIO pins of a chip name. Names with no chip file (report-only, such as
+    BK7231M or BL2028N from a firmware's file name) have the base bank."""
+    found = CHIPS.get(chip)
+    return found.gpio_pins if found else PIN_COUNT
 FUNC_REGS = {32: "REG_GPIO_FUNC_CFG", 46: "REG_GPIO_FUNC_CFG_2",
              47: "REG_GPIO_FUNC_CFG_3"}
 
@@ -164,11 +175,13 @@ def parse_i2c_lines(lines):
     return frames
 
 
-def gpio_slot(pin, extended=True):
-    """Return the GPIO register slot for logical ``pin``, or ``None`` if invalid."""
+def gpio_slot(pin, pin_count=PIN_COUNT):
+    """GPIO register slot for logical ``pin`` on a chip with ``pin_count`` pins.
+
+    ``None`` if the chip has no such pin."""
     if 0 <= pin < PIN_COUNT:
         return pin
-    if extended and PIN_COUNT <= pin < BK7252_PIN_COUNT:
+    if PIN_COUNT <= pin < pin_count:
         return BK7252_EXT_SLOT + (pin - PIN_COUNT)
     return None
 
@@ -176,9 +189,10 @@ def gpio_slot(pin, extended=True):
 def gpio_pin_values(gpio, chip=""):
     """Return a logical ``pin -> config`` map, excluding controller words."""
     pins = {pin: value for pin, value in gpio.items() if 0 <= pin < PIN_COUNT}
-    if chip in ("BK7231U", "BK7252"):
-        for pin in range(PIN_COUNT, BK7252_PIN_COUNT):
-            slot = gpio_slot(pin, extended=True)
+    pin_count = chip_pin_count(chip)
+    if pin_count > PIN_COUNT:
+        for pin in range(PIN_COUNT, pin_count):
+            slot = gpio_slot(pin, pin_count)
             if slot in gpio:
                 pins[pin] = gpio[slot]
     return pins
@@ -1010,7 +1024,7 @@ def decode_state(gpio, pwm, chip="", i2c_frames=None, i2c_last_on=None,
         channels, ctl, base = pwm_channels(pwm)
         layout = "old"
     logical_gpio = gpio_pin_values(gpio, chip)
-    pin_count = BK7252_PIN_COUNT if chip in ("BK7231U", "BK7252") else PIN_COUNT
+    pin_count = chip_pin_count(chip)
     out = {"gpio": gpio_table(logical_gpio, pin_count),
            "pwm_layout": layout,
            # Logical pin keys are what GUI actions and report assertions need;
@@ -1053,13 +1067,14 @@ def _self_test():
     """Unit tests for peripheral decoders and SARADC emulation."""
     import sys as _sys
     _sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from src.emulator import BekenEmulator, CHIP_FAMILIES
+    from src.emulator import BekenEmulator
 
     # 1. GPIO slot & pin decoding
-    assert gpio_slot(10, extended=True) == 10
-    assert gpio_slot(32, extended=True) == 48
-    assert gpio_slot(39, extended=True) == 55
-    assert gpio_slot(32, extended=False) is None
+    assert gpio_slot(10, 40) == 10
+    assert gpio_slot(32, 40) == 48
+    assert gpio_slot(39, 40) == 55
+    assert gpio_slot(40, 40) is None
+    assert gpio_slot(32, 32) is None
     assert "OUTPUT = 0" in decode_pin(0x00)
     assert "OUTPUT = 1" in decode_pin(0x02)
     assert "pull-up" in decode_pin(0x3C)
@@ -1106,8 +1121,8 @@ def _self_test():
     # 5. BekenEmulator SARADC MMIO emulation (BK7231T/N and BK7238 register layouts)
     import struct as _struct
     emu_t = BekenEmulator(raw_flash=b"\xff" * 0x1000, bootloader=None, app=b"\x00" * 64,
-                          only_uart=True, chip_identity=CHIP_FAMILIES["BK7231"],
-                          chip_variant="BK7231", adc_inputs={1: 700, 3: 512})
+                          only_uart=True, chip=CHIPS["BK7231"],
+                          adc_inputs={1: 700, 3: 512})
     emu_t.setup()
     assert emu_t.get_adc_input(1) == 700 and emu_t.get_adc_input(3) == 512
     assert emu_t.get_adc_input(2) == DEFAULT_ADC_RAW
@@ -1130,8 +1145,8 @@ def _self_test():
 
     # BK7238 SARADC layout (0x00802c08 CFG2, 0x00802c0c STATE, 0x00802c10 DATA)
     emu_38 = BekenEmulator(raw_flash=b"\xff" * 0x1000, bootloader=None, app=b"\x00" * 64,
-                           only_uart=True, chip_identity=CHIP_FAMILIES["BK7238"],
-                           chip_variant="BK7238", adc_inputs={4: 640})
+                           only_uart=True, chip=CHIPS["BK7238"],
+                           adc_inputs={4: 640})
     emu_38.setup()
     emu_38.hook_mem_write_mmio(emu_38.mu, 0, 0x00802c08, 4, 4, None)        # channel 4 (P26 on BK7238)
     emu_38.hook_mem_write_mmio(emu_38.mu, 0, 0x00802c0c, 4, 0x00004008, None)  # CHNL_EN
