@@ -1243,6 +1243,180 @@ static const ExpectStr c249_exp[] = {
   {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0}
 };
 
+static const char *const c250_args[] = {"--only-uart","-chip","BK7231","--wifi"};
+static const ExpectStr c250_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c251_args[] = {"--only-uart","-chip","BK7231","--wifi"};
+static const ExpectStr c251_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c252_args[] = {"--only-uart","-chip","BK7231","--wifi"};
+static const ExpectStr c252_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c253_args[] = {"--only-uart","-chip","BK7231","--wifi"};
+static const ExpectStr c253_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c254_args[] = {"--only-uart","-chip","BK7231","--wifi"};
+static const ExpectStr c254_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c255_args[] = {"--only-uart","-chip","BK7231N","--wifi","--ble-core"};
+static const ExpectStr c255_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c256_args[] = {"--only-uart","-chip","BK7231N","--wifi","--ble-core"};
+static const ExpectStr c256_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c257_args[] = {"--only-uart","-chip","BK7231N","--wifi","--ble-core"};
+static const ExpectStr c257_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c258_args[] = {"--only-uart","-chip","BK7231N","--wifi","--ble-core"};
+static const ExpectStr c258_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"[Flash]init over",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c259_args[] = {"--only-uart","-chip","BK7252N","--wifi"};
+static const ExpectStr c259_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"beken_onchip",1,0},
+  {"FAL partition table",1,0}
+};
+
+static const char *const c260_args[] = {"--only-uart","-chip","BK7252N","--wifi"};
+static const ExpectStr c260_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"beken_onchip",1,0},
+  {"FAL partition table",1,0}
+};
+
+static const char *const c261_args[] = {"--only-uart","-chip","BK7252N","--wifi"};
+static const ExpectStr c261_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"beken_onchip",1,0},
+  {"FAL partition table",1,0}
+};
+
+static const char *const c262_args[] = {"--only-uart","-chip","BK7252","--wifi"};
+static const ExpectStr c262_exp[] = {
+  {"Thread Operating System",1,0},
+  {"3.1.0 build Apr  1 2024",1,0},
+  {"[FUNC]rwnxl_init",1,0}
+};
+
+static const char *const c263_args[] = {"--only-uart","-chip","BK7252","--wifi"};
+static const ExpectStr c263_exp[] = {
+  {"Thread Operating System",1,0},
+  {"3.1.0 build Aug  7 2024",1,0},
+  {"test_flash_read_for_mac",1,0}
+};
+
+static const char *const c264_args[] = {"--only-uart","-chip","BK7252","--wifi"};
+static const ExpectStr c264_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"[WIFI] device RX filter 0x3503848c: back to normal reception",1,0}
+};
+
+static const char *const c265_args[] = {"--only-uart","-chip","BK7252","--wifi"};
+static const ExpectStr c265_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"[CAMERA] GC0328C streaming 320x240 JPEG",1,0}
+};
+
+static const char *const c266_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c266_exp[] = {
+  {"power on",1,0},
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"[BLE_ADV] EM 0x0040e480",1,0},
+  {"WF24-BLE",1,0}
+};
+
+static const char *const c267_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c267_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c268_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c268_exp[] = {
+  {"[MEM DBG] heap init",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c269_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c269_exp[] = {
+  {"[MEM DBG] heap init",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c270_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c270_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c271_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c271_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c272_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c272_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c273_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c273_exp[] = {
+  {"[MEM DBG] heap init",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c274_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c274_exp[] = {
+  {"[MEM DBG] heap init",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
 TestCase g_cases_arr[] = {
   {"CLI: invalid -key is rejected","firmwares/OpenBK7231T_QIO_1.18.300.bin",c0_args,3,60,"",0,10,c0_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
    "A bad -key value must be rejected up front by parse_key(), with a message naming the accepted forms (a known key name, 32 hex chars, or base64 of 16 bytes), rather than failing deep inside emulation."},
@@ -1743,7 +1917,58 @@ TestCase g_cases_arr[] = {
   {"BK7231N SBER Plug decrypts and initializes power control subsystem","firmwares/SBER_Plug_SBDV-00123_FW-1.21.5.bin",c248_args,7,60,"",0,10,c248_exp,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
    "A hardware-encrypted BK7231N dump from a SBER smart plug (v1.21.5). It decrypts via hardware cipher, starts Wi-Fi monitor mode, and initializes power metering."},
   {"BK7231N SBER Lamp RGBWW E27 decrypts and boots TuyaOS/SBER stack","firmwares/SBER_Lamp_RGBWW_E27_SBDV-00115_FW-1.26.1.bin",c249_args,7,60,"",0,10,c249_exp,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
-   "A hardware-encrypted BK7231N dump from a SBER RGBWW E27 lamp (v1.26.1). It decrypts via hardware cipher, starts system services, and enters Wi-Fi monitor mode."}
-};
-TestCase *g_cases = g_cases_arr;
-int g_case_count = 250;
+   "A hardware-encrypted BK7231N dump from a SBER RGBWW E27 lamp (v1.26.1). It decrypts via hardware cipher, starts system services, and enters Wi-Fi monitor mode."},
+  {"BK7231M ChinaMobile HeJiaQin X1S plug boots FreeRTOS","firmwares/ChinaMobile_HeJiaQin_HuiJu_X1S_Plug_CB2S_1.0.4.bin",c250_args,4,60,"",0,10,c250_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231M dump from a China Mobile HeJiaQin HuiJu X1S smart plug (CB2S module, v1.0.4). It boots FreeRTOS, initializes heap memory and flash storage."},
+  {"BK7231M VeSync Aubess BSD33 plug boots FreeRTOS","firmwares/VeSync_Aubess_BSD33_BSDOG02_Plug_1.0.01.bin",c251_args,4,60,"",0,10,c251_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231M dump from an Aubess BSD33 smart socket plug (v1.0.01). It boots FreeRTOS and initializes system flash."},
+  {"BK7231M VeSync GreenSun EU plug (1.0.01) boots FreeRTOS","firmwares/VeSync_GreenSun_EU_WHOGPLUG_CB2S_1.0.01.bin",c252_args,4,60,"",0,10,c252_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231M dump from a GreenSun EU smart plug (CB2S, v1.0.01). It boots FreeRTOS, initializes memory heap and system flash."},
+  {"BK7231M VeSync GreenSun EU plug (1.0.02) boots FreeRTOS","firmwares/VeSync_GreenSun_EU_WHOGPLUG_CB2S_1.0.02.bin",c253_args,4,60,"",0,10,c253_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231M dump from a GreenSun EU smart plug (CB2S, v1.0.02). It boots FreeRTOS, initializes memory heap and system flash."},
+  {"BK7231M SparkleIoT XH-CB2S mini switch boots FreeRTOS","firmwares/SparkleIoT_XH-CB2S_Mini_Switch.bin",c254_args,4,60,"",0,10,c254_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A 4MB BK7231M dump from a SparkleIoT XH-CB2S smart mini relay switch. It boots FreeRTOS and configures on-chip flash."},
+  {"BL2028N Dogness D07 smart water fountain boots TuyaOS","firmwares/Dogness_D07_410B8E_Water_Fountain_5.0.38.bin",c255_args,5,60,"",0,10,c255_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BL2028N dump from a Dogness D07 smart pet water fountain (v5.0.38). It boots TuyaOS and initializes memory heap."},
+  {"BL2028N Dreo DR-HTF004S tower fan boots TuyaOS","firmwares/Dreo_DR-HTF004S_Fan_PAI-053.bin",c256_args,5,60,"",0,10,c256_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BL2028N dump from a Dreo DR-HTF004S smart tower fan (PAI-053 module). It boots TuyaOS and initializes memory heap."},
+  {"BL2028N Dreo WH517S wall heater boots TuyaOS","firmwares/Dreo_Wall_Heater_WH517S_PAI-053_3.4.3.bin",c257_args,5,60,"",0,10,c257_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BL2028N dump from a Dreo WH517S smart wall heater (PAI-053 module, v3.4.3). It boots TuyaOS and initializes memory heap."},
+  {"BL2028N XiaoMei WP8621N fish feeder boots TuyaOS and timers","firmwares/XiaoMei_WP8621N_Fish_Feeder_WIFI002_V20_WP8621NK_03.bin",c258_args,5,60,"",0,10,c258_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BL2028N dump from a XiaoMei WP8621N smart aquarium fish feeder. It boots TuyaOS, initializes flash and enters Wi-Fi power save."},
+  {"BK7252N INO-A13N mini camera boots RT-Thread and inits FAL","firmwares/Cam_INO-A13N-V2.2_readResult_BK7252N_QIO_7252n_square_2025-28-9-17-39-25.bin",c259_args,4,60,"",0,10,c259_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252N dump from an INO-A13N V2.2 mini camera. It boots RT-Thread, registers the FAL partition table, and enters Wi-Fi monitor mode."},
+  {"BK7252N Pinmei A9 mini camera boots RT-Thread and inits FAL","firmwares/Pinmei_A9_BK7252N_BKFIL.bin",c260_args,4,60,"",0,10,c260_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252N dump from a Pinmei A9 smart camera. It boots RT-Thread, mounts on-chip flash via FAL, and enters Wi-Fi monitor mode."},
+  {"BK7252N Linklemo A9 mini camera boots RT-Thread and inits FAL","firmwares/XCThings_Linklemo_A9_INO-IPC-V2.3_(BluePCB).bin",c261_args,4,60,"",0,10,c261_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252N dump from a Linklemo XCThings A9 smart IP camera (INO-IPC-V2.3). It boots RT-Thread and mounts FAL flash partitions."},
+  {"BK7252U Linklemo HA15 camera boots RT-Thread OS","firmwares/Linklemo_XCThings_HA15_IN-A15-V1.0_INNOA15_BluePCB_12.12.16.bin",c262_args,4,60,"",0,10,c262_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252 dump from a Linklemo XCThings HA15 camera (QFN48). It boots RT-Thread 3.1.0 and initializes rwnxl MAC."},
+  {"BK7252U Naxclow A11-A9 camera boots RT-Thread OS","firmwares/Naxclow_MiniCam_A11-A9_B-V2.7_240426.bin",c263_args,4,60,"",0,10,c263_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252 dump from a Naxclow A11-A9 mini camera (QFN48). It boots RT-Thread 3.1.0 and reads MAC from flash."},
+  {"BK7252U T99 mini camera inits Wi-Fi reception","firmwares/T99_MiniCam_BK7252UQN48+GC0311-insmod.bin",c264_args,4,60,"",0,10,c264_exp,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252 dump from a T99 mini camera with GC0311 sensor. It boots, enters monitor mode, and transitions to normal Wi-Fi reception."},
+  {"BK7252U Pix-Link A9 camera streams GC0328C video","firmwares/A9_Pix-Link_ΡΙΧΑ-180431-XLPNL_CYCAM_RW101P_v19_1010.bin",c265_args,4,60,"",0,10,c265_exp,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252 dump from a Pix-Link A9 camera. It initializes Wi-Fi and streams 320x240 JPEG frames via hardware video DMA."},
+  {"BK7238 DX-Smart DX-WF24A boots and advertises WF24-BLE","firmwares/DX-Smart_DX-WF24A_AT.bin",c266_args,4,60,"",0,10,c266_exp,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a DX-Smart DX-WF24A AT-command module. It starts radio services, enters monitor mode, and broadcasts WF24-BLE advertisements."},
+  {"BK7238 eWeLink door sensor boots FreeRTOS and inits flash","firmwares/eWeLink_DoorWindow_(CK-BK7238-W105SE0X-01-DOOR-HB)_1.0.4.bin",c267_args,4,60,"",0,10,c267_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from an eWeLink door and window contact sensor (v1.0.4). It boots FreeRTOS, initializes heap and system flash."},
+  {"BK7238 Tuya Onforu 100W floodlight boots TuyaOS","firmwares/Tuya_Onforu_Floodlight100W_BDB100WF-3_(smart_cct-V10_schemaID-e1n0q1xk)_keytfesxxsqewnqy_unlndugueawgni1_T1-U-HL_1.0.43.bin",c268_args,4,60,"",0,10,c268_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from an Onforu 100W smart LED floodlight (T1-U-HL module, v1.0.43). It boots TuyaOS, initializes heap, and enters Wi-Fi power save."},
+  {"BK7238 Tuya PCIe remote boot card boots TuyaOS","firmwares/Tuya_Remote_Boot_PCIE_(WIFI远程开机卡_schemaID-e1n38ek0)_keygkhjdv8859wg5_jlicasd8h9mzckrz_T1-U-HL_1.0.4.bin",c269_args,4,60,"",0,10,c269_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Tuya computer PCIe remote power boot card (T1-U-HL module). It boots TuyaOS, initializes heap, and enters Wi-Fi power save."},
+  {"BK7238 Zengge W43-M5 ceiling light boots FreeRTOS","firmwares/Zengge_Ceiling_Light_W43-M5_V1.2_(3D_23_20250724_ZIL-BK38-M5-12)_v1.23.9335-A.bin",c270_args,4,60,"",0,10,c270_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Zengge W43-M5 smart ceiling light. It boots FreeRTOS, initializes heap memory and flash configuration."},
+  {"BK7238 Zengge ZG-BK38-BP101 RGBCCT bulb boots FreeRTOS","firmwares/Zengge_AK001-ZJ21412_35_243_20240425_ZG-BK38-BP101_RGBCCT_Bulb.bin",c271_args,4,60,"",0,10,c271_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Zengge ZG-BK38-BP101 RGBCCT smart light bulb. It boots FreeRTOS, initializes heap and flash configuration."},
+  {"BK7238 Zengge Symphony USB SPI LED boots FreeRTOS","firmwares/Zengge_AK001-ZJ21413_77_24_20240423_ZG-BK_Symphony_USB_SPI_LED.bin",c272_args,4,60,"",0,10,c272_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Zengge Symphony addressable SPI LED light strip controller. It boots FreeRTOS, initializes heap and flash configuration."},
+  {"BK7238 GBDQA 63V 16A smart breaker boots TuyaOS","firmwares/BK7238_QIO_GBDQA_63V_16A_2026-09-7-22-13-43.bin",c273_args,4,60,"",0,10,c273_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a GBDQA 63V 16A DIN-rail circuit breaker. It boots TuyaOS, initializes heap memory, and enters Wi-Fi power save."},
+  {"BK7238 T1U PCIe PC card 2 boots TuyaOS","firmwares/BK7238_QIO_t1u_pci-e_PC_card_2_2026-13-6-19-42-48.bin",c274_args,4,60,"",0,10,c274_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a T1U PCIe computer power management card. It boots TuyaOS, initializes heap memory, and enters Wi-Fi power save."}
+};
+TestCase *g_cases = g_cases_arr;
+int g_case_count = 275;
+
