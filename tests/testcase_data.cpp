@@ -1417,6 +1417,181 @@ static const ExpectStr c274_exp[] = {
   {"sctrl_sta_ps_init",1,0}
 };
 
+static const char *const c275_args[] = {"--only-uart","-chip","BK7231U","--wifi"};
+static const ExpectStr c275_exp[] = {
+  {"enter [cc8000::V2.3.72::V2.04.51] main ok",1,0},
+  {"-----rw_main task init----",1,0},
+  {"-----rw_main  start----",1,0}
+};
+
+static const char *const c276_args[] = {"--only-uart","-chip","BK7231U","--wifi"};
+static const ExpectStr c276_exp[] = {
+  {"enter [cc8000::V2.2.18::V2.03.47] main ok",1,0},
+  {"-----rw_main task init----",1,0},
+  {"-----rw_main  start----",1,0}
+};
+
+static const char *const c277_args[] = {"--only-uart","-chip","BK7231U","--wifi"};
+static const ExpectStr c277_exp[] = {
+  {"- RT -     Thread Operating System",1,0},
+  {"3.1.0 build Apr  8 2021",1,0},
+  {"[FUNC]rwnxl_init",1,0}
+};
+
+static const char *const c278_args[] = {"--only-uart","-chip","BK7252N","--wifi"};
+static const ExpectStr c278_exp[] = {
+  {"Flash device |             beken_onchip",1,0},
+  {"FAL partition table",1,0},
+  {"Find the partition table on",1,0}
+};
+
+static const char *const c279_args[] = {"--only-uart","-chip","BK7252N","--wifi"};
+static const ExpectStr c279_exp[] = {
+  {"Flash device |             beken_onchip",1,0},
+  {"FAL partition table",1,0},
+  {"Find the partition table on",1,0}
+};
+
+static const char *const c280_args[] = {"--only-uart","-chip","BK7252","--wifi"};
+static const ExpectStr c280_exp[] = {
+  {"- RT -     Thread Operating System",1,0},
+  {"3.1.0 build May 14 2022",1,0},
+  {"OSK Rev: R-3.0.22",1,0}
+};
+
+static const char *const c281_args[] = {"--only-uart","-chip","BK7252","--wifi"};
+static const ExpectStr c281_exp[] = {
+  {"- RT -     Thread Operating System",1,0},
+  {"3.1.0 build May  9 2023",1,0},
+  {"test_flash_read_for_mac",1,0}
+};
+
+static const char *const c282_args[] = {"--only-uart","-chip","BK7252","-key","TUYA","--wifi"};
+static const ExpectStr c282_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"[MEM DBG] heap init-------size:127824",1,0},
+  {"[MEM DBG] heap init-------size:229376 addr:0x908000",1,0}
+};
+
+static const char *const c283_args[] = {"--only-uart","-chip","BK7252","-key","TUYA","--wifi"};
+static const ExpectStr c283_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"[MEM DBG] heap init-------size:127816",1,0},
+  {"[MEM DBG] heap init-------size:229376 addr:0x908000",1,0}
+};
+
+static const char *const c284_args[] = {"--only-uart","-chip","BK7238","--ble-core","--wifi"};
+static const ExpectStr c284_exp[] = {
+  {"[BLE_ADV] EM",1,0},
+  {"uuid=0xFFE1",1,0},
+  {"SP548E",1,0}
+};
+
+static const char *const c285_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c285_exp[] = {
+  {"prvHeapInit-start addr:0x416278",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c286_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c286_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x412f20",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c287_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c287_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x416860",1,0},
+  {"[Flash]init over",1,0}
+};
+
+static const char *const c288_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c288_exp[] = {
+  {"prvHeapInit-start addr:0x415120",1,0},
+  {"bk_timer_init exit",1,0},
+  {"spi_init exit",1,0}
+};
+
+static const char *const c289_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c289_exp[] = {
+  {"prvHeapInit-start addr:0x415228",1,0},
+  {"bk_timer_init exit",1,0},
+  {"spi_init exit",1,0}
+};
+
+static const char *const c290_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c290_exp[] = {
+  {"[MEM DBG] heap init-------size:199688",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c291_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c291_exp[] = {
+  {"prvHeapInit-start addr:0x415120",1,0},
+  {"bk_timer_init exit",1,0},
+  {"spi_init exit",1,0}
+};
+
+static const char *const c292_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c292_exp[] = {
+  {"[MEM DBG] heap init-------size:196376",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c293_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c293_exp[] = {
+  {"[MEM DBG] heap init-------size:197368",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c294_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c294_exp[] = {
+  {"prvHeapInit-start addr:0x414e28",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c295_args[] = {"--only-uart","-chip","BK7231N","-key","TUYA","--wifi"};
+static const ExpectStr c295_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x4110c0",1,0},
+  {"mqc app init ...",1,0}
+};
+
+static const char *const c296_args[] = {"--only-uart","-chip","BK7231N","-key","TUYA","--wifi"};
+static const ExpectStr c296_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x4110c0",1,0},
+  {"mqc app init ...",1,0}
+};
+
+static const char *const c297_args[] = {"--only-uart","-chip","BK7231N","-key","TUYA","--wifi"};
+static const ExpectStr c297_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x410cf8",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c298_args[] = {"--only-uart","-chip","BK7231N","-key","TUYA","--wifi"};
+static const ExpectStr c298_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x4113c8",1,0},
+  {"mqc app init ...",1,0}
+};
+
+static const char *const c299_args[] = {"--only-uart","-chip","BK7231N","-key","TUYA","--wifi"};
+static const ExpectStr c299_exp[] = {
+  {"bk_misc_init_start_type 0 0",1,0},
+  {"prvHeapInit-start addr:0x410ab8",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
 TestCase g_cases_arr[] = {
   {"CLI: invalid -key is rejected","firmwares/OpenBK7231T_QIO_1.18.300.bin",c0_args,3,60,"",0,10,c0_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
    "A bad -key value must be rejected up front by parse_key(), with a message naming the accepted forms (a known key name, 32 hex chars, or base64 of 16 bytes), rather than failing deep inside emulation."},
@@ -1967,8 +2142,57 @@ TestCase g_cases_arr[] = {
   {"BK7238 GBDQA 63V 16A smart breaker boots TuyaOS","firmwares/BK7238_QIO_GBDQA_63V_16A_2026-09-7-22-13-43.bin",c273_args,4,60,"",0,10,c273_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
    "A stock BK7238 dump from a GBDQA 63V 16A DIN-rail circuit breaker. It boots TuyaOS, initializes heap memory, and enters Wi-Fi power save."},
   {"BK7238 T1U PCIe PC card 2 boots TuyaOS","firmwares/BK7238_QIO_t1u_pci-e_PC_card_2_2026-13-6-19-42-48.bin",c274_args,4,60,"",0,10,c274_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
-   "A stock BK7238 dump from a T1U PCIe computer power management card. It boots TuyaOS, initializes heap memory, and enters Wi-Fi power save."}
+   "A stock BK7238 dump from a T1U PCIe computer power management card. It boots TuyaOS, initializes heap memory, and enters Wi-Fi power save."},
+  {"BK7231U Arnoo AiDot A19 bulb boots Leedarson CC8000 SDK","firmwares/Arnoo_AiDot_RGBW_A19_(2ndGen)_(light.A001126)_Leedarson_CC8000_2.0.4.51.bin",c275_args,4,60,"",0,10,c275_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231U dump from an Arnoo AiDot A19 RGBW smart bulb (2nd Gen, Leedarson CC8000 v2.0.4.51). It boots the CC8000 application and initializes the rw_main wireless task."},
+  {"BK7231U Arnoo Winees A60 bulb boots Leedarson CC8000 SDK","firmwares/Arnoo_Winees_WS010078261_AiDot_RGBW_A60_(2ndGen)_(light.A001139)_Leedarson_CC8000_2.0.3.47.bin",c276_args,4,60,"",0,10,c276_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231U dump from an Arnoo Winees A60 RGBW smart bulb (2nd Gen, Leedarson CC8000 v2.0.3.47). It boots the CC8000 application and initializes the rw_main wireless task."},
+  {"BK7231U C-Chip CC8000 HLK-B30 dev board boots RT-Thread","firmwares/C-Chip_CC8000_HLK-B30_DevBoard.bin",c277_args,4,60,"",0,10,c277_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231U dump from a C-Chip CC8000 Hi-Link HLK-B30 development board. It boots RT-Thread 3.1.0 and initializes rwnxl wireless MAC."},
+  {"BK7252N QIO 7252n camera boots RT-Thread and inits FAL","firmwares/Cam_readResult_BK7252N_QIO_7252n_2025-28-9-17-10-56.bin",c278_args,4,60,"",0,10,c278_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252N dump from a 7252n mini camera. It boots RT-Thread and registers the on-chip flash FAL partition table."},
+  {"BK7252N Pinmei A9 Neo camera boots RT-Thread and inits FAL","firmwares/Pinmei_A9_BK7252N_SPI_Neo_EB6015.bin",c279_args,4,60,"",0,10,c279_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252N dump from a Pinmei A9 Neo SPI camera (EB6015). It boots RT-Thread and registers the on-chip flash FAL partition table."},
+  {"BK7252 A9 camera boots RT-Thread 3.1.0","firmwares/BK7252-A9-20211124.bin",c280_args,4,60,"",0,10,c280_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252 dump from an A9 camera. It boots RT-Thread 3.1.0 and initializes the OSK subsystem."},
+  {"BK7252U Naxclow A9 camera boots RT-Thread 3.1.0","firmwares/Naxclow_2026-02-08_bk7252u_a9_camera_redacted_v0-1.1.20.bin",c281_args,4,60,"",0,10,c281_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252 dump from a Naxclow A9 camera (v0-1.1.20). It boots RT-Thread 3.1.0 and reads device MAC from flash."},
+  {"BK7252 Tuya IP06 smart doorbell boots FreeRTOS and heap","firmwares/Tuya_Doorbell_IP06-V6.3-BekenSPI_2025-08-10-21-29-16.bin",c282_args,6,60,"",0,10,c282_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252 4MB dump from a Tuya IP06 smart video doorbell (V6.3). It decrypts via TUYA key, initializes internal and external SDRAM heap pools, and reads flash configuration."},
+  {"BK7252 Tuya ONENUO ML1T-B doorbell boots FreeRTOS and SDRAM","firmwares/Tuya_ONENUO_ML1T-B_Doorbell_(IP06新版本测试_SchemaID-000004xxbz)_keytqn8773d8kwuu_uv2un0vblqqdaahw_2.2.4.bin",c283_args,6,60,"",0,10,c283_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7252 4MB dump from a Tuya ONENUO ML1T-B video doorbell (v2.2.4). It decrypts, initializes internal SRAM and PSRAM heaps, and enters test mode."},
+  {"BK7238 BanlanX SP548E SPI LED boots and advertises BLE","firmwares/BanlanX_SP548E_SPI_LED_BK7238.bin",c284_args,5,60,"",0,10,c284_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a BanlanX SP548E addressable SPI LED light strip controller. It initializes the RivieraWaves BLE core and broadcasts SP548E advertising packets."},
+  {"BK7238 GL-SPI-206W LED controller boots FreeRTOS","firmwares/BK7238_QIO_GL-SPI-206W_2026-23-6-18-08-11.bin",c285_args,4,60,"",0,10,c285_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a GL-SPI-206W smart SPI LED controller. It boots FreeRTOS, initializes heap memory, hardware timers, and enters Wi-Fi power save."},
+  {"BK7238 BrizLabs Fairy LED RGB boots FreeRTOS and flash","firmwares/BrizLabs_Fairy_LED_RGB_sxebObqQRfXmgU_1.0.1.bin",c286_args,4,60,"",0,10,c286_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a BrizLabs Fairy RGB smart string light (v1.0.1). It boots FreeRTOS, initializes heap memory, and completes flash driver setup."},
+  {"BK7238 Zengge Ledytech CCT light boots FreeRTOS and flash","firmwares/Zengge_Ledytech_(XGD-NZ-002)_(AK001-ZJ21412)_(3D_22_20250107_ZIL-BK38)_(WB43-M5 V1.1).bin",c287_args,4,60,"",0,10,c287_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Zengge Ledytech XGD-NZ-002 smart light (WB43-M5 V1.1). It boots FreeRTOS, initializes heap memory, and completes flash driver setup."},
+  {"BK7238 Tuya BSEED 2G switch boots TuyaOS and timers","firmwares/Tuya_BSEED_2G_(T系列_schemaID-e1n1f8kg)_keyfxuj3d5wg53wx_oayppk7skuax4j6i_T1-3S_1.1.9.bin",c288_args,4,60,"",0,10,c288_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Tuya BSEED 2-gang touch switch (T1-3S module, v1.1.9). It boots TuyaOS, initializes system heap, hardware timers, and SPI bus."},
+  {"BK7238 Tuya IHSENO HAZ-IR-V3 blaster boots TuyaOS","firmwares/Tuya_IHSENO_HAZ-IR-V3_(schemaID-e1mybg3w)_keycmhjv873dhvsn_kv4htgxocgwjfabc_T1-3S_0.0.5.bin",c289_args,4,60,"",0,10,c289_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Tuya IHSENO HAZ-IR-V3 smart IR remote control (T1-3S module, v0.0.5). It boots TuyaOS, initializes heap memory, hardware timers, and SPI bus."},
+  {"BK7238 Tuya MANHOT 63A breaker boots TuyaOS","firmwares/Tuya_MANHOT_63A_1P+N_(智能计量保护开关-schemaID-e1n1p4fk)_key7mapd9sdpyyf9_au6dqazvkxqnpaak_CBU_1.0.3.bin",c290_args,4,60,"",0,10,c290_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Tuya MANHOT 63A 1P+N smart metering circuit breaker (v1.0.3). It boots TuyaOS, initializes heap memory, timers, and enters Wi-Fi power save."},
+  {"BK7238 Tuya RF Dry contact relay boots TuyaOS","firmwares/Tuya_RF_Dry_(二路通断器WF+RF_schemaID-e1n154og)_keyfxuj3d5wg53wx_dcbah0xg2uxpaman_T1-2S-NL_1.1.9.bin",c291_args,4,60,"",0,10,c291_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Tuya 2-way dry contact relay switch with RF (T1-2S-NL module, v1.1.9). It boots TuyaOS, initializes heap memory, timers, and SPI bus."},
+  {"BK7238 Tuya TY-02 3CH RGB controller boots TuyaOS","firmwares/Tuya_RGBController_TY-02-3CH-V6.1_(schemaID-e1narb98)_keyw97qjscyfmsyn_5wt3x51v65usqv9r_T1-3S_1.0.14.bin",c292_args,4,60,"",0,10,c292_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Tuya TY-02 3-channel RGB LED controller (T1-3S module, v1.0.14). It boots TuyaOS, initializes heap memory, timers, and enters Wi-Fi power save."},
+  {"BK7238 Tuya S06Pro temp/humidity sensor boots TuyaOS","firmwares/Tuya_S06Pro_TempHum_(schemaID-e1msdf0k)_keyny8wdynkekrgw_jbe3snv4tki8oo9c_TuyaMCU_T1-3S_1.0.1.bin",c293_args,4,60,"",0,10,c293_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Tuya S06Pro smart temperature and humidity sensor with LCD (T1-3S module, v1.0.1). It boots TuyaOS, initializes heap memory, timers, and enters Wi-Fi power save."},
+  {"BK7238 Tuya SRW-TH01 sensor boots TuyaOS","firmwares/Tuya_SRW-TH01_TempHum_(schemaID-e1ms8s1g)_key7qv9csmwp78uc_q9ckodq9qbxxsysn_T1-AHL_1.0.1.bin",c294_args,4,60,"",0,10,c294_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7238 dump from a Tuya SRW-TH01 smart temperature and humidity sensor (T1-AHL module, v1.0.1). It boots TuyaOS, initializes heap memory, timers, and enters Wi-Fi power save."},
+  {"BK7231N ATorch S1TW-FR power meter boots TuyaOS","firmwares/BK7231N_QIO_ATorch-S1TW-FR_2024-20-4-19-52-58_(key83r5jq9qqeaxt_rj84vmyhm0dh0jwy_seqzqh45b0ggn9so)_TuyaMCU_2.1.6.bin",c295_args,6,60,"",0,10,c295_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231N dump from an ATorch S1TW-FR French socket smart power meter with LCD (TuyaMCU, v2.1.6). It decrypts via TUYA key, boots TuyaOS, and initializes the MQC message queue client."},
+  {"BK7231N ATorch S1W energy meter boots TuyaOS","firmwares/BK7231N_QIO_Atorch-S1W-energyMeterWithLCD-noTemperatureSensor_2024-25-4-22-32-44_(key83r5jq9qqeaxt_sqrf2g1amfutn4co_seqzqh45b0ggn9so)_TuyaMCU_2.1.6_.bin",c296_args,6,60,"",0,10,c296_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231N dump from an ATorch S1W energy meter with LCD (TuyaMCU, v2.1.6). It decrypts, boots TuyaOS, and initializes the MQC message queue client."},
+  {"BK7231N N-TS10-EU-B3 3-gang switch boots TuyaOS","firmwares/BK7231N_QIO_N-TS10-EU-B3_3gang_2024-31-1-21-27-38.bin",c297_args,6,60,"",0,10,c297_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231N dump from an N-TS10-EU-B3 3-gang smart wall switch. It decrypts, boots TuyaOS, and enters Wi-Fi power save."},
+  {"BK7231N PA-FRH-01SW2 smart switch boots TuyaOS","firmwares/BK7231N_QIO_PA-FRH-01SW2_2025-16-12-21-02-42.bin",c298_args,6,60,"",0,10,c298_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231N dump from a PA-FRH-01SW2 2-gang smart switch. It decrypts, boots TuyaOS, and initializes the MQC message queue client."},
+  {"BK7231N QS-WiFi-S10-C04 curtain module boots TuyaOS","firmwares/BK7231N_QIO_QS-WiFi-S10-C04_2025-05-8-14-53-27.bin",c299_args,6,60,"",0,10,c299_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A stock BK7231N dump from a QS-WiFi-S10-C04 smart curtain shutter module. It decrypts, boots TuyaOS, and enters Wi-Fi power save."}
 };
 TestCase *g_cases = g_cases_arr;
-int g_case_count = 275;
-
+int g_case_count = 300;
