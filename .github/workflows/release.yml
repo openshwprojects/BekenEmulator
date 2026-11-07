@@ -129,17 +129,13 @@ jobs:
         set -euo pipefail
         if [[ "${{ github.event_name }}" == "release" ]]; then
           TAG="${{ github.event.release.tag_name }}"
-          TITLE="${TAG}"
+          TITLE="Beken Emulator ${TAG}"
         elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
           TAG="${{ github.ref_name }}"
           TITLE="Beken Emulator ${TAG}"
         else
-          TAG="latest"
-          TITLE="Beken Emulator (Latest Build)"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f "${TAG}" "${{ github.sha }}"
-          git push -f origin "refs/tags/${TAG}"
+          TAG="v1.0.${{ github.run_number }}"
+          TITLE="Beken Emulator ${TAG}"
         fi
 
         SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
@@ -147,21 +143,24 @@ jobs:
 
         if ! gh release view "${TAG}" >/dev/null 2>&1; then
           gh release create "${TAG}" \
+            release-assets/BekenEmulator.exe \
+            release-assets/BekenEmulator.exe.sha256 \
+            release-assets/BekenEmulator-linux-x64 \
+            release-assets/BekenEmulator-linux-x64.sha256 \
             --target "${{ github.sha }}" \
             --title "${TITLE}" \
             --notes "${NOTES}" \
             --latest
-        elif [[ "${TAG}" == "latest" ]]; then
+        else
           gh release edit "${TAG}" \
             --target "${{ github.sha }}" \
             --title "${TITLE}" \
             --notes "${NOTES}" \
             --latest
+          gh release upload "${TAG}" \
+            release-assets/BekenEmulator.exe \
+            release-assets/BekenEmulator.exe.sha256 \
+            release-assets/BekenEmulator-linux-x64 \
+            release-assets/BekenEmulator-linux-x64.sha256 \
+            --clobber
         fi
-
-        gh release upload "${TAG}" \
-          release-assets/BekenEmulator.exe \
-          release-assets/BekenEmulator.exe.sha256 \
-          release-assets/BekenEmulator-linux-x64 \
-          release-assets/BekenEmulator-linux-x64.sha256 \
-          --clobber
