@@ -1125,6 +1125,124 @@ static const ExpectStr c232_exp[] = {
 };
 static const PinWant c232_pins[] = {{0,120},{1,120},{10,120},{11,120},{12,120},{13,120},{21,60}};
 
+static const char *const c233_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c233_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0}
+};
+
+static const char *const c234_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c234_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"[Flash]id:0x0",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c235_args[] = {"--only-uart","-chip","BK7238","--wifi","--tuyamcu"};
+static const ExpectStr c235_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"tuya_upgrade_main need upgrade",1,0}
+};
+
+static const char *const c236_args[] = {"--only-uart","-chip","BK7238","--wifi","--tuyamcu"};
+static const ExpectStr c236_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0},
+  {"tuya_upgrade_main need upgrade",1,0}
+};
+
+static const char *const c237_args[] = {"--only-uart","-chip","BK7238","--wifi","--tuyamcu"};
+static const ExpectStr c237_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c238_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c238_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c239_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c239_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c240_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c240_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c241_args[] = {"--only-uart","-chip","BK7238","--wifi"};
+static const ExpectStr c241_exp[] = {
+  {"prvHeapInit-start addr",1,0},
+  {"bk_timer_init exit",1,0},
+  {"sctrl_sta_ps_init",1,0}
+};
+
+static const char *const c242_args[] = {"--only-uart","-chip","BK7231U","--wifi"};
+static const ExpectStr c242_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"==app_start==",1,0},
+  {"==user_main==",1,0},
+  {"ssid:7231u-test key:12345678",1,0}
+};
+
+static const char *const c243_args[] = {"--only-uart","-chip","BK7252","--wifi"};
+static const ExpectStr c243_exp[] = {
+  {"Thread Operating System",1,0},
+  {"3.1.0 build Apr  1 2024",1,0},
+  {"[FUNC]rwnxl_init",1,0},
+  {"[FUNC]calibration_main",1,0}
+};
+
+static const char *const c244_args[] = {"--only-uart","-chip","BK7231N","--wifi","--ble-core"};
+static const ExpectStr c244_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"SetupQRCode: [MT:--VJ0-IC005WSL02810]",1,0},
+  {"Copy/paste the below URL in a browser to see the QR Code:https://project-chip.github.io/connectedhomeip/qrcode.html",1,0}
+};
+
+static const char *const c245_args[] = {"--only-uart","-chip","BK7231N","-key","00000000000000002e38810101000120","--wifi","--ble-core"};
+static const ExpectStr c245_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0}
+};
+
+static const char *const c246_args[] = {"--only-uart","-chip","BK7231N","-key","0000000000000000376e7eff01000803","--wifi","--ble-core"};
+static const ExpectStr c246_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"[BLE_ADV] EM 0x00910000",1,0},
+  {"SBDV-00117",1,0}
+};
+
+static const char *const c247_args[] = {"--only-uart","-chip","BK7231N","-key","0000000000000000ffffaf7f01000007","--wifi","--ble-core"};
+static const ExpectStr c247_exp[] = {
+  {"[DEVINFO]app partition signature not found",1,0},
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"[STORAGE_PW]failed to read key:WIFI_SSID",1,0}
+};
+
+static const char *const c248_args[] = {"--only-uart","-chip","BK7231N","-key","0000000000000000f9610db101001803","--wifi","--ble-core"};
+static const ExpectStr c248_exp[] = {
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0},
+  {"[POWER_CTRL]NO DATA",1,0}
+};
+
+static const char *const c249_args[] = {"--only-uart","-chip","BK7231N","-key","0000000000000000b8bff72e01001803","--wifi","--ble-core"};
+static const ExpectStr c249_exp[] = {
+  {"[DEVINFO]app partition signature not found",1,0},
+  {"[WIFI] device RX filter 0x7fffffde: monitor mode",1,0}
+};
+
 TestCase g_cases_arr[] = {
   {"CLI: invalid -key is rejected","firmwares/OpenBK7231T_QIO_1.18.300.bin",c0_args,3,60,"",0,10,c0_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
    "A bad -key value must be rejected up front by parse_key(), with a message naming the accepted forms (a known key name, 32 hex chars, or base64 of 16 bytes), rather than failing deep inside emulation."},
@@ -1591,7 +1709,41 @@ TestCase g_cases_arr[] = {
   {"BK7231N Tuya LSC 3206306 CW + SM16703 controller boots TuyaOS","firmwares/BK7231N_QIO_LSC_3206306_CW_and_SM16703_2024-30-12-15-35-37.bin",c231_args,7,60,"",0,10,c231_exp,4,0,0,c231_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
    "A Tuya-encrypted BK7231N dump from an LSC 3206306 LED strip with SM16703 driver. It boots TuyaOS and starts BLE."},
   {"BK7231N Tuya LSPA9 gray T34 BL0937 metering plug boots TuyaOS","firmwares/BK7231N_QIO_LSPA9_Gray_T34_BL0937_2025-18-3-19-35-58.bin",c232_args,7,60,"",0,10,c232_exp,10,0,0,c232_pins,7,0,0,0,0,0,0,0,0,0,0,1000,
-   "A Tuya-encrypted BK7231N dump from an LSPA9 smart metering plug with BL0937. It boots TuyaOS and configures metering GPIOs."}
-};
-TestCase *g_cases = g_cases_arr;
-int g_case_count = 233;
+   "A Tuya-encrypted BK7231N dump from an LSPA9 smart metering plug with BL0937. It boots TuyaOS and configures metering GPIOs."},
+  {"BK7238 NiceMCU WB3S smart device boots and inits Wi-Fi monitor mode","firmwares/QIO_NiceMCU_WB3S_V1-piece2_2024-10-12-14-25-07.bin",c233_args,4,60,"",0,10,c233_exp,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a NiceMCU WB3S smart device. It boots cleanly, starts up radio services, and enters Wi-Fi monitor mode."},
+  {"BK7238 Tuya 1CH USB switch (T1-U-HL, 1.1.9) boots TuyaOS and timers","firmwares/Tuya_1CH_USB_(schemaID-e1n2x0u0)_keyfxuj3d5wg53wx_tj4ripw7ufzqh50f_T1-U-HL_1.1.9.bin",c234_args,4,60,"",0,10,c234_exp,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya 1-channel USB smart switch (T1-U-HL module, v1.1.9). It initializes RTOS heap, system timers, and Wi-Fi power save."},
+  {"BK7238 Tuya KWS-306WF power meter (T1-U-HL, 3.0.22) boots TuyaOS and TuyaMCU","firmwares/Tuya_KWS-306WF_Meter_(schemaID-e1mujb10)_key5s5pkkwnfwgvr_8afses1qqzgmof1w_TuyaMCU_T1-U-HL_3.0.22.bin",c235_args,5,60,"",0,10,c235_exp,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a KWS-306WF DIN-rail smart energy meter (T1-U-HL module, v3.0.22). It initializes RTOS heap, timers, and the TuyaMCU upgrade subsystem."},
+  {"BK7238 Tuya SRW-TH04 LCD temp/humidity (TuyaMCU, 3.0.22) boots TuyaOS","firmwares/Tuya_SRW-TH04_TempHumLCD_(schemaID-e1nfq7x4)_key5s5pkkwnfwgvr_j8otbggty0tjeow1_TuyaMCU_3.0.22.bin",c236_args,5,60,"",0,10,c236_exp,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya SRW-TH04 LCD temperature and humidity meter (v3.0.22). It initializes RTOS heap, timers, and the TuyaMCU upgrade subsystem."},
+  {"BK7238 Tuya Smart IR blaster (TuyaMCU, 1.0.2) boots TuyaOS and timers","firmwares/Tuya_Smart_IR_(schemaID-e1mqjcmc)_keycmhjv873dhvsn_ohmpsjqtvnanw6bf_TuyaMCU_1.0.2.bin",c237_args,5,60,"",0,10,c237_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya Smart IR blaster (v1.0.2). It initializes RTOS heap, system timers, and Wi-Fi power save."},
+  {"BK7238 Tuya Xeefeel S1 (T1-M, 1.1.9) boots TuyaOS and timers","firmwares/Tuya_Xeefeel_S1_(ET-TI-M_schemaID-e1mw45eg)_keyfxuj3d5wg53wx_nvuyp0vl7cttr4cm_T1-M_1.1.9.bin",c238_args,4,60,"",0,10,c238_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya Xeefeel S1 device (T1-M module, v1.1.9). It initializes RTOS heap, system timers, and Wi-Fi power save."},
+  {"BK7238 Tuya wall touch switch 1G D8FC9233E055 boots TuyaOS","firmwares/tuya-wall-touch-switch-1g-D8FC9233E055_1_backup_2026_12_4_18_59_58.bin",c239_args,4,60,"",0,10,c239_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya 1-gang wall touch switch. It boots TuyaOS, initializes system timers, and enters Wi-Fi power save."},
+  {"BK7238 Tuya wall touch switch 2G D8FC920F973D boots TuyaOS","firmwares/tuya-wall-touch-switch-2g-D8FC920F973D_1_backup_2026_12_4_14_59_29.bin",c240_args,4,60,"",0,10,c240_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya 2-gang wall touch switch. It boots TuyaOS, initializes system timers, and enters Wi-Fi power save."},
+  {"BK7238 Tuya wall touch switch 2G D8FC920FC678 boots TuyaOS","firmwares/tuya-wall-touch-switch-2g-D8FC920FC678_1_backup_2026_12_4_17_10_10.bin",c241_args,4,60,"",0,10,c241_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7238 dump from a Tuya 2-gang wall touch switch. It boots TuyaOS, initializes system timers, and enters Wi-Fi power save."},
+  {"BK7231U E88 Drone Cam boots user_main and initializes Wi-Fi SSID","firmwares/E88_Drone_Cam_vt.201904251714.bin",c242_args,4,60,"",0,10,c242_exp,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7231U dump from an E88 quadcopter drone camera module. It executes user_main, configures Wi-Fi monitor mode, and starts its AP network."},
+  {"BK7252U MiniCam A13 boots RT-Thread and initializes calibration","firmwares/BK7252U_MiniCam_A13_raw_QFN48.bin",c243_args,4,60,"",0,10,c243_exp,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BK7252 dump from an INO-A13 MiniCam (QFN48). It boots RT-Thread 3.1.0, initializes rwnxl wireless MAC layer, and runs RF calibration."},
+  {"BL2028N Zemismart Matter ZML2 RGBCT (1.17) prints SetupQRCode","firmwares/Zemismart_Matter_ZML2_RGBCT_CSA23291MAT40804-24_UAM026_1.17.bin",c244_args,5,60,"",0,10,c244_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A plaintext BL2028N dump from a Zemismart ZML2 Matter RGBCT smart bulb (v1.17). It boots Matter commissioning stack and prints its SetupQRCode."},
+  {"BK7231N Uascent uHome Matter Bulb (CB2L, 3.2) decrypts and boots","firmwares/Uascent_uHome_Matter_Bulb_3684_CSA23207MAT40720-24_UAM022-V1.0_CB2L_3.2.bin",c245_args,7,60,"",0,10,c245_exp,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from a Uascent uHome Matter smart bulb (CB2L, v3.2). It decrypts via hardware cipher and initializes Wi-Fi monitor mode."},
+  {"BK7231N SBER Bulb E14 Unit1 decrypts and broadcasts BLE advertisement","firmwares/SBER_Bulb_E14_SBDV-00117_Unit1.bin",c246_args,7,60,"",0,10,c246_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from a SBER E14 smart bulb (Unit 1). It decrypts via hardware cipher, starts Wi-Fi monitor mode, and advertises SBDV-00117 over BLE."},
+  {"BK7231N SBER Lamp E27 decrypts and reads flash storage","firmwares/SBER_Lamp_E27_SBDV-00019_1.23.0.bin",c247_args,7,60,"",0,10,c247_exp,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from a SBER E27 smart lamp (v1.23.0). It decrypts via hardware cipher, boots system services, and initializes Wi-Fi monitor mode."},
+  {"BK7231N SBER Plug decrypts and initializes power control subsystem","firmwares/SBER_Plug_SBDV-00123_FW-1.21.5.bin",c248_args,7,60,"",0,10,c248_exp,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from a SBER smart plug (v1.21.5). It decrypts via hardware cipher, starts Wi-Fi monitor mode, and initializes power metering."},
+  {"BK7231N SBER Lamp RGBWW E27 decrypts and boots TuyaOS/SBER stack","firmwares/SBER_Lamp_RGBWW_E27_SBDV-00115_FW-1.26.1.bin",c249_args,7,60,"",0,10,c249_exp,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1000,
+   "A hardware-encrypted BK7231N dump from a SBER RGBWW E27 lamp (v1.26.1). It decrypts via hardware cipher, starts system services, and enters Wi-Fi monitor mode."}
+};
+TestCase *g_cases = g_cases_arr;
+int g_case_count = 250;
