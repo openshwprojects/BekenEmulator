@@ -272,6 +272,8 @@ void BekenEmulator::pacing_inner()
 
     if (state.insn_count - state.last_slow >= SLOW_TICK_INSNS) {
         state.last_slow = state.insn_count;
+        if (!state.uart_at_line_start)
+            out_flush();
         if (meter_cf_pin_ >= 0 || meter_cf1_pin_ >= 0) {
             tick_energy_meter_pulses();
             sync_gpio_irq();
@@ -279,9 +281,9 @@ void BekenEmulator::pacing_inner()
         if (emit_insns_) {
             /* close an RT-Thread prompt line that has parked, so report lines flush */
             bool parked = !state.uart_at_line_start
+                          && state.insn_count - state.last_uart_insn >= 500000
                           && (endswith(rstrip(state.uart_line_tail, " "), "msh />")
-                              || state.uart_line_tail.find("WSL02810") != std::string::npos)
-                          && state.insn_count - state.last_uart_insn >= 500000;
+                              || state.uart_line_tail.find("WSL02810") != std::string::npos);
             if (parked) {
                 out_write("\n");
                 out_flush();
@@ -302,8 +304,10 @@ void BekenEmulator::pacing_inner()
                     if (f != state.i2c_frames.end() && !f->second.empty())
                         out += strf("[EMU_I2C] %d %d %s\n", it->first, it->second, hexstr(f->second).c_str());
                 }
-                if (periph_changed)
+                if (periph_changed) {
                     out += "[EMU_PERIPH]\n";
+                    state.last_periph_sync = state.insn_count;
+                }
                 for (size_t i = 0; i < state.uart1_events.size(); i++)
                     out += strf("[EMU_UART1] %llu %c %02x\n", (unsigned long long)state.uart1_events[i].insn,
                                 state.uart1_events[i].dir, state.uart1_events[i].byte);
@@ -312,6 +316,11 @@ void BekenEmulator::pacing_inner()
                 state.i2c_dirty.clear();
                 state.uart1_events.clear();
                 out_write(out);
+                out_flush();
+            } else if (state.uart_at_line_start && state.last_uart_insn > state.last_periph_sync
+                       && state.insn_count - state.last_uart_insn >= 50000) {
+                state.last_periph_sync = state.insn_count;
+                out_write("[EMU_PERIPH]\n");
                 out_flush();
             }
             if (state.insn_count - state.last_emit >= 1000000 && state.uart_at_line_start) {

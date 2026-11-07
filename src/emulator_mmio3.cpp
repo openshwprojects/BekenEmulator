@@ -138,11 +138,8 @@ void BekenEmulator::mmio_read(u32 address, int size)
     int pin = gpio_pin_at(address);
     if (pin >= 0) {
         int slot = gpio_slot(pin);
-        u32 cfg;
-        if (state.gpio_cfg.count(slot))
-            cfg = state.gpio_cfg[slot];
-        else
-            cfg = mem_.phys_read(address, 4);
+        std::map<int, u32>::const_iterator git = state.gpio_cfg.find(slot);
+        u32 cfg = (git != state.gpio_cfg.end()) ? git->second : mem_.phys_read(address, 4);
         cfg = state.gpio_hw.read_config(pin, cfg);
         if (pin == state.wake_pulse_pin && state.wake_reg_sampled && state.wake_pulse_reads_left > 0) {
             state.wake_pulse_reads_left--;
@@ -263,26 +260,32 @@ void BekenEmulator::mmio_read(u32 address, int size)
     }
     if (GDMA_BASE <= address && address < GDMA_END) {
         int ch = gdma_channel(address);
-        if (ch >= 0 && state.gdma_conf.count(ch)) {
-            W(address, state.gdma_conf[ch]);
-            return;
+        if (ch >= 0) {
+            std::map<int, u32>::const_iterator cit = state.gdma_conf.find(ch);
+            if (cit != state.gdma_conf.end()) {
+                W(address, cit->second);
+                return;
+            }
         }
         if (chip->is_gdma_v2() && 0x00809040 <= address && address < 0x00809240) {
             u32 within = (address - 0x00809040) % 0x40;
             int c = (int)((address - 0x00809040) / 0x40);
             if (within == 0x30) {
-                W(address, state.gdma_remain.count(c) ? (state.gdma_remain[c] & 0x1FFFF) : 0);
+                std::map<int, u32>::const_iterator rit = state.gdma_remain.find(c);
+                W(address, rit != state.gdma_remain.end() ? (rit->second & 0x1FFFF) : 0);
                 return;
             }
         } else if (0x008090C0 <= address && address < 0x008090D8) {
             int c = (int)((address - 0x008090C0) / 4);
-            W(address, state.gdma_remain.count(c) ? (state.gdma_remain[c] & 0x1FFFF) : 0);
+            std::map<int, u32>::const_iterator rit = state.gdma_remain.find(c);
+            W(address, rit != state.gdma_remain.end() ? (rit->second & 0x1FFFF) : 0);
             return;
         } else if (address < GDMA_BASE + 6 * 0x20) {
             u32 within = (address - GDMA_BASE) % 0x20;
             int c = (int)((address - GDMA_BASE) / 0x20);
             if (within == 0x1C) {
-                W(address, state.gdma_remain.count(c) ? (state.gdma_remain[c] & 0x1FFFF) : 0);
+                std::map<int, u32>::const_iterator rit = state.gdma_remain.find(c);
+                W(address, rit != state.gdma_remain.end() ? (rit->second & 0x1FFFF) : 0);
                 return;
             }
         }

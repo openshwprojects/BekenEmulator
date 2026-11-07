@@ -20,6 +20,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      report_uploaded: ${{ steps.upload_report.outcome == 'success' }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -75,20 +77,21 @@ jobs:
     # Upload the report even when tests fail - a failing report is the useful
     # one. Only on push (PRs, especially from forks, cannot deploy Pages).
     - name: Upload report as Pages artifact
-      if: ${{ always() && github.event_name == 'push' }}
+      id: upload_report
+      if: ${{ always() && github.event_name == 'push' && steps.tests.outcome == 'success' }}
       uses: actions/upload-pages-artifact@v3
       with:
         path: report
 
     # Surface the real test outcome after the artifact is safely uploaded.
     - name: Reflect test outcome
-      if: ${{ always() }}
+      if: ${{ always() && steps.tests.outcome == 'success' }}
       run: exit ${{ steps.tests.outputs.exit_code }}
 
   deploy:
     needs: test
     # always(): deploy the report even if the test job failed. Push-only.
-    if: ${{ always() && github.event_name == 'push' }}
+    if: ${{ always() && github.event_name == 'push' && needs.test.outputs.report_uploaded == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

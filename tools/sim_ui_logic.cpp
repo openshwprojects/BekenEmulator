@@ -1104,7 +1104,7 @@ void SimUI::parsed_meter_values(double out[3])
 
 void SimUI::apply_energy_meter()
 {
-    double v, a, w;
+    double v = 0.0, a = 0.0, w = 0.0;
     if (!parse_double(strip(var_meter_v.get()), v)) {
         var_state.set("Invalid energy meter reading: could not convert string to float: "
                       + py_repr(strip(var_meter_v.get())));

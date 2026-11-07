@@ -41,9 +41,11 @@ int GpioModel::check_level(int level)
 int GpioModel::effective_level(int pin, u32 config) const
 {
     check_pin(pin);
-    std::map<int, int>::const_iterator it = inputs.find(pin);
-    if (it != inputs.end())
-        return it->second;
+    if (!inputs.empty()) {
+        std::map<int, int>::const_iterator it = inputs.find(pin);
+        if (it != inputs.end())
+            return it->second;
+    }
     if (config & GPIO_PULL_ENABLE_BIT)
         return (config & GPIO_PULL_MODE_BIT) ? 1 : 0;
     return (config & GPIO_INPUT_BIT) ? 1 : 0;
@@ -99,6 +101,8 @@ void GpioModel::drive(int pin, int level, u32 config, int *before_out, int *afte
 void GpioModel::config_changed(int pin, u32 old_config, u32 new_config)
 {
     check_pin(pin);
+    if (!(int_enable & (1ULL << pin)))
+        return;
     int before = effective_level(pin, old_config);
     int after = effective_level(pin, new_config);
     latch_change(pin, before, after);
@@ -143,12 +147,7 @@ void GpioModel::refresh_level_interrupts(ConfigFn fn, void *ctx)
     while (enabled) {
         u64 bit = enabled & (~enabled + 1);
         enabled ^= bit;
-        int pin = 0;
-        u64 b = bit;
-        while (b > 1) {
-            b >>= 1;
-            pin++;
-        }
+        int pin = __builtin_ctzll(bit);
         int mode = int_modes[(size_t)pin];
         if (mode != INT_LEVEL_LOW && mode != INT_LEVEL_HIGH)
             continue;

@@ -605,12 +605,10 @@ RunResult ArmCpu::run(u32 start, u32 until, u64 count)
     bool has_watch = !watch_pcs.empty() && watch_cb != 0;
     if (!untilset_ && !has_watch && !pclog) {
         for (u64 i = 0; i < count; i++) {
-            if (stop_)
+            if (__builtin_expect(stop_, 0))
                 return RUN_STOPPED;
-            bool cont = thumb() ? step_thumb() : step_arm();
-            if (!cont) {
-                if (hit_until_)
-                    return RUN_HIT_UNTIL;
+            bool cont = (cpsr_ & PSR_T) ? step_thumb() : step_arm();
+            if (__builtin_expect(!cont, 0)) {
                 if (stop_)
                     return RUN_STOPPED;
                 return error_.empty() ? RUN_STOPPED : RUN_ERR_INVALID;

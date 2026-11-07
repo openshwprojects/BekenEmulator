@@ -67,7 +67,8 @@ void BekenEmulator::i2c_pin_edge(int pin, u32 old_cfg, u32 new_cfg)
         int scl = it->first.first, sda = it->first.second;
         SimState::I2cBus &bs = it->second;
         if (pin == sda) {
-            u32 scl_cfg = state.gpio_cfg.count(gpio_slot(scl)) ? state.gpio_cfg[gpio_slot(scl)] : 0x3C;
+            std::map<int, u32>::const_iterator sit = state.gpio_cfg.find(gpio_slot(scl));
+            u32 scl_cfg = (sit != state.gpio_cfg.end()) ? sit->second : 0x3C;
             int scl_lv = (!(scl_cfg & 0x08) && !(scl_cfg & 0x02)) ? 0 : 1;
             if (scl_lv == 1) {
                 if (old_lv == 1 && new_lv == 0) {
@@ -92,7 +93,8 @@ void BekenEmulator::i2c_pin_edge(int pin, u32 old_cfg, u32 new_cfg)
             }
         } else if (pin == scl && bs.in_tx) {
             if (old_lv == 0 && new_lv == 1) {
-                u32 sda_cfg = state.gpio_cfg.count(gpio_slot(sda)) ? state.gpio_cfg[gpio_slot(sda)] : 0x3C;
+                std::map<int, u32>::const_iterator dit = state.gpio_cfg.find(gpio_slot(sda));
+                u32 sda_cfg = (dit != state.gpio_cfg.end()) ? dit->second : 0x3C;
                 int sda_lv = (!(sda_cfg & 0x08) && !(sda_cfg & 0x02)) ? 0 : 1;
                 if (bs.bits < 8) {
                     bs.cur_byte = ((bs.cur_byte << 1) | sda_lv) & 0xFF;

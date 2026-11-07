@@ -254,23 +254,21 @@ using namespace pyc;
 
 /* ================================================================= CRC16 */
 static u16 crc16_table[256];
-static void init_crc16()
-{
-    static bool done = false;
-    if (done)
-        return;
-    for (int value = 0; value < 256; value++) {
-        u32 reg = (u32)value << 8;
-        for (int i = 0; i < 8; i++)
-            reg = ((reg << 1) ^ ((reg & 0x8000) ? 0x8005 : 0)) & 0xFFFF;
-        crc16_table[value] = (u16)reg;
+struct Crc16TableInit {
+    Crc16TableInit()
+    {
+        for (int value = 0; value < 256; value++) {
+            u32 reg = (u32)value << 8;
+            for (int i = 0; i < 8; i++)
+                reg = ((reg << 1) ^ ((reg & 0x8000) ? 0x8005 : 0)) & 0xFFFF;
+            crc16_table[value] = (u16)reg;
+        }
     }
-    done = true;
-}
+};
+static Crc16TableInit g_crc16_table_init;
 
-static u16 crc16_raw(const u8 *p, size_t len, u16 initial_value)
+static inline u16 crc16_raw(const u8 *p, size_t len, u16 initial_value)
 {
-    init_crc16();
     u16 reg = initial_value;
     for (size_t i = 0; i < len; i++)
         reg = (u16)(((reg << 8) & 0xFFFF) ^ crc16_table[((reg >> 8) ^ p[i]) & 0xFF]);
@@ -430,7 +428,7 @@ bool parse_key(const std::string &spec, KeyCoefs &out, std::string *err)
 static u32 u16m(u32 x) { return x & 0xFFFF; }
 static u32 u8m(u32 x) { return x & 0xFF; }
 
-static u32 gen_pn15(u32 index_mask, bool flag)
+static inline u32 gen_pn15(u32 index_mask, bool flag)
 {
     if (flag)
         return 0;
@@ -444,7 +442,7 @@ static u32 gen_pn15(u32 index_mask, bool flag)
     return u16m(xor_lhs ^ xor_rhs);
 }
 
-static u32 gen_pn16(u32 index_mask, bool flag)
+static inline u32 gen_pn16(u32 index_mask, bool flag)
 {
     if (flag)
         return 0;
@@ -452,21 +450,19 @@ static u32 gen_pn16(u32 index_mask, bool flag)
     u32 part1 = (((index_mask >> 13) & 1) + (((index_mask >> 9) & 1) * 2)
                  + (((index_mask >> 5) & 1) * 4) + (((index_mask >> 1) & 1) * 8));
     u32 xor_lhs = ((index_mask & 0x3FF) << 7) + ((index_mask >> 10) & 0x7F);
-    u32 xor_rhs = (((index_mask >> 4) & 1) * 0x10000) + (part1 * 0x1000) + (part1 * 0x111);
+    u32 xor_rhs = (((index_mask >> 4) & 1) * 0x10000) + (part1 * 0x1111u);
     xor_rhs &= AND_CONST;
     return xor_lhs ^ xor_rhs;
 }
 
-static u32 gen_pn32(u32 index_mask, bool flag)
+static inline u32 gen_pn32(u32 index_mask, bool flag)
 {
     if (flag)
         return 0;
     const u32 AND_CONST = 0xE519A4F1;
     u32 xor_lhs = (index_mask >> 0xF) | (index_mask << 0x11);
     u32 xor_rhs_start = (index_mask >> 2) & 0xF;
-    u32 xor_rhs = (xor_rhs_start * 0x10000000) + (xor_rhs_start * 0x01000000)
-                  + (xor_rhs_start * 0x00100000) + (xor_rhs_start * 0x00010000)
-                  + (xor_rhs_start * 0x00001111);
+    u32 xor_rhs = xor_rhs_start * 0x11111111u;
     xor_rhs &= AND_CONST;
     return xor_lhs ^ xor_rhs;
 }
@@ -474,62 +470,61 @@ static u32 gen_pn32(u32 index_mask, bool flag)
 BekenCodeCipher::BekenCodeCipher(u32 c0, u32 c1, u32 c2, u32 c3)
     : coef0_(c0), coef1_(c1), coef2_(c2), coef3_(c3), overflow_(false)
 {
+    bool highbyte = ((coef3_ & 0xFF000000) == 0xFF000000) || ((coef3_ & 0xFF000000) == 0);
+    c1b_ = highbyte || ((coef3_ & 1) != 0);
+    c2b_ = highbyte || ((coef3_ & 2) != 0);
+    c4b_ = highbyte || ((coef3_ & 4) != 0);
+    c8b_ = highbyte || ((coef3_ & 8) != 0);
+    u32 coef3_4_rsh = coef3_ >> 4;
+    coef3_5_rsh_ = (coef3_ >> 5) & 3;
+    coef3_8_rsh_ = (coef3_ >> 8) & 3;
+    u32 coef3_11_rsh = (coef3_ >> 11) & 3;
+    static const u32 PN32_SHIFTS[4][2] = {{0, 0}, {8, 24}, {16, 16}, {24, 8}};
+    pn32_sh0_ = PN32_SHIFTS[coef3_11_rsh][0];
+    pn32_sh1_ = PN32_SHIFTS[coef3_11_rsh][1];
+    coef1_hi_ = coef1_ >> 16;
+    pn16_base_ = u8m(coef1_) + (u8m(coef1_ >> 8) * 0x200) + u8m(coef3_4_rsh & 1) * 0x100;
+    final_val_ = c8b_ ? 0 : coef2_;
 }
 
 u32 BekenCodeCipher::encrypt_word(u32 index, u32 word) const
 {
-    bool highbyte = ((coef3_ & 0xFF000000) == 0xFF000000) || ((coef3_ & 0xFF000000) == 0);
-    bool c1b = highbyte, c2b = highbyte, c4b = highbyte, c8b = highbyte;
-    if (coef3_ & 1)
-        c1b = true;
-    if (coef3_ & 2)
-        c2b = true;
-    if (coef3_ & 4)
-        c4b = true;
-    if (coef3_ & 8)
-        c8b = true;
-    u32 coef3_4_rsh = coef3_ >> 4;
-    u32 coef3_5_rsh = (coef3_ >> 5) & 3;
-    u32 coef3_8_rsh = (coef3_ >> 8) & 3;
-    u32 coef3_11_rsh = (coef3_ >> 11) & 3;
     u32 idx16 = u16m(index >> 16);
     u32 idxseq = u16m(index >> 8);
     u32 pn15_word;
-    if (coef3_5_rsh == 0)
+    if (coef3_5_rsh_ == 0)
         pn15_word = (u8m(idx16) + u16m((index >> 24) << 8)) ^ u16m(index);
-    else if (coef3_5_rsh == 1) {
+    else if (coef3_5_rsh_ == 1) {
         pn15_word = u8m(idx16) + u16m((index >> 24) << 8);
         pn15_word ^= u8m(idxseq) + u16m(index << 8);
-    } else if (coef3_5_rsh == 2)
+    } else if (coef3_5_rsh_ == 2)
         pn15_word = ((idx16 >> 8) + u16m((index >> 16) << 8)) ^ u16m(index);
     else {
         pn15_word = (idx16 >> 8) + u16m((index >> 16) << 8);
         pn15_word ^= u8m(idxseq) + u16m(index << 8);
     }
-    u32 pn16_word = (index >> coef3_8_rsh) & 0x1FFFF;
-    static const u32 PN32_SHIFTS[4][2] = {{0, 0}, {8, 24}, {16, 16}, {24, 8}};
-    u32 pn32_word = (index >> PN32_SHIFTS[coef3_11_rsh][0]) | (index << PN32_SHIFTS[coef3_11_rsh][1]);
-    u32 pn15_index_mask = u16m((coef1_ >> 16) ^ pn15_word);
-    u32 pn16_index_mask = u8m(coef1_) + (u8m(coef1_ >> 8) * 0x200) + u8m(coef3_4_rsh & 1) * 0x100;
-    pn16_index_mask ^= pn16_word;
+    u32 pn16_word = (index >> coef3_8_rsh_) & 0x1FFFF;
+    u32 pn32_word = (index >> pn32_sh0_) | (index << pn32_sh1_);
+    u32 pn15_index_mask = u16m(coef1_hi_ ^ pn15_word);
+    u32 pn16_index_mask = pn16_base_ ^ pn16_word;
     u32 pn32_index_mask = pn32_word ^ coef0_;
-    u32 pn15_val = gen_pn15(pn15_index_mask, c1b);
-    u32 pn16_val = gen_pn16(pn16_index_mask, c2b);
-    u32 pn32_val = gen_pn32(pn32_index_mask, c4b);
-    u32 final_val = c8b ? 0 : coef2_;
+    u32 pn15_val = gen_pn15(pn15_index_mask, c1b_);
+    u32 pn16_val = gen_pn16(pn16_index_mask, c2b_);
+    u32 pn32_val = gen_pn32(pn32_index_mask, c4b_);
     /* pn16 is 17 bits wide, so with pn15 = 0xFFFF the mask can carry into
      * bit 32; Python's int then fails to_bytes(4) with an OverflowError. */
     u64 word_encryption_mask = (u64)pn15_val * 0x10000 + pn16_val;
     if (word_encryption_mask >> 32)
         overflow_ = true;
-    return (u32)word_encryption_mask ^ pn32_val ^ final_val ^ word;
+    return (u32)word_encryption_mask ^ pn32_val ^ final_val_ ^ word;
 }
 
 Bytes BekenCodeCipher::decrypt(const Bytes &data, size_t stream_start_offset, bool *overflow) const
 {
     Bytes out;
-    out.reserve(data.size() + 3);
+    out.reserve((data.size() + 3) & ~(size_t)3);
     overflow_ = false;
+    const u8 *src = (const u8 *)data.data();
     for (size_t i = 0; i < data.size(); i += 32) {
         size_t block_len = data.size() - i < 32 ? data.size() - i : 32;
         size_t block_start = i + stream_start_offset;
@@ -537,8 +532,12 @@ Bytes BekenCodeCipher::decrypt(const Bytes &data, size_t stream_start_offset, bo
          * processed (little-endian, zero-extended) and emitted as 4 bytes. */
         for (size_t j = 0; j < block_len; j += 4) {
             u32 word = 0;
-            for (size_t k = 0; k < 4 && j + k < block_len; k++)
-                word |= (u32)(u8)data[i + j + k] << (8 * k);
+            if (j + 4 <= block_len) {
+                word = rd32le(src + i + j);
+            } else {
+                for (size_t k = 0; k < 4 && j + k < block_len; k++)
+                    word |= (u32)src[i + j + k] << (8 * k);
+            }
             u32 enc = encrypt_word((u32)(block_start + j), word);
             if (overflow_) {
                 if (overflow)

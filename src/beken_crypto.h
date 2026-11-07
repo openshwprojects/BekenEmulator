@@ -38,6 +38,9 @@ public:
     Bytes decrypt(const Bytes &data, size_t stream_start_offset = 0, bool *overflow = 0) const;
 private:
     u32 coef0_, coef1_, coef2_, coef3_;
+    bool c1b_, c2b_, c4b_, c8b_;
+    u32 coef3_5_rsh_, coef3_8_rsh_, pn32_sh0_, pn32_sh1_;
+    u32 coef1_hi_, pn16_base_, final_val_;
     mutable bool overflow_;
     u32 encrypt_word(u32 index, u32 word) const;
 };

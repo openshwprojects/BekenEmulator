@@ -123,6 +123,7 @@ struct SimState {
     int uart1_tx_prev;
     bool uart_at_line_start;
     u64 last_uart_insn;
+    u64 last_periph_sync;
     Bytes uart_line_tail;
     /* idle task stack (low,high); valid flag */
     bool idle_task_valid;

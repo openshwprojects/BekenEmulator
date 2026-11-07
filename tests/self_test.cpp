@@ -723,7 +723,7 @@ static CaseOut run_test(const Runner &R, const TestCase &tc)
     for (;;) {
         std::string chunk;
         if (!eof) {
-            bool alive = proc.read_some(chunk, 50);
+            bool alive = proc.read_some(chunk, 10);
             StrList lines;
             rd.feed(chunk, lines, !alive);
             for (size_t i = 0; i < lines.size(); i++)
@@ -731,7 +731,7 @@ static CaseOut run_test(const Runner &R, const TestCase &tc)
             if (!alive)
                 eof = true;
         } else {
-            sleep_ms(50);
+            sleep_ms(10);
         }
         bool done;
         {
@@ -765,7 +765,7 @@ static CaseOut run_test(const Runner &R, const TestCase &tc)
     double drain_end = mono_time() + 3.0;
     while (!eof && mono_time() < drain_end) {
         std::string chunk;
-        bool alive = proc.read_some(chunk, 50);
+        bool alive = proc.read_some(chunk, 5);
         StrList lines;
         rd.feed(chunk, lines, !alive);
         for (size_t i = 0; i < lines.size(); i++)

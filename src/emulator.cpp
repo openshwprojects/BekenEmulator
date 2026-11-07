@@ -28,6 +28,7 @@ SimState::SimState()
       saradc_cfg2(0), saradc_state_reg(0), saradc_pending(0), saradc_channel(-1), saradc_last_raw(-1),
       saradc_conversions(0), saradc_reads(0), last_pc(0), last_slow(0), last_fast(0), last_emit(0), gpio_hw(32),
       i2c_last_pin(-1), bl0942_polls(0), bl0942_active(false), uart1_tx_prev(-1), uart_at_line_start(true), last_uart_insn(0),
+      last_periph_sync(0),
       idle_task_valid(false), idle_task_lo(0), idle_task_hi(0), pwmn_seen(false), pwmn_stat(0),
       wdt_first_period_valid(false), wdt_first_period(0), wdt_period_ms(0), wdt_clock_enabled(true),
       wdt_deadline_valid(false), wdt_deadline(0), sctrl_rosc_timer(0), sctrl_rosc_timer_h(0),
@@ -323,10 +324,11 @@ void BekenEmulator::net_log(const std::string &msg)
 void BekenEmulator::uart_write(const Bytes &data)
 {
     out_write(data);
-    out_flush();
     if (!data.empty()) {
         state.uart_at_line_start = (u8)data[data.size() - 1] == 0x0A;
         state.last_uart_insn = state.insn_count;
+        if (state.uart_at_line_start || uart1_hex_)
+            out_flush();
         if (!snapshot_marker_.empty())
             snapshot_check_uart(data);
     }
@@ -344,9 +346,9 @@ void BekenEmulator::note_uart_tx(int port, u8 b)
         if (state.uart_line_tail.size() > 24)
             state.uart_line_tail.erase(0, state.uart_line_tail.size() - 24);
         const Bytes &t = state.uart_line_tail;
-        if (!state.obk_boot_seen && (bytes_contains(t, "Info:MAIN:") || bytes_contains(t, "Warn:CFG:")))
+        if (!state.obk_boot_seen && b == ':' && (bytes_contains(t, "Info:MAIN:") || bytes_contains(t, "Warn:CFG:")))
             state.obk_boot_seen = true;
-        if (!state.rtt_boot_seen
+        if (!state.rtt_boot_seen && (b == ' ' || b == 'd' || b == ']')
             && (bytes_contains(t, "RT -     ") || bytes_contains(t, "rt-thread") || bytes_contains(t, "[I/FAL]")
                 || bytes_contains(t, "[D/FAL]")))
             state.rtt_boot_seen = true;
@@ -474,6 +476,10 @@ void BekenEmulator::sync_gpio_irq()
     /* Resample enabled level-mode pins (inline, since the config lookup needs
      * this emulator instance). Then drive the GPIO controller's ICU line. */
     u64 enabled = state.gpio_hw.int_enable;
+    if (!enabled) {
+        state.pending_irqs &= ~(1u << 7);
+        return;
+    }
     while (enabled) {
         u64 bit = enabled & (~enabled + 1);
         enabled ^= bit;

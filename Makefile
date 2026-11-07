@@ -8,7 +8,7 @@
 
 CXX ?= g++
 CXXSTD ?= gnu++98
-OPT ?= -O2
+OPT ?= -O3
 # Link-time optimization lets the compiler inline the interpreter's hot memory
 # accessors (mem_load/mem_store in arm_cpu.cpp) into the instruction executors
 # in arm_exec.cpp/arm_thumb.cpp, which are in other translation units. Measured

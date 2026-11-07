@@ -666,10 +666,11 @@ void BekenEmulator::mmio_write_regs(u32 address, int size, u32 value)
     int pin = gpio_pin_at(address);
     if (pin >= 0) {
         int slot = gpio_slot(pin);
-        u32 old = state.gpio_cfg.count(slot) ? state.gpio_cfg[slot] : 0;
+        std::pair<std::map<int, u32>::iterator, bool> ins = state.gpio_cfg.insert(std::make_pair(slot, value));
+        u32 old = ins.second ? 0 : ins.first->second;
         u32 nw = value;
         state.gpio_hw.config_changed(pin, old, nw);
-        state.gpio_cfg[slot] = nw;
+        ins.first->second = nw;
         i2c_pin_edge(pin, old, nw);
         if (emit_insns_)
             state.gpio_dirty.insert(slot);
@@ -808,7 +809,10 @@ void BekenEmulator::mmio_write_regs(u32 address, int size, u32 value)
 
     /* flash controller */
     /* REG_FLASH_CONF: CRC_EN (bit 26) is only observed (FLASHDBG). */
-    if (address == 0x0080301C && env_has("FLASHDBG")) {
+    static int flashdbg = -1;
+    if (flashdbg < 0)
+        flashdbg = env_has("FLASHDBG") ? 1 : 0;
+    if (address == 0x0080301C && flashdbg) {
         fprintf(stderr, "FLASHDBG conf=0x%08x CRC_EN=%u\n", value, (value >> 26) & 1);
         fflush(stderr);
     }
@@ -834,7 +838,7 @@ void BekenEmulator::mmio_write_regs(u32 address, int size, u32 value)
         flash_state_.addr = value & 0x00FFFFFF;
         flash_state_.read_idx = 0;
         u32 op_type = (value >> 24) & 0x1F;
-        if (flash_state_.addr >= 0x001E0000 && env_has("FLASHDBG")) {
+        if (flash_state_.addr >= 0x001E0000 && flashdbg) {
             fprintf(stderr, "FLASHDBG op addr=0x%06x op=%u reg=0x%08x\n", flash_state_.addr, op_type, value);
             fflush(stderr);
         }
@@ -855,7 +859,10 @@ void BekenEmulator::mmio_write_regs(u32 address, int size, u32 value)
     /* SARADC config */
     if (address == 0x00802c00) {
         state.saradc_cfg = value;
-        if (env_has("ADCDBG")) {
+        static int adcdbg = -1;
+        if (adcdbg < 0)
+            adcdbg = env_has("ADCDBG") ? 1 : 0;
+        if (adcdbg) {
             /* Python's "%#x" of the chip id ("0x0" for zero, unlike C's) */
             fprintf(stderr, "ADCDBG cfg write=0x%08x chnl_en=%u chip=0x%x\n", value, (value >> 2) & 1,
                     chip_id_value);
