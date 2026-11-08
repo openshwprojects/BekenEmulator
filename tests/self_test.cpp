@@ -36,8 +36,8 @@
 #include "report.h"
 #include "common.h"
 #include "platform.h"
-#include "periph.h"
-#include "tuya_config.h"
+#include "beken/periph.h"
+#include "beken/tuya_config.h"
 
 #include <stdio.h>
 #include <stdlib.h>

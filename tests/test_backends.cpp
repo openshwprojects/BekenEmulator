@@ -1,7 +1,7 @@
 #include "emulator_backend.h"
-#include "emulator.h"
+#include "beken/emulator.h"
 #include "platform.h"
-#include "esp_test_images.h"
+#include "esp/esp_test_images.h"
 #include <stdio.h>
 
 namespace {

@@ -7,8 +7,8 @@
 #define BK_REPORT_H
 
 #include "common.h"
-#include "periph.h"
-#include "tuya_config.h"
+#include "beken/periph.h"
+#include "beken/tuya_config.h"
 
 namespace report {
 

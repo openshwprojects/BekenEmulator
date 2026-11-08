@@ -1,5 +1,5 @@
 #include "rom_image.h"
-#include "esp_machine.h"
+#include "esp/esp_machine.h"
 #include <stdio.h>
 
 namespace {

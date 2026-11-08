@@ -77,7 +77,7 @@ public:
     u64 stats_rx() const;
     const std::vector<std::pair<std::string, u64> > &events() const;
 
-    /* Test support (alt/tests/test_watchdog.cpp, the port of tests/watchdog.py,
+    /* Test support (tests/beken/test_watchdog.cpp, the port of tests/watchdog.py,
      * which reads/primes peer.now_us(), peer.stations, peer.auth, peer._outq). */
     u64 now_us();
     size_t station_count() const;

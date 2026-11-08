@@ -10,7 +10,7 @@ CXX ?= g++
 CXXSTD ?= gnu++98
 OPT ?= -O3
 # Link-time optimization lets the compiler inline the interpreter's hot memory
-# accessors (mem_load/mem_store in arm_cpu.cpp) into the instruction executors
+# accessors in src/arch/arm/arm_cpu.cpp into the instruction executors
 # in arm_exec.cpp/arm_thumb.cpp, which are in other translation units. Measured
 # ~10-15% faster on the compute-bound ARM core, byte-identical output. Override
 # with `make LTO=` to disable (e.g. for a faster debug build).
@@ -53,77 +53,138 @@ export TMP := $(CURDIR)/$(BUILD)/tmp
 export TEMP := $(CURDIR)/$(BUILD)/tmp
 export TMPDIR := $(CURDIR)/$(BUILD)/tmp
 
-# The same ESP core is linked into front ends and the firmware acceptance
-# runner. Register new devices once here so both use identical hardware.
-ESP_CORE_SRC := \
-    src/esp_image.cpp \
-    src/xtensa_cpu.cpp \
-    src/esp_machine.cpp \
-    src/esp_gpio.cpp \
-    src/esp_multicore.cpp \
-    src/esp_clocked_devices.cpp \
-    src/esp_reset.cpp \
-    src/esp_eri.cpp \
-    src/esp8266_mmio.cpp \
-    src/esp8266_timers.cpp \
-    src/esp8266_watchdog.cpp \
-    src/esp8266_wdev.cpp \
-    src/esp8266_mac_timers.cpp \
-    src/esp8266_wifi_dma.cpp \
-    src/esp8266_radio.cpp \
-    src/esp_wifi.cpp \
-    src/esp_rf_math.cpp \
-    src/esp_frc_timers.cpp \
-    src/esp32_mmio.cpp \
-    src/esp32_analog.cpp \
-    src/esp32_phy.cpp \
-    src/esp32_rng.cpp \
-    src/esp32_cache.cpp \
-    src/esp32_rtc_io.cpp \
-    src/esp_aes.cpp \
-    src/rom_image.cpp \
-    src/esp_rom.cpp \
-    src/esp_spi.cpp \
-    src/esp_psram.cpp \
-    src/esp32_psram_mmu.cpp \
-    src/esp_uart.cpp \
-    src/esp32_interrupts.cpp
-ESP_CORE_OBJ := $(patsubst src/%.cpp,$(BUILD)/%.o,$(ESP_CORE_SRC))
+# Chip implementations live in separate directories. The same ESP core is
+# linked into front ends and the firmware acceptance runner.
+ARM_SRC := \
+    src/arch/arm/arm_cpu.cpp \
+    src/arch/arm/arm_exec.cpp \
+    src/arch/arm/arm_thumb.cpp \
+    src/arch/arm/arm_thumb2.cpp
 
-# Library objects shared by every executable (every src/*.cpp except main.cpp).
+BEKEN_SRC := \
+    src/beken/chips.cpp \
+    src/beken/beken_crypto.cpp \
+    src/beken/gpio.cpp \
+    src/beken/periph.cpp \
+    src/beken/tuya_config.cpp \
+    src/beken/blecore.cpp \
+    src/beken/wifimac.cpp \
+    src/beken/emulator.cpp \
+    src/beken/emulator_run.cpp \
+    src/beken/emulator_mmio.cpp \
+    src/beken/emulator_mmio2.cpp \
+    src/beken/emulator_mmio3.cpp \
+    src/beken/emulator_build.cpp \
+    src/beken/beken_backend.cpp
+
+ESP_SHARED_SRC := \
+    src/esp/esp_image.cpp \
+    src/esp/esp_machine.cpp \
+    src/esp/esp_gpio.cpp \
+    src/esp/esp_multicore.cpp \
+    src/esp/esp_clocked_devices.cpp \
+    src/esp/esp_reset.cpp \
+    src/esp/esp_wifi.cpp \
+    src/esp/esp_rf_math.cpp \
+    src/esp/esp_frc_timers.cpp \
+    src/esp/esp_rom.cpp \
+    src/esp/esp_spi.cpp \
+    src/esp/esp_uart.cpp
+
+ESP32_SRC := \
+    src/esp32/esp_eri.cpp \
+    src/esp32/esp32_mmio.cpp \
+    src/esp32/esp32_analog.cpp \
+    src/esp32/esp32_phy.cpp \
+    src/esp32/esp32_rng.cpp \
+    src/esp32/esp32_cache.cpp \
+    src/esp32/esp32_rtc_io.cpp \
+    src/esp32/esp_aes.cpp \
+    src/esp32/esp_psram.cpp \
+    src/esp32/esp32_psram_mmu.cpp \
+    src/esp32/esp32_interrupts.cpp
+
+ESP8266_SRC := \
+    src/esp8266/esp8266_mmio.cpp \
+    src/esp8266/esp8266_timers.cpp \
+    src/esp8266/esp8266_watchdog.cpp \
+    src/esp8266/esp8266_wdev.cpp \
+    src/esp8266/esp8266_mac_timers.cpp \
+    src/esp8266/esp8266_wifi_dma.cpp \
+    src/esp8266/esp8266_radio.cpp
+
+ESP_CORE_SRC := \
+    src/arch/xtensa/xtensa_cpu.cpp \
+    src/rom_image.cpp \
+    $(ESP_SHARED_SRC) \
+    $(ESP32_SRC) \
+    $(ESP8266_SRC)
+
+ESP_CORE_OBJ := $(patsubst %.cpp,$(BUILD)/%.o,$(ESP_CORE_SRC))
+
 LIB_SRC := \
     src/common.cpp \
     src/platform.cpp \
-    src/chips.cpp \
     src/crypto_prims.cpp \
     src/json.cpp \
-    src/beken_crypto.cpp \
-    src/arm_cpu.cpp \
-    src/arm_exec.cpp \
-    src/arm_thumb.cpp \
-    src/arm_thumb2.cpp \
-    src/gpio.cpp \
-    src/periph.cpp \
-    src/tuya_config.cpp \
     src/tuyamcu.cpp \
-    src/blecore.cpp \
-    src/wifimac.cpp \
     src/wpa2.cpp \
     src/wifipeer.cpp \
     src/netstack.cpp \
-    src/emulator.cpp \
-    src/emulator_run.cpp \
-    src/emulator_mmio.cpp \
-    src/emulator_mmio2.cpp \
-    src/emulator_mmio3.cpp \
-    src/emulator_build.cpp \
     src/emulator_backend.cpp \
-    src/beken_backend.cpp \
-    src/esp_backend.cpp \
-    $(ESP_CORE_SRC) \
-    src/cli.cpp
+    src/cli.cpp \
+    $(ARM_SRC) \
+    $(BEKEN_SRC) \
+    src/esp/esp_backend.cpp \
+    $(ESP_CORE_SRC)
 
-LIB_OBJ := $(patsubst src/%.cpp,$(BUILD)/%.o,$(LIB_SRC))
+LIB_OBJ := $(patsubst %.cpp,$(BUILD)/%.o,$(LIB_SRC))
+
+UNIT_SRC := \
+    tests/unittests.cpp \
+    tests/beken/test_chips.cpp \
+    tests/beken/test_timers.cpp \
+    tests/beken/test_gpio_button.cpp \
+    tests/beken/test_gpio_emulator.cpp \
+    tests/beken/test_image_loader.cpp \
+    tests/beken/test_watchdog.cpp \
+    tests/test_backends.cpp \
+    tests/esp/test_esp_image.cpp \
+    tests/arch/xtensa/test_xtensa.cpp \
+    tests/esp/test_esp_machine.cpp \
+    tests/test_rom_image.cpp \
+    tests/esp32/test_esp32_mmio.cpp \
+    tests/esp/test_esp_timing.cpp \
+    tests/esp/test_esp_clocked_devices.cpp \
+    tests/esp8266/test_esp8266_radio.cpp \
+    tests/esp8266/test_esp_wifi_acceptance.cpp \
+    tests/esp/test_esp_spi.cpp \
+    tests/esp32/test_esp_interrupts.cpp \
+    tests/esp/test_esp_exceptions.cpp \
+    tests/esp/test_esp_uart.cpp \
+    tests/esp32/test_esp_eri.cpp \
+    tests/esp32/test_esp32_rng.cpp \
+    tests/esp32/test_esp_multicore.cpp \
+    tests/esp/test_esp_resets.cpp \
+    tests/esp32/test_esp_psram.cpp \
+    tests/esp/test_esp_gpio.cpp \
+    tests/esp32/test_esp_memory.cpp \
+    tests/esp/test_esp_acceptance.cpp \
+    tests/esp8266/test_esp8266_timers.cpp \
+    tests/esp32/test_esp32_frc.cpp \
+    tests/esp8266/test_esp8266_watchdog.cpp \
+    tests/esp32/test_esp_aes.cpp \
+    tests/esp32/test_esp_cache_faults.cpp \
+    tests/esp8266/test_esp8266_wdev.cpp \
+    tests/esp8266/test_esp8266_mac_timers.cpp \
+    tests/esp32/test_esp_rtc_io.cpp \
+    tests/esp8266/test_esp8266_wifi_dma.cpp \
+    tests/esp8266/test_esp_wifi.cpp \
+    tests/esp32/test_esp32_analog.cpp \
+    tests/esp32/test_esp32_phy.cpp \
+    tests/esp/test_esp_rf_math.cpp
+
+UNIT_OBJ := $(patsubst %.cpp,$(BUILD)/%.o,$(UNIT_SRC))
 
 CLI := bekensim$(EXE)
 UNIT := unittests$(EXE)
@@ -141,46 +202,35 @@ all: cli tests tools
 dirs:
 	@mkdir -p $(BUILD)/tmp
 
-$(BUILD)/%.o: src/%.cpp | dirs
+# Mirror source paths in build/ so equal basenames in different backends
+# cannot collide. One rule handles library, test and tool sources.
+$(BUILD)/%.o: %.cpp | dirs
+	@mkdir -p "$(@D)"
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
-$(BUILD)/%.o: tests/%.cpp | dirs
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(BUILD)/%.o: tools/%.cpp | dirs
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
-
-$(CLI): $(LIB_OBJ) $(BUILD)/main.o
+$(CLI): $(LIB_OBJ) $(BUILD)/src/main.o
 	$(CXX) $(CXXFLAGS) $(STATIC) $^ -o $@ $(LDFLAGS) $(PLATFORM_LIBS)
 
-$(UNIT): $(LIB_OBJ) $(BUILD)/unittests.o $(BUILD)/test_chips.o $(BUILD)/test_timers.o \
-        $(BUILD)/test_gpio_button.o $(BUILD)/test_gpio_emulator.o $(BUILD)/test_image_loader.o \
-        $(BUILD)/test_watchdog.o $(BUILD)/test_backends.o $(BUILD)/test_esp_image.o \
-        $(BUILD)/test_xtensa.o $(BUILD)/test_esp_machine.o $(BUILD)/test_rom_image.o \
-        $(BUILD)/test_esp32_mmio.o $(BUILD)/test_esp_timing.o $(BUILD)/test_esp_clocked_devices.o $(BUILD)/test_esp8266_radio.o $(BUILD)/test_esp_wifi_acceptance.o $(BUILD)/test_esp_spi.o \
-        $(BUILD)/test_esp_interrupts.o $(BUILD)/test_esp_exceptions.o $(BUILD)/test_esp_uart.o \
-        $(BUILD)/test_esp_eri.o $(BUILD)/test_esp32_rng.o $(BUILD)/test_esp_multicore.o $(BUILD)/test_esp_resets.o \
-        $(BUILD)/test_esp_psram.o $(BUILD)/test_esp_gpio.o $(BUILD)/test_esp_memory.o $(BUILD)/test_esp_acceptance.o \
-        $(BUILD)/test_esp8266_timers.o $(BUILD)/test_esp32_frc.o \
-        $(BUILD)/test_esp8266_watchdog.o $(BUILD)/test_esp_aes.o $(BUILD)/test_esp_cache_faults.o $(BUILD)/test_esp8266_wdev.o $(BUILD)/test_esp8266_mac_timers.o $(BUILD)/test_esp_rtc_io.o $(BUILD)/test_esp8266_wifi_dma.o $(BUILD)/test_esp_wifi.o $(BUILD)/test_esp32_analog.o $(BUILD)/test_esp32_phy.o $(BUILD)/test_esp_rf_math.o
+$(UNIT): $(LIB_OBJ) $(UNIT_OBJ)
 	$(CXX) $(CXXFLAGS) $(STATIC) $^ -o $@ $(LDFLAGS) $(PLATFORM_LIBS)
 
-$(BUILD)/testcase_data.o: tests/testcase_data.cpp | dirs
+$(BUILD)/tests/testcase_data.o: tests/testcase_data.cpp | dirs
+	@mkdir -p "$(@D)"
 	$(CXX) $(CXXFLAGS) -fno-lto $(DEPFLAGS) -c $< -o $@
 
-$(SELFTEST): $(LIB_OBJ) $(BUILD)/self_test.o $(BUILD)/testcase_data.o $(BUILD)/report.o
+$(SELFTEST): $(LIB_OBJ) $(BUILD)/tests/self_test.o $(BUILD)/tests/testcase_data.o $(BUILD)/tests/report.o
 	$(CXX) $(CXXFLAGS) -fno-lto $(STATIC) $^ -o $@ $(LDFLAGS) $(PLATFORM_LIBS)
 
-$(MKOBK): $(LIB_OBJ) $(BUILD)/make_obk_config.o
+$(MKOBK): $(LIB_OBJ) $(BUILD)/tools/make_obk_config.o
 	$(CXX) $(CXXFLAGS) $(STATIC) $^ -o $@ $(LDFLAGS) $(PLATFORM_LIBS)
 
-SIMUI_OBJ := $(BUILD)/sim_ui.o $(BUILD)/sim_ui_util.o $(BUILD)/sim_ui_logic.o $(BUILD)/sim_ui_selftest.o
+SIMUI_OBJ := $(BUILD)/tools/sim_ui.o $(BUILD)/tools/sim_ui_util.o $(BUILD)/tools/sim_ui_logic.o $(BUILD)/tools/sim_ui_selftest.o
 
 $(SIMUI): $(LIB_OBJ) $(SIMUI_OBJ)
 	$(CXX) $(CXXFLAGS) $(STATIC) $^ -o $@ $(LDFLAGS) $(GUI_LDFLAGS) $(PLATFORM_LIBS)
 
-$(ESPTEST): $(BUILD)/common.o $(BUILD)/platform.o $(BUILD)/crypto_prims.o \
-            $(ESP_CORE_OBJ) $(BUILD)/esp_firmware.o
+$(ESPTEST): $(BUILD)/src/common.o $(BUILD)/src/platform.o $(BUILD)/src/crypto_prims.o \
+            $(ESP_CORE_OBJ) $(BUILD)/tests/esp/esp_firmware.o
 	$(CXX) $(CXXFLAGS) $(STATIC) $^ -o $@ $(LDFLAGS) $(PLATFORM_LIBS)
 
 tests: dirs $(UNIT) $(SELFTEST) $(ESPTEST)
@@ -198,7 +248,12 @@ check: $(UNIT)
 check-esp-dumps: $(ESPTEST)
 	./$(ESPTEST)
 
--include $(wildcard $(BUILD)/*.d)
+# Include dependencies for the current graph only; old flat build artifacts
+# are ignored after a directory move.
+ALL_OBJ := $(sort $(LIB_OBJ) $(UNIT_OBJ) $(SIMUI_OBJ) \
+    $(BUILD)/src/main.o $(BUILD)/tests/self_test.o $(BUILD)/tests/testcase_data.o \
+    $(BUILD)/tests/report.o $(BUILD)/tests/esp/esp_firmware.o $(BUILD)/tools/make_obk_config.o)
+-include $(ALL_OBJ:.o=.d)
 
 clean:
 	rm -rf $(BUILD) $(CLI) $(UNIT) $(SELFTEST) $(ESPTEST) $(MKOBK) $(SIMUI)

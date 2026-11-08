@@ -21,10 +21,10 @@
 #include <windows.h>
 #include <commctrl.h>
 
-#include "emulator.h"
+#include "beken/emulator.h"
 #include "emulator_backend.h"
-#include "periph.h"
-#include "tuya_config.h"
+#include "beken/periph.h"
+#include "beken/tuya_config.h"
 #include "json.h"
 
 namespace simui {

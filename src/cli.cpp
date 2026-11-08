@@ -6,16 +6,16 @@
  * prints its message and exits 1, an error Python leaves uncaught (a missing
  * dump, an unwritable capture) prints the exception's last traceback line to
  * stderr and exits 1. */
-#include "emulator.h"
+#include "beken/emulator.h"
 #include "emulator_backend.h"
-#include "periph.h"
+#include "beken/periph.h"
 #include "netstack.h"
 #include "wifipeer.h"
-#include "tuya_config.h"
+#include "beken/tuya_config.h"
 #include "tuyamcu.h"
-#include "blecore.h"
+#include "beken/blecore.h"
 #include "wpa2.h"
-#include "wifimac.h"
+#include "beken/wifimac.h"
 
 #include <errno.h>
 #include <signal.h>

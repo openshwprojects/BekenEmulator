@@ -8,7 +8,7 @@
  * same validation and the same Python slice-assignment semantics, so every
  * accepted command line writes a byte-identical image. */
 #include "common.h"
-#include "beken_crypto.h"
+#include "beken/beken_crypto.h"
 
 #include <stdio.h>
 

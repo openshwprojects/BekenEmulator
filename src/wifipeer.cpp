@@ -4,7 +4,7 @@
 #include "wifipeer.h"
 #include "netstack.h"
 #include "wpa2.h"
-#include "beken_crypto.h"
+#include "beken/beken_crypto.h"
 #include <stdio.h>
 #include <string.h>
 #include <set>
@@ -491,7 +491,7 @@ void WifiPeer::send_eth(const Bytes &eth) { d->send_eth(eth); }
 u64 WifiPeer::stats_tx() const { return d->stats_tx; }
 u64 WifiPeer::stats_rx() const { return d->stats_rx; }
 const std::vector<std::pair<std::string, u64> > &WifiPeer::events() const { return d->events; }
-/* test support for alt/tests/test_watchdog.cpp (see wifipeer.h) */
+/* test support for tests/beken/test_watchdog.cpp (see wifipeer.h) */
 u64 WifiPeer::now_us() { return d->now(); }
 size_t WifiPeer::station_count() const { return d->stations.size(); }
 size_t WifiPeer::auth_count() const { return d->auth.size(); }

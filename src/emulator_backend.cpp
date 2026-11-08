@@ -1,5 +1,5 @@
 #include "emulator_backend.h"
-#include "chips.h"
+#include "beken/chips.h"
 #include <algorithm>
 
 EmulatorBackend *build_beken_backend(const std::string &, const BuildOptions &,

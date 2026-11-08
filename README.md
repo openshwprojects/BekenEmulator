@@ -6,33 +6,45 @@ A standalone C++ (`gnu++98`) Beken SoC (BK7231T, BK7231N, BK7231M, BK7231U, BK72
 
 ## Architecture
 
+Chip hardware and CPU interpreters are organized separately:
+
+- `src/beken/`: Beken SoCs, peripherals, flash cipher and backend.
+- `src/esp8266/` and `src/esp32/`: chip-specific registers and peripherals.
+- `src/esp/`: shared Espressif machine, backend, image loader and device helpers.
+- `src/arch/arm/` and `src/arch/xtensa/`: CPU instruction interpreters.
+- `src/`: shared frontend interfaces, utilities, protocols and network services.
+
+Tests follow the same grouping under `tests/beken/`, `tests/esp8266/`,
+`tests/esp32/`, `tests/esp/` and `tests/arch/xtensa/`. Shared test runners and
+backend tests remain in `tests/`. Module paths below omit `.cpp` / `.h` suffixes.
+
 | Layer | Files | Description |
 |---|---|---|
-| Foundation | `common`, `platform`, `json`, `crypto_prims` | Byte/string utilities, threads/sockets/subprocesses, JSON parser/formatter, AES/GCM/SHA/HMAC/PBKDF2 |
-| Image / Cipher | `beken_crypto`, `chips` | CRC16 stripes, Beken flash stream cipher, RBL partition layout, SoC definitions |
-| Backend boundary | `emulator_backend`, `emulator_options`, `beken_backend`, `esp_backend` | Shared construction, execution, UART, GPIO inputs and diagnostics; chip-family option validation |
-| Espressif images | `esp_image`, `rom_image`, `esp_rom` | ESP8266 v1/v2 and classic ESP32 image/partition parsing, checksums, optional silicon ROM ELF |
-| Xtensa CPU | `xtensa_cpu` | Shared LX106/LX6 interpreter with density instructions, windowed calls, exceptions and explicit unsupported-instruction faults |
-| Espressif hardware | `esp_machine`, `esp8266_mmio`, `esp32_mmio`, `esp_spi`, `esp_uart`, `esp32_interrupts` | Shared memory/ROM, UART and NOR flash, separate chip registers, interrupt matrix and hardware timers |
-| Legacy ESP timers | `esp_frc_timers`, `esp8266_timers` | Shared FRC counter math with separate chip address maps, interrupt routing and acknowledgment rules |
-| ESP8266 watchdog | `esp8266_watchdog` | Clocked interrupt/reset stages, feed operations and reset delivery during CPU waits |
-| ESP8266 MAC | `esp8266_wdev`, `esp8266_mac_timers` | Interrupt latches, key RAM, receive configuration and TSF alarm delivery during CPU waits; packet transport is still in development |
-| ESP8266 legacy Wi-Fi DMA | `esp8266_wifi_dma`, `esp_wifi` | Guest descriptor chains, timed CCK/OFDM transmission and reception, CRC/FCS, address matching, completion interrupts and explicit peer ACK outcomes |
-| ESP8266 radio state | `esp8266_radio` | Channel decoding, RF/baseband readiness and tuning/gating changes observed from modeled registers |
-| ESP32 analog / receiver controls | `esp32_analog`, `esp32_phy` | BBPLL transactions, indexed PHY trim RAM, and separate AGC/CCA configuration and reset state |
-| Radio arithmetic | `esp_rf_math` | Shared PLL divider decoding and configurable oscillator tuning curves, independent of chip registers |
-| ESP32 RTC pads | `esp32_rtc_io` | Pad mux, shared pulls, RTC GPIO and latched hold state across digital reset |
-| ESP32 AES | `esp_aes`, `crypto_prims` | AES-128/192/256 encrypt/decrypt, independent key/input/output byte orders, clock gating and reset |
-| ESP32 cache faults | `esp32_cache` | Per-core cache fault status, MMU diagnostics and interrupt routing |
-| ESP device state | `esp_state` | Reserved private state ranges shared by map-backed device models |
-| ESP32 multiprocessing | `esp_multicore`, `esp_eri` | Independent LX6 contexts and ROM views, shared SRAM/clock, per-core interrupts and boot remapping, APP reset/release/stall and debug registers |
-| ESP reset lifecycle | `esp_reset` | Deferred CPU, digital-system and RTC reset domains; retained RAM, external devices and UART transcript |
-| External ESP32 RAM | `esp_psram`, `esp32_psram_mmu` | Configurable SPI PSRAM device, QPI commands and per-core memory mapping |
-| ARM CPU Core | `arm_cpu`, `arm_exec`, `arm_thumb`, `arm_thumb2` | Full ARM (A32) + Thumb/Thumb-2 interpreter, banked registers, exceptions |
-| Peripherals | `gpio`, `periph`, `tuyamcu`, `blecore`, `wpa2` | GPIO/PWM/SARADC decode, TuyaMCU UART1 codec+MCU, RivieraWaves BLE 5.x core, WPA2 |
-| SoC & MMIO | `emulator*` | ICU/timers (BK7231 & BK7252), UART1/UART2, flash & SPI controllers, SARADC, PWM, WDT, deep sleep, camera/EJPEG, GDMA |
-| Wi-Fi & Network | `wifimac`, `wifipeer`, `netstack`, `tuya_config` | RivieraWaves nxmac MAC, virtual 802.11 AP/STA (open + WPA2-PSK), user-mode IP stack (ARP, DHCP, DNS, NTP, ICMP, TCP, HTTP, MQTT, TLS-PSK-GCM, `--net-forward`, PCAP capture), Tuya flash config decoder |
-| Front Ends | `cli` (`bekensim`), `tools/sim_ui` (Win32 GUI), `tools/make_obk_config` | CLI runner, interactive Win32 GUI, OpenBeken config image tool |
+| Foundation | `src/common`, `src/platform`, `src/json`, `src/crypto_prims` | Byte/string utilities, threads/sockets/subprocesses, JSON parser/formatter, AES/GCM/SHA/HMAC/PBKDF2 |
+| Image / Cipher | `src/beken/beken_crypto`, `src/beken/chips` | CRC16 stripes, Beken flash stream cipher, RBL partition layout, SoC definitions |
+| Backend boundary | `src/emulator_backend`, `src/emulator_options`, `src/beken/beken_backend`, `src/esp/esp_backend` | Shared construction, execution, UART, GPIO inputs and diagnostics; chip-family option validation |
+| Espressif images | `src/esp/esp_image`, `src/rom_image`, `src/esp/esp_rom` | ESP8266 v1/v2 and classic ESP32 image/partition parsing, checksums, optional silicon ROM ELF |
+| Xtensa CPU | `src/arch/xtensa/xtensa_cpu` | Shared LX106/LX6 interpreter with density instructions, windowed calls, exceptions and explicit unsupported-instruction faults |
+| Espressif hardware | `src/esp/esp_machine`, `src/esp8266/esp8266_mmio`, `src/esp32/esp32_mmio`, `src/esp/esp_spi`, `src/esp/esp_uart`, `src/esp32/esp32_interrupts` | Shared memory/ROM, UART and NOR flash, separate chip registers, interrupt matrix and hardware timers |
+| Legacy ESP timers | `src/esp/esp_frc_timers`, `src/esp8266/esp8266_timers` | Shared FRC counter math with separate chip address maps, interrupt routing and acknowledgment rules |
+| ESP8266 watchdog | `src/esp8266/esp8266_watchdog` | Clocked interrupt/reset stages, feed operations and reset delivery during CPU waits |
+| ESP8266 MAC | `src/esp8266/esp8266_wdev`, `src/esp8266/esp8266_mac_timers` | Interrupt latches, key RAM, receive configuration and TSF alarm delivery during CPU waits; packet transport is still in development |
+| ESP8266 legacy Wi-Fi DMA | `src/esp8266/esp8266_wifi_dma`, `src/esp/esp_wifi` | Guest descriptor chains, timed CCK/OFDM transmission and reception, CRC/FCS, address matching, completion interrupts and explicit peer ACK outcomes |
+| ESP8266 radio state | `src/esp8266/esp8266_radio` | Channel decoding, RF/baseband readiness and tuning/gating changes observed from modeled registers |
+| ESP32 analog / receiver controls | `src/esp32/esp32_analog`, `src/esp32/esp32_phy` | BBPLL transactions, indexed PHY trim RAM, and separate AGC/CCA configuration and reset state |
+| Radio arithmetic | `src/esp/esp_rf_math` | Shared PLL divider decoding and configurable oscillator tuning curves, independent of chip registers |
+| ESP32 RTC pads | `src/esp32/esp32_rtc_io` | Pad mux, shared pulls, RTC GPIO and latched hold state across digital reset |
+| ESP32 AES | `src/esp32/esp_aes`, `src/crypto_prims` | AES-128/192/256 encrypt/decrypt, independent key/input/output byte orders, clock gating and reset |
+| ESP32 cache faults | `src/esp32/esp32_cache` | Per-core cache fault status, MMU diagnostics and interrupt routing |
+| ESP device state | `src/esp/esp_state` | Reserved private state ranges shared by map-backed device models |
+| ESP32 multiprocessing | `src/esp/esp_multicore`, `src/esp32/esp_eri` | Independent LX6 contexts and ROM views, shared SRAM/clock, per-core interrupts and boot remapping, APP reset/release/stall and debug registers |
+| ESP reset lifecycle | `src/esp/esp_reset` | Deferred CPU, digital-system and RTC reset domains; retained RAM, external devices and UART transcript |
+| External ESP32 RAM | `src/esp32/esp_psram`, `src/esp32/esp32_psram_mmu` | Configurable SPI PSRAM device, QPI commands and per-core memory mapping |
+| ARM CPU Core | `src/arch/arm/arm_cpu`, `src/arch/arm/arm_exec`, `src/arch/arm/arm_thumb`, `src/arch/arm/arm_thumb2` | Full ARM (A32) + Thumb/Thumb-2 interpreter, banked registers, exceptions |
+| Peripherals | `src/beken/gpio`, `src/beken/periph`, `src/tuyamcu`, `src/beken/blecore`, `src/wpa2` | GPIO/PWM/SARADC decode, TuyaMCU UART1 codec+MCU, RivieraWaves BLE 5.x core, WPA2 |
+| SoC & MMIO | `src/beken/emulator*` | ICU/timers (BK7231 & BK7252), UART1/UART2, flash & SPI controllers, SARADC, PWM, WDT, deep sleep, camera/EJPEG, GDMA |
+| Wi-Fi & Network | `src/beken/wifimac`, `src/wifipeer`, `src/netstack`, `src/beken/tuya_config` | RivieraWaves nxmac MAC, virtual 802.11 AP/STA (open + WPA2-PSK), user-mode IP stack (ARP, DHCP, DNS, NTP, ICMP, TCP, HTTP, MQTT, TLS-PSK-GCM, `--net-forward`, PCAP capture), Tuya flash config decoder |
+| Front Ends | `src/cli` (`bekensim`), `tools/sim_ui` (Win32 GUI), `tools/make_obk_config` | CLI runner, interactive Win32 GUI, OpenBeken config image tool |
 | Test Suite | `tests/unittests`, `tests/self_test`, `tests/testcase_data` | Module unit tests and full firmware regression suite |
 
 ## Build
@@ -61,6 +73,9 @@ make check      # build and run module unit tests
 ./self_test -j 6                # run all firmware test cases and generate report/index.html
 ./self_test -k "MathDemo"       # run a filtered subset of firmware test cases
 ```
+
+ESP32-specific CI suites are temporarily commented out in
+`.github/workflows/test.yml` during bring-up; `./unittests` still runs them locally.
 
 ## Espressif backends (in development)
 
@@ -112,7 +127,7 @@ ESP_FLASH_DUMPS=/path/to/FlashDumps make check-esp-dumps
 ```
 
 On PowerShell, set `$env:ESP_FLASH_DUMPS = 'W:/GIT/FlashDumps'` before running the
-test executable. The fixture manifest in `tests/esp_fixtures.h` pins two ESP8266
+test executable. The fixture manifest in `tests/esp/esp_fixtures.h` pins two ESP8266
 Tuya dumps and an ESP32 Sonoff NSPanel dump by SHA-256. The dedicated
 `esp_firmware` tests require actual UART boot/application milestones followed by
 at least 100,000 guest instructions and one simulated second without another

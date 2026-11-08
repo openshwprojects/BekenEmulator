@@ -9,7 +9,7 @@
 #include <map>
 #include <deque>
 
-struct PyTestAccess; /* alt/tests/pytests.h: the ported Python unit-test files */
+struct PyTestAccess; /* tests/beken/pytests.h: the ported Python unit-test files */
 
 namespace netstack {
 

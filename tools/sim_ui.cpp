@@ -14,7 +14,7 @@
  */
 #include "sim_ui.h"
 #include "wifipeer.h"
-#include "beken_crypto.h"
+#include "beken/beken_crypto.h"
 
 #include <richedit.h>
 #include <shellapi.h>

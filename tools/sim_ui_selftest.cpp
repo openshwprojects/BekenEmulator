@@ -5,8 +5,8 @@
  * count. Also --package-smoke (_run_package_smoke). */
 #include "sim_ui.h"
 #include "netstack.h"
-#include "beken_crypto.h"
-#include "esp_test_images.h"
+#include "beken/beken_crypto.h"
+#include "esp/esp_test_images.h"
 
 #include <richedit.h>
 #include <stdio.h>

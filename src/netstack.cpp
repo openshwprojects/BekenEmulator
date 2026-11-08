@@ -6,7 +6,7 @@
  * netstack_selftests.h. */
 #include "netstack.h"
 #include "crypto_prims.h"
-#include "beken_crypto.h"
+#include "beken/beken_crypto.h"
 #include <string.h>
 #include <stdio.h>
 #include <deque>

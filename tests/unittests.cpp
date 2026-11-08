@@ -6,16 +6,16 @@
  *   unittests        run them all; non-zero exit on any failure
  */
 #include "common.h"
-#include "gpio.h"
-#include "periph.h"
+#include "beken/gpio.h"
+#include "beken/periph.h"
 #include "tuyamcu.h"
-#include "blecore.h"
+#include "beken/blecore.h"
 #include "wpa2.h"
-#include "wifimac.h"
+#include "beken/wifimac.h"
 #include "wifipeer.h"
 #include "netstack.h"
-#include "tuya_config.h"
-#include "pytests.h"
+#include "beken/tuya_config.h"
+#include "beken/pytests.h"
 
 #include <stdio.h>
 #include <string.h>
