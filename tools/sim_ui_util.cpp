@@ -89,6 +89,9 @@ const OptDef OPTION_DEFAULTS[] = {
     {"pcap_path", false, false, ""},
     {"http_gets", false, false, ""},
     {"mqtt_pubs", false, false, ""},
+    {"rom_path", false, false, ""},
+    {"xtal_mhz", false, false, ""},
+    {"psram_mb", false, false, ""},
 };
 const int N_OPTIONS = sizeof(OPTION_DEFAULTS) / sizeof(OPTION_DEFAULTS[0]);
 
@@ -128,6 +131,9 @@ std::wstring latin1_widen(const Bytes &b)
 
 std::string guess_chip(const std::string &path)
 {
+    std::string name = upper(path);
+    if (contains(name, "ESP8266")) return "ESP8266";
+    if (contains(name, "ESP32")) return "ESP32";
     std::string c = periph::chip_from_name(path);
     if (c == "BK7231U" || c == "BK7238" || c == "BK7252N" || c == "BK7252")
         return c;
@@ -863,7 +869,7 @@ void Table::see(const std::string &iid)
 }
 
 /* ------------------------------------------------------------- RealEmu */
-RealEmu::~RealEmu() { delete e_; }
+RealEmu::~RealEmu() { if (owner_) delete owner_; else delete e_; }
 
 bool RealEmu::attach_wifi_peer(const PeerArgs &a, std::string &err)
 {
@@ -901,6 +907,55 @@ bool RealEmu::forward_listening()
     return v.forward_listening;
 }
 
+/* The architecture-neutral adapter never exposes the live CPU to the UI.
+ * Status and GPIO are snapshots, and input is queued to the worker thread. */
+class BackendEmu : public EmuIface {
+    EmulatorBackend *backend_;
+    SimUI *ui_;
+public:
+    BackendEmu(EmulatorBackend *backend, SimUI *ui) : backend_(backend), ui_(ui) {
+        backend_->set_uart_sink(&BackendEmu::uart_sink, this);
+    }
+    ~BackendEmu() { delete backend_; }
+    void run() { backend_->run(true); }
+    void stop() { backend_->stop(); }
+    void pause(bool value) { backend_->pause(value); }
+    bool is_paused() { return backend_->is_paused(); }
+    void feed_uart1(const Bytes &bytes) { backend_->feed_uart(backend_->info().console_uart, bytes); }
+    bool set_gpio_input(int pin, int level, std::string &err) {
+        if (backend_->set_gpio_input(pin, level)) return true;
+        err = "Invalid GPIO pin or input level.";
+        return false;
+    }
+    bool view(EmuView &out) {
+        BackendStatus status = backend_->status();
+        out = EmuView(); out.valid = true;
+        out.last_pc = status.pc; out.insn_count = status.instructions;
+        for (std::map<int, BackendStatus::Gpio>::const_iterator i = status.gpio.begin(); i != status.gpio.end(); ++i)
+            /* Translate into the existing UI's normalized input/output bits;
+             * these values are presentation data, never chip registers. */
+            out.gpio_cfg[i->first] = (i->second.enabled ? 4u : 12u)
+                | (i->second.input ? 1u : 0u) | (i->second.output ? 2u : 0u);
+        return true;
+    }
+    bool run_error(std::string &out) {
+        BackendStatus status = backend_->status();
+        out = status.diagnostic; return status.faulted;
+    }
+    bool elapsed_us(u64 &out) {
+        const BackendStatus status = backend_->status();
+        out = status.elapsed_us;
+        return status.elapsed_us_known;
+    }
+    std::string chip_name() { return backend_->info().chip; }
+    int gpio_pins() { return (int)backend_->info().gpio_pins; }
+    int gpio_slot(int pin) { return pin >= 0 && pin < gpio_pins() ? pin : -1; }
+    static void uart_sink(void *ctx, int port, u8 value) {
+        BackendEmu *self = (BackendEmu *)ctx;
+        SimUI::s_sink(self->ui_, port == (int)self->backend_->info().console_uart ? 1 : 2, value);
+    }
+};
+
 EmuIface *real_build(SimUI *ui, const std::string &path, const BuildOptions &opt, const std::string &key,
                      std::string &err, void *ctx)
 {
@@ -916,11 +971,15 @@ EmuIface *real_build(SimUI *ui, const std::string &path, const BuildOptions &opt
         have_key = k.has;
     }
     std::string e, etype;
-    BekenEmulator *emu = build_emulator(path, opt, have_key ? &k : 0, &e, 0, false, &etype);
-    if (!emu) {
+    EmulatorBackend *backend = build_backend(path, opt, have_key ? &k : 0, &e, 0, false, &etype);
+    if (!backend) {
         /* sim_ui.py shows "%s: %s" % (type(e).__name__, e) */
         err = e.empty() ? std::string("could not load the image") : etype + ": " + e;
         return 0;
+    }
+    BekenEmulator *emu = backend->beken();
+    if (!emu) {
+        return new BackendEmu(backend, ui);
     }
     emu->uart_sink = &SimUI::s_sink;
     emu->uart_sink_ctx = ui;
@@ -928,7 +987,7 @@ EmuIface *real_build(SimUI *ui, const std::string &path, const BuildOptions &opt
     emu->net_sink_ctx = ui;
     emu->net_frame_sink = &SimUI::s_frame_sink;
     emu->net_frame_sink_ctx = ui;
-    return new RealEmu(emu);
+    return new RealEmu(emu, backend);
 }
 
 /* ------------------------------------------------------------- paths */

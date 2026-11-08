@@ -7,6 +7,7 @@
  * dump, an unwritable capture) prints the exception's last traceback line to
  * stderr and exits 1. */
 #include "emulator.h"
+#include "emulator_backend.h"
 #include "periph.h"
 #include "netstack.h"
 #include "wifipeer.h"
@@ -39,7 +40,8 @@ enum ActId {
     A_TUYAMCU, A_TUYAMCU_PID, A_TUYAMCU_RAW, A_TUYAMCU_DP, A_TUYAMCU_INJECT, A_XVR_SELFCLEAR,
     A_BLE_CORE, A_WIFI, A_WIFI_PEER, A_WIFI_SSID, A_WIFI_PASS, A_WIFI_CHANNEL, A_WIFI_MAC,
     A_NET_FORWARD, A_NET_OUT, A_NET_HTTP_GET, A_MQTT_PUBLISH, A_PCAP_IP, A_PCAP, A_SNAPSHOT_SAVE,
-    A_SNAPSHOT_AT, A_SNAPSHOT_LOAD, A_GPIO_INPUT, A_ADC, A_DEEP_SLEEP_WAKE, A_KEY, A_CHIP, A_COUNT
+    A_SNAPSHOT_AT, A_SNAPSHOT_LOAD, A_GPIO_INPUT, A_ADC, A_DEEP_SLEEP_WAKE, A_KEY, A_CHIP, A_ROM,
+    A_XTAL_MHZ, A_PSRAM_MB, A_COUNT
 };
 enum Kind { K_HELP, K_TRUE, K_STORE, K_APPEND, K_POS };
 enum Type { T_STR, T_INT, T_PC };
@@ -76,12 +78,12 @@ void build_parser()
     std::string keys, chips;
     for (int i = 0; KNOWN_KEY_NAMES[i]; i++)
         keys += (i ? ", " : "") + std::string(KNOWN_KEY_NAMES[i]);
-    StrList cn = chip_family_names();
+    StrList cn = backend_chip_names();
     std::sort(cn.begin(), cn.end());
     chips = join(cn, ", ");
 
     add(A_HELP, "-h", "--help", K_HELP, T_STR, 0, "show this help message and exit");
-    add(A_DUMP, 0, 0, K_POS, T_STR, "dump_file", "Path to the raw BK7231 flash dump");
+    add(A_DUMP, 0, 0, K_POS, T_STR, "dump_file", "Path to a Beken or Espressif flash dump");
     add(A_ONLY_UART, "--only-uart", 0, K_TRUE, T_STR, 0, "Only print UART output (suppress MMIO/Trace/Info logs)");
     add(A_TRACE_PC, "--trace-pc", 0, K_APPEND, T_PC, "ADDRESS",
         "Report the first execution of this exact guest code address as an "
@@ -225,8 +227,15 @@ void build_parser()
         "Firmware decryption key: a known name (" + keys + "), 32 hex chars, or base64 of 16 bytes. "
         "Omit for plaintext images (no decryption).");
     add(A_CHIP, "-chip", "--chip", K_STORE, T_STR, "CHIP",
-        "Chip/variant served from the SCTRL id registers: " + chips + ". "
+        "Chip backend: " + chips + ". "
         "Default: BK7231; select BK7231U for its GPIO32..39 bank.");
+    add(A_ROM, "--rom", 0, K_STORE, T_STR, "FILE",
+        "Execute a chip mask-ROM image: an Espressif ROM ELF, or an ESP8266 64 KiB raw ROM binary.");
+    add(A_XTAL_MHZ, "--xtal-mhz", 0, K_STORE, T_INT, "MHZ",
+        "Board crystal frequency: ESP8266 supports 24/26/40 MHz (default 26); "
+        "ESP32 supports 26/40 MHz (default 40).");
+    add(A_PSRAM_MB, "--psram-mb", 0, K_STORE, T_INT, "MIB",
+        "External ESP32 SPI PSRAM capacity: 0 (absent), 2, 4 or 8 MiB. Default: absent.");
 }
 
 /* ------------------------------------------------- textwrap / formatter */
@@ -1151,10 +1160,10 @@ bool parse_mqtt_pubs(const StrList &specs, std::vector<std::pair<std::string, By
 
 /* Ctrl+C: Python's KeyboardInterrupt inside run() prints this and lets
  * run() finish normally (the "Emulation finished" / "Time taken" lines). */
-BekenEmulator *volatile g_running = 0;
+EmulatorBackend *volatile g_running = 0;
 void on_sigint(int)
 {
-    BekenEmulator *emu = g_running;
+    EmulatorBackend *emu = g_running;
     if (emu) {
         out_write("\nEmulation stopped by user.\n");
         out_flush();
@@ -1308,6 +1317,18 @@ int cli_main(int argc, char **argv)
         return value_error(err);
 
     opt.chip = ns.str[A_CHIP];
+    opt.rom_path = ns.str[A_ROM];
+    if (ns.given[A_PSRAM_MB]) {
+        const long long mb=ns.num[A_PSRAM_MB];
+        if(mb!=0 && mb!=2 && mb!=4 && mb!=8)
+            return value_error("--psram-mb must be 0, 2, 4 or 8.");
+        opt.psram_mb=(unsigned)mb;
+    }
+    if (ns.given[A_XTAL_MHZ]) {
+        if (ns.num[A_XTAL_MHZ] <= 0 || ns.num[A_XTAL_MHZ] > 40)
+            return value_error("--xtal-mhz must be a supported positive crystal frequency.");
+        opt.xtal_mhz = (unsigned)ns.num[A_XTAL_MHZ];
+    }
     opt.with_boot = ns.flag[A_WITH_BOOT];
     opt.only_uart = ns.flag[A_ONLY_UART];
     opt.uart1_hex = ns.flag[A_UART1_HEX];
@@ -1325,21 +1346,22 @@ int cli_main(int argc, char **argv)
 
     void (*logf)(const std::string &) = opt.only_uart ? 0 : cli_log;
     std::string etype;
-    BekenEmulator *emu = build_emulator(dump, opt, ns.given[A_KEY] ? &key : 0, &err, logf, true, &etype);
-    if (!emu)
+    EmulatorBackend *backend = build_backend(dump, opt, ns.given[A_KEY] ? &key : 0, &err, logf, true, &etype);
+    if (!backend)
         return etype == "ValueError" ? value_error(err) : uncaught(etype, err);
+    BekenEmulator *emu = backend->beken();
 
     struct Cleanup {
-        BekenEmulator *e;
+        EmulatorBackend *e;
         ~Cleanup()
         {
             g_running = 0;
-            if (e) {
-                e->close_network();
-                delete e;
-            }
+            delete e;
         }
-    } cleanup = {emu};
+    } cleanup = {backend};
+
+    if (!emu && (!ns.str[A_SNAPSHOT_SAVE].empty() || !ns.str[A_SNAPSHOT_LOAD].empty()))
+        return value_error("Snapshots are not implemented by the ESP backend yet.");
 
     if (want_peer) {
         /* The offline TLS peer needs the image's PSK to authenticate its
@@ -1405,14 +1427,14 @@ int cli_main(int argc, char **argv)
         emu->arm_snapshot(ns.str[A_SNAPSHOT_SAVE], is_num, huge ? ~0ull : (u64)atn, at);
     }
 
-    if (emu->flash_empty()) {
+    if (emu && emu->flash_empty()) {
         /* Python: emu.setup() -> mu.mem_map(SPI_FLASH_BASE, 0) raises */
-        delete emu;
         return uncaught("unicorn.unicorn_py3.unicorn.UcError", "Invalid argument (UC_ERR_ARG)");
     }
-    emu->setup();
+    if (!backend->setup(&err))
+        return value_error(err);
     for (size_t i = 0; i < ns.trace_pcs.size(); i++)
-        emu->trace_pc(ns.trace_pcs[i]);
+        backend->trace_pc(ns.trace_pcs[i]);
     if (!ns.str[A_SNAPSHOT_LOAD].empty()) {
         const std::string &path = ns.str[A_SNAPSHOT_LOAD];
         int e = 0;
@@ -1424,10 +1446,10 @@ int cli_main(int argc, char **argv)
         if (!emu->load_snapshot(path, &e2))
             return value_error(e2);
     }
-    g_running = emu;
+    g_running = backend;
     signal(SIGINT, on_sigint);
-    emu->run();
+    backend->run(true);
     signal(SIGINT, SIG_DFL);
     g_running = 0;
-    return 0;
+    return !emu && backend->status().faulted ? 1 : 0;
 }

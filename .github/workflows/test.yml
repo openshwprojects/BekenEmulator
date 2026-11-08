@@ -38,6 +38,22 @@ jobs:
     - name: Firmware image loader self-tests
       run: ./unittests image_loader
 
+    - name: Backend, Xtensa and shared/ESP8266 hardware self-tests
+      run: >-
+        ./unittests backends esp_image xtensa esp_machine esp_timing
+        esp_clocked_devices esp8266_radio esp_wifi_acceptance esp_spi
+        esp_exceptions esp_uart esp_resets esp_gpio rom_image
+        esp_acceptance esp8266_timers esp8266_watchdog esp8266_wdev
+        esp8266_mac_timers esp8266_wifi_dma esp_wifi esp_rf_math
+
+    # Temporarily disabled during ESP32 bring-up. Keep these suites separate
+    # so they can be restored without changing shared or ESP8266 coverage.
+    # - name: ESP32-specific hardware self-tests
+    #   run: >-
+    #     ./unittests esp32_mmio esp_interrupts esp_eri esp32_rng esp_multicore esp_memory
+    #     esp_psram esp32_frc esp_aes esp_cache_faults esp_rtc_io
+    #     esp32_analog esp32_phy
+
     - name: BLE core register model self-tests (no firmware)
       run: ./unittests blecore
 

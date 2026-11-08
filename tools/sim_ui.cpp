@@ -269,6 +269,7 @@ SimUI::SimUI(const std::string &initial_image, const std::string &settings_path_
 
     build(start);
     apply_settings(settings, !saved.empty() && same_file(start, saved));
+    chip_changed();
     refresh_tuya_config(false);
     drop_enabled = enable_drop();
     options_changed();
@@ -315,7 +316,7 @@ void SimUI::build(const std::string &initial_image)
     var_image.set(path_isfile(initial_image) || path_isdir(initial_image) ? initial_image : std::string());
     btn_browse = mk_button("Browse...", root);
     lbl_chip = mk_label("chip", root);
-    StrList chips = chip_family_names();
+    StrList chips = backend_chip_names();
     std::sort(chips.begin(), chips.end());
     cmb_chip = mk_combo(root, chips);
     bind(var_chip, Var::COMBO, cmb_chip, false);
@@ -560,7 +561,31 @@ void SimUI::build_config()
         cfg_rows.push_back(r);                             \
     } while (0)
 
-    CHECK_ROW(0, "boot", "boot ROM", "Start in the bootloader at 0x0 instead of jumping into the app.");
+    CHECK_ROW(0, "boot", "bootloader", "Start with the flash bootloader before entering the application.");
+    r = CfgRow();
+    r.group = 0;
+    r.w0 = mk_label("silicon ROM image", p);
+    HWND rom = mk_edit(p);
+    bind(*optv("rom_path"), Var::EDIT, rom, true);
+    r.c1.push_back(std::make_pair(rom, 240));
+    r.note = L::note(this, p, "Optional ESP ROM ELF or ESP8266 64 KiB raw ROM. Its instructions take precedence over built-in ROM services.");
+    cfg_rows.push_back(r);
+    r = CfgRow();
+    r.group = 0;
+    r.w0 = mk_label("crystal MHz", p);
+    HWND xtal = mk_edit(p);
+    bind(*optv("xtal_mhz"), Var::EDIT, xtal, true);
+    r.c1.push_back(std::make_pair(xtal, 80));
+    r.note = L::note(this, p, "Optional board crystal: ESP8266 24/26/40, ESP32 26/40. Blank uses the chip default.");
+    cfg_rows.push_back(r);
+    r = CfgRow();
+    r.group = 0;
+    r.w0 = mk_label("external PSRAM MiB", p);
+    HWND psram = mk_edit(p);
+    bind(*optv("psram_mb"), Var::EDIT, psram, true);
+    r.c1.push_back(std::make_pair(psram, 80));
+    r.note = L::note(this, p, "ESP32 board SPI RAM: 2, 4 or 8 MiB. Blank or 0 means no external PSRAM.");
+    cfg_rows.push_back(r);
     CHECK_ROW(0, "xvr_selfclear", "RF calibration self-clear",
               "Clear the radio calibration bit at 0x9000f8. Many stock dumps stall early without it.");
     CHECK_ROW(0, "blecore", "force BLE core",
@@ -1624,6 +1649,8 @@ void SimUI::on_command(HWND c, int code)
                 options_changed();
             if (v == &var_frame_target)
                 refresh_details();
+            if (v == &var_chip)
+                chip_changed();
             return;
         }
         if ((v->kind == Var::EDIT || v->kind == Var::MULTI) && code == EN_CHANGE) {

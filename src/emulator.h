@@ -13,6 +13,7 @@
 #include "gpio.h"
 #include "tuyamcu.h"
 #include "beken_crypto.h"
+#include "emulator_options.h"
 
 /* Forward declarations for the optional peripheral models. */
 class BleCore;
@@ -36,7 +37,6 @@ static const u64 SLOW_TICK_INSNS = 10000;
 static const u64 SLOW_TICK_MS = 2;
 static const u64 FAST_TICK_INSNS = 1000;
 static const u64 CHUNK_DEVICE_INSNS = FAST_TICK_INSNS;
-static const u64 CONSOLE_RX_HOLDOFF_INSNS = 2000000;
 
 struct FlashState {
     u32 addr;
@@ -184,32 +184,6 @@ struct SimState {
     int camera_width, camera_height;
 
     SimState();
-};
-
-struct BuildOptions {
-    std::string chip;    /* family name */
-    bool with_boot;
-    bool only_uart;
-    bool uart1_hex;
-    Bytes uart1_rx;
-    u64 uart1_rx_delay;
-    bool uart1_rx_delay_set;
-    bool tuyamcu;
-    std::string tuyamcu_pid;
-    bool tuyamcu_raw;
-    std::vector<std::pair<int, tuyamcu::DpSpec> > tuyamcu_dps;
-    std::vector<Bytes> tuyamcu_injects;
-    bool xvr_selfclear;
-    int ble_core; /* -1 auto, 0 off, 1 on */
-    bool wifi;
-    std::map<int, int> gpio_inputs;
-    std::map<int, int> adc_inputs;
-    StrList deep_sleep_wakes;
-    BuildOptions()
-        : chip("BK7231"), with_boot(false), only_uart(false), uart1_hex(false), uart1_rx_delay(CONSOLE_RX_HOLDOFF_INSNS),
-          uart1_rx_delay_set(false), tuyamcu(false), tuyamcu_raw(false), xvr_selfclear(false), ble_core(-1), wifi(false)
-    {
-    }
 };
 
 class BekenEmulator {

@@ -22,6 +22,7 @@
 #include <commctrl.h>
 
 #include "emulator.h"
+#include "emulator_backend.h"
 #include "periph.h"
 #include "tuya_config.h"
 #include "json.h"
@@ -122,7 +123,8 @@ bool tuya_extract_real(const std::string &path, TuyaCfg &out, std::string &err);
 
 /* ----------------------------------------------------------- run config */
 struct RunCfg {
-    std::string chip, key;
+    std::string chip, key, rom_path;
+    unsigned xtal_mhz, psram_mb;
     bool boot, xvr_selfclear, blecore, tuyamcu;
     std::string tuyamcu_pid; /* "" == None */
     bool tuyamcu_raw;
@@ -149,7 +151,7 @@ struct RunCfg {
     int cf_pin, cf1_pin, sel_pin, sel_lv;
     std::map<int, int> adc_inputs;
     RunCfg()
-        : boot(false), xvr_selfclear(false), blecore(false), tuyamcu(false), tuyamcu_raw(false),
+        : xtal_mhz(0), psram_mb(0), boot(false), xvr_selfclear(false), blecore(false), tuyamcu(false), tuyamcu_raw(false),
           wifi(false), net_out(false), has_ssid(false), has_pass(false), has_pcap(false),
           tuya_legacy_identity_psk(false), has_uart1_rx(false), has_meter(false), meter_v(0),
           meter_a(0), meter_w(0), cf_pin(-1), cf1_pin(-1), sel_pin(-1), sel_lv(1) {}
@@ -198,6 +200,8 @@ public:
     virtual bool meter_values(double out[3]) { (void)out; return false; }
     /* getattr(emu, "state", None): false when there is none */
     virtual bool view(EmuView &out) { (void)out; return false; }
+    /* True when the backend supplies a clock including idle/time skips. */
+    virtual bool elapsed_us(u64 &out) { (void)out; return false; }
     virtual u64 uart1_rx_delay() { return 0; }
     virtual size_t uart1_rx_queued() { return 0; }
     virtual u64 reset_count() { return 0; }
@@ -208,6 +212,7 @@ public:
     virtual std::string chip_variant() { return ""; }
     virtual std::string chip_name() { return ""; }
     virtual int gpio_pins() { return has_extended_gpio() ? 40 : periph::PIN_COUNT; }
+    virtual int gpio_slot(int pin) { return periph::gpio_slot(pin, gpio_pins()); }
     virtual bool has_adc_input() { return false; }
     virtual void set_adc_input(int ch, int val) { (void)ch; (void)val; }
 };
@@ -215,7 +220,7 @@ public:
 /* The real BekenEmulator behind EmuIface. */
 class RealEmu : public EmuIface {
 public:
-    explicit RealEmu(BekenEmulator *e) : e_(e) {}
+    explicit RealEmu(BekenEmulator *e, EmulatorBackend *owner = 0) : e_(e), owner_(owner) {}
     ~RealEmu();
     BekenEmulator *emu() { return e_; }
     bool attach_wifi_peer(const PeerArgs &a, std::string &err);
@@ -247,6 +252,7 @@ public:
     void set_adc_input(int ch, int val) { e_->set_adc_input(ch, val); }
 private:
     BekenEmulator *e_;
+    EmulatorBackend *owner_;
 };
 
 /* ----------------------------------------------------------- widgets */
@@ -476,6 +482,7 @@ public:
     void select_tab(int idx);
     bool refresh_tuya_config(bool force, const std::string &path_in = std::string(), bool have_path = false);
     void options_changed();
+    void chip_changed();
     std::string summary_text();
     bool collect_cfg(RunCfg &cfg, std::string &err);
     void browse_pcap();

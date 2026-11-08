@@ -6,6 +6,7 @@
 #include "sim_ui.h"
 #include "netstack.h"
 #include "beken_crypto.h"
+#include "esp_test_images.h"
 
 #include <richedit.h>
 #include <stdio.h>
@@ -29,6 +30,14 @@ static int g_n = 0;
     } while (0)
 
 static bool has(const std::string &s, const std::string &sub) { return s.find(sub) != std::string::npos; }
+
+struct BackendUiWorker {
+    EmuIface &emu;
+    Thread thread;
+    explicit BackendUiWorker(EmuIface &value) : emu(value) {}
+    ~BackendUiWorker() { emu.stop(); thread.join(); }
+    static void run(void *context) { ((BackendUiWorker *)context)->emu.run(); }
+};
 
 /* ------------------------------------------------------------ frame kit */
 static Bytes ipv4(const Bytes &src, const Bytes &dst, int proto, const Bytes &payload)
@@ -246,12 +255,13 @@ public:
     bool stopped, ext, bk7252, has_meter_attr, meter_set, wake_ok, listening;
     std::string variant;
     double meter[3], set_vals[3];
-    u64 rx_delay;
+    u64 rx_delay, clock_us;
+    bool has_clock;
     std::vector<std::pair<std::string, int> > wakes;
     std::vector<std::pair<int, int> > adc_pushed;
     ViewEmu()
         : stopped(false), ext(false), bk7252(false), has_meter_attr(false), meter_set(false), wake_ok(false),
-          listening(false), rx_delay(0)
+          listening(false), rx_delay(0), clock_us(0), has_clock(false)
     {
         meter[0] = 230.0;
         meter[1] = 1.5;
@@ -272,6 +282,7 @@ public:
         return true;
     }
     bool has_extended_gpio() { return ext; }
+    bool elapsed_us(u64 &out) { out = clock_us; return has_clock; }
     bool is_bk7252() { return bk7252; }
     std::string chip_variant() { return variant; }
     std::string chip_name() { return !variant.empty() ? variant : (bk7252 ? "BK7252" : (ext ? "BK7231U" : "BK7231")); }
@@ -631,6 +642,67 @@ static int selftests_body()
           "the Config defaults attach Wi-Fi with real outbound access");
     CHECK(guess_chip("OpenBK7231U_QIO.bin") == "BK7231U" && guess_chip("OpenBK7231T_QIO.bin") == "BK7231",
           "chip guessing distinguishes U's extended GPIO bank from generic BK7231");
+    CHECK(guess_chip("W:/FlashDumps/ESP8266/Tuya.bin") == "ESP8266"
+          && guess_chip("W:/FlashDumps/ESP32/Sonoff-NSPanel.bin") == "ESP32",
+          "chip guessing recognizes ESP dump directories");
+    ui.optv("rom_path")->set("esp32_rev0_rom.elf");
+    CHECK(ui.collect_cfg(cfg, err) && cfg.rom_path == "esp32_rev0_rom.elf",
+          "the silicon ROM path reaches the backend run configuration");
+    ui.optv("rom_path")->set("");
+    std::string previous_chip = ui.var_chip.get();
+    ui.var_chip.set("ESP8266");
+    ui.optv("xtal_mhz")->set("24");
+    CHECK(ui.collect_cfg(cfg, err) && cfg.xtal_mhz == 24,
+          "board crystal frequency reaches the ESP8266 run configuration");
+    ui.var_chip.set("ESP32");
+    CHECK(!ui.collect_cfg(cfg, err) && has(err, "Crystal frequency"),
+          "ESP32 rejects the ESP8266-only 24 MHz crystal");
+    ui.optv("xtal_mhz")->set("40");
+    CHECK(ui.collect_cfg(cfg, err) && cfg.xtal_mhz == 40,
+          "ESP32 accepts its 40 MHz board crystal");
+    ui.optv("psram_mb")->set("8");
+    CHECK(ui.collect_cfg(cfg,err) && cfg.psram_mb==8,
+          "external SPI PSRAM capacity reaches the ESP32 configuration");
+    ui.var_chip.set("ESP8266");
+    CHECK(!ui.collect_cfg(cfg,err) && has(err,"PSRAM"),
+          "external PSRAM is rejected on the ESP8266 backend");
+    ui.var_chip.set(previous_chip);
+    ui.optv("xtal_mhz")->set("");
+    ui.optv("psram_mb")->set("");
+    for (unsigned chip = 0; chip < 2; ++chip) {
+        BuildOptions options; options.chip = chip ? "ESP32" : "ESP8266"; options.only_uart = true;
+        options.gpio_inputs[4] = 1;
+        std::string path = make_temp_file("ui_esp_", ".bin");
+        CHECK(write_file(path, esp_test::uart_image(chip != 0)), "write the synthetic ESP UART image");
+        EmuIface *esp = real_build(&ui, path, options, "(none)", err, 0);
+        remove_file(path);
+        CHECK(esp != 0 && esp->chip_name() == options.chip, "the GUI factory selects the ESP backend");
+        ui.out1.clear(); ui.out2.clear();
+        esp->setup();
+        EmuView view;
+        {
+            BackendUiWorker worker(*esp);
+            CHECK(worker.thread.start(BackendUiWorker::run, &worker), "start the real ESP UI worker");
+            double deadline = mono_time() + 5;
+            while (mono_time() < deadline) {
+                esp->view(view);
+                if (view.insn_count >= 4) break;
+                sleep_ms(1);
+            }
+            CHECK(worker.thread.is_alive() && view.insn_count == 4,
+                  "an idle ESP CPU keeps the GUI worker available for input");
+            esp->stop();
+            CHECK(worker.thread.join(5000), "Stop releases the idle ESP UI worker");
+        }
+        CHECK(esp->view(view) && view.insn_count == 4 && (view.gpio_cfg[4] & 1),
+              "the GUI gets executed instruction and GPIO snapshots from ESP");
+        CHECK(ui.out1 == "A" && ui.out2.empty(), "ESP UART0 reaches the primary GUI console");
+        CHECK(esp->gpio_slot(chip ? 39 : 16) == (chip ? 39 : 16),
+              "ESP GPIO numbers remain native through the GUI adapter");
+        CHECK(!esp->run_error(err), "the synthetic ESP firmware halts without a backend error");
+        delete esp;
+        ui.out1.clear(); ui.out2.clear();
+    }
     CHECK(enabled(ui.opt_text["http_gets"]) && !enabled(widgets_of(ui, "pcap")[0])
               && !enabled(widgets_of(ui, "tuyamcu")[0]),
           "default Wi-Fi fields are active while capture and TuyaMCU fields stay gated");
@@ -1382,6 +1454,18 @@ static int selftests_body()
         ui.emu = &sl;
         ui.periph_key_valid = false;
         ui.refresh_periph();
+        ui.update_state();
+        CHECK(has(ui.var_state.get(), strf("~%.1f s guest", (double)sl.v.insn_count / GUEST_SECOND_INSNS)),
+              "backends without an explicit clock retain the instruction-based estimate");
+        sl.has_clock = true; sl.clock_us = 7250000;
+        ui.update_state();
+        CHECK(has(ui.var_state.get(), "7.2 s guest") && !has(ui.var_state.get(), "~7.2 s guest"),
+              "a backend clock displays real guest time independent of instruction count");
+        sl.clock_us = 0;
+        ui.update_state();
+        CHECK(has(ui.var_state.get(), "0.0 s guest") && !has(ui.var_state.get(), "~0.0 s guest"),
+              "a known zero guest clock does not fall back to the instruction estimate");
+        sl.has_clock = false;
         ui.update_state();
         CHECK(ui.var_sleep.get() == "DEEP SLEEP #1 (RTC=28800s, GPIO=[P16:HIGH, P20:LOW])"
                   && startswith(ui.var_state.get(), "DEEP SLEEP") && enabled(ui.btn_wake_rtc) && enabled(ui.btn_wake_gpio)

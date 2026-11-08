@@ -36,6 +36,9 @@ bool aes_gcm_decrypt(const Bytes &key, const Bytes &nonce, const Bytes &aad,
 /* Hashes: one-shot helpers returning the raw digest. */
 Bytes sha1(const Bytes &data);
 Bytes sha256(const Bytes &data);
+/* One SHA-256 compression block. State is eight native words; block is
+ * exactly 64 bytes in message order. No padding or length is added. */
+void sha256_compress(u32 state[8], const u8 block[64]);
 Bytes md5(const Bytes &data);
 
 /* Incremental SHA-256, for the running TLS transcript hash. */

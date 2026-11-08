@@ -208,6 +208,26 @@ bool SimUI::collect_cfg(RunCfg &cfg, std::string &err)
     bool tuyamcu = o["tuyamcu"] == "1";
     cfg.chip = var_chip.get();
     cfg.key = var_key.get();
+    cfg.rom_path = strip(o["rom_path"]);
+    if (!strip(o["psram_mb"]).empty()) {
+        long long mb=0;
+        if(!parse_int(strip(o["psram_mb"]),10,mb) || (mb!=0 && mb!=2 && mb!=4 && mb!=8)
+            || (mb && cfg.chip!="ESP32")) {
+            err="External PSRAM requires ESP32 and a size of 0, 2, 4 or 8 MiB.";
+            return false;
+        }
+        cfg.psram_mb=(unsigned)mb;
+    }
+    if (!strip(o["xtal_mhz"]).empty()) {
+        long long mhz = 0;
+        if (!parse_int(strip(o["xtal_mhz"]), 10, mhz)
+            || (mhz != 26 && mhz != 40 && !(cfg.chip == "ESP8266" && mhz == 24))
+            || (cfg.chip != "ESP8266" && cfg.chip != "ESP32")) {
+            err = "Crystal frequency: ESP8266 supports 24, 26 or 40 MHz; ESP32 supports 26 or 40 MHz.";
+            return false;
+        }
+        cfg.xtal_mhz = (unsigned)mhz;
+    }
     cfg.boot = o["boot"] == "1";
     cfg.xvr_selfclear = o["xvr_selfclear"] == "1";
     cfg.blecore = o["blecore"] == "1";
@@ -357,7 +377,7 @@ bool SimUI::load_settings(JsonValue &out)
 
 static bool chip_known(const std::string &c)
 {
-    StrList names = chip_family_names();
+    StrList names = backend_chip_names();
     return std::find(names.begin(), names.end(), c) != names.end();
 }
 
@@ -473,10 +493,21 @@ void SimUI::on_drop(const StrList &all)
     load_image(paths[0], true);
 }
 
+void SimUI::chip_changed()
+{
+    if (var_chip.get() == "ESP32" || var_chip.get() == "ESP8266") {
+        var_key.set("(none)");
+        set_option_bool("wifi", false);
+        set_option_bool("blecore", false);
+        set_option_bool("xvr_selfclear", false);
+    }
+}
+
 void SimUI::load_image(const std::string &path, bool run, const std::string &chip, const std::string &key)
 {
     var_image.set(path);
     var_chip.set(!chip.empty() ? chip : guess_chip(path));
+    chip_changed();
     if (!key.empty())
         var_key.set(key);
     refresh_tuya_config(false, path, true);
@@ -869,7 +900,7 @@ bool SimUI::gpio_config(int pin, u32 &raw)
 {
     if (!emu)
         return false;
-    int slot = periph::gpio_slot(pin, emu->gpio_pins());
+    int slot = emu->gpio_slot(pin);
     EmuView v;
     if (!emu->view(v))
         return false;
@@ -1305,7 +1336,18 @@ void SimUI::refresh_periph()
         if (chip.empty())
             chip = emu->chip_name();
     }
-    periph::DecodedState data = periph::decode_state(st.gpio_cfg, st.pwm_regs, chip, &st.i2c_frames, &st.i2c_last_on,
+    periph::DecodedState data;
+    if (chip == "ESP32" || chip == "ESP8266") {
+        data.present = !st.gpio_cfg.empty();
+        data.raw = st.gpio_cfg;
+        for (std::map<int, u32>::const_iterator i = st.gpio_cfg.begin(); i != st.gpio_cfg.end(); ++i) {
+            periph::GpioRow row;
+            row.pin = i->first; row.state = "live";
+            row.detail = (i->second & 8) ? strf("INPUT = %u", i->second & 1)
+                : strf("OUTPUT = %u", (i->second >> 1) & 1);
+            data.gpio.push_back(row);
+        }
+    } else data = periph::decode_state(st.gpio_cfg, st.pwm_regs, chip, &st.i2c_frames, &st.i2c_last_on,
                                                      &st.ws2812_spi, 0, pairs, st.bl0942_polls, mv,
                                                      st.saradc_channel, st.saradc_conversions, st.saradc_reads,
                                                      &st.adc_samples, st.saradc_last_raw, &adc_in);
@@ -1608,6 +1650,10 @@ void SimUI::on_run_real()
     }
     run_tuya_config = tuya_config;
     run_image = path;
+    bool esp = cfg.chip == "ESP32" || cfg.chip == "ESP8266";
+    set_window_text(grp_u1, esp ? "UART0 - command console / firmware log" : "UART1 - MCU link / command console");
+    set_window_text(grp_u2, esp ? "UART1 / UART2 - additional serial output" : "UART2 - firmware debug log");
+    set_window_text(grp_send, esp ? "send to UART0" : "send to UART1");
     if (has_pending_uart1_rx) {
         cfg.has_uart1_rx = true;
         cfg.uart1_rx = pending_uart1_rx;
@@ -1695,6 +1741,9 @@ void SimUI::worker(const std::string &path, const RunCfg &cfg)
     std::string err;
     BuildOptions opt;
     opt.chip = cfg.chip;
+    opt.rom_path = cfg.rom_path;
+    opt.xtal_mhz = cfg.xtal_mhz;
+    opt.psram_mb = cfg.psram_mb;
     opt.with_boot = cfg.boot;
     opt.only_uart = true;
     opt.uart1_hex = false;
@@ -2016,9 +2065,12 @@ void SimUI::update_state()
         what = "DEEP SLEEP";
     else
         what = "running";
-    var_state.set(strf("%s   %s insns (%.0fk/s)   ~%.1f s guest   WDT resets %d   %.0f s wall   "
+    u64 guest_us = 0;
+    const bool has_guest_clock = emu->elapsed_us(guest_us);
+    const double guest_seconds = has_guest_clock ? guest_us / 1e6 : (double)insns / GUEST_SECOND_INSNS;
+    var_state.set(strf("%s   %s insns (%.0fk/s)   %s%.1f s guest   WDT resets %d   %.0f s wall   "
                        "PC 0x%08x   TX u1 %ld / u2 %ld   RX queued %d   console %s",
-                       what.c_str(), fmt_insns().c_str(), rate / 1000.0, (double)insns / (double)GUEST_SECOND_INSNS,
+                       what.c_str(), fmt_insns().c_str(), rate / 1000.0, has_guest_clock ? "" : "~", guest_seconds,
                        (int)resets, now - started_at, st.last_pc, tx_count[1], tx_count[2],
                        (int)emu->uart1_rx_queued(), ready ? "ready" : "not listening yet"));
     update_gpio_control();

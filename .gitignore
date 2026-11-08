@@ -20,6 +20,8 @@ unittests
 unittests.exe
 self_test
 self_test.exe
+esp_firmware
+esp_firmware.exe
 make_obk_config
 make_obk_config.exe
 sim_ui

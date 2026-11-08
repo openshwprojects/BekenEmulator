@@ -395,7 +395,7 @@ static const u32 K256[64] = {
     0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
     0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2};
 
-static void sha256_block(u32 h[8], const u8 *p)
+void sha256_compress(u32 h[8], const u8 p[64])
 {
     u32 w[64];
     for (int i = 0; i < 16; i++)
@@ -456,7 +456,7 @@ void Sha256::update(const u8 *data, size_t len)
         data += take;
         len -= take;
         if (buf_len_ == 64) {
-            sha256_block(h_, buf_);
+            sha256_compress(h_, buf_);
             buf_len_ = 0;
         }
     }
@@ -474,13 +474,13 @@ Bytes Sha256::digest() const
     if (bl > 56) {
         while (bl < 64)
             buf[bl++] = 0;
-        sha256_block(h, buf);
+        sha256_compress(h, buf);
         bl = 0;
     }
     while (bl < 56)
         buf[bl++] = 0;
     wr64be(buf + 56, total);
-    sha256_block(h, buf);
+    sha256_compress(h, buf);
     Bytes out;
     for (int i = 0; i < 8; i++)
         out += p32be(h[i]);

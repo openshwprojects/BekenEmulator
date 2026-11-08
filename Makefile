@@ -53,6 +53,43 @@ export TMP := $(CURDIR)/$(BUILD)/tmp
 export TEMP := $(CURDIR)/$(BUILD)/tmp
 export TMPDIR := $(CURDIR)/$(BUILD)/tmp
 
+# The same ESP core is linked into front ends and the firmware acceptance
+# runner. Register new devices once here so both use identical hardware.
+ESP_CORE_SRC := \
+    src/esp_image.cpp \
+    src/xtensa_cpu.cpp \
+    src/esp_machine.cpp \
+    src/esp_gpio.cpp \
+    src/esp_multicore.cpp \
+    src/esp_clocked_devices.cpp \
+    src/esp_reset.cpp \
+    src/esp_eri.cpp \
+    src/esp8266_mmio.cpp \
+    src/esp8266_timers.cpp \
+    src/esp8266_watchdog.cpp \
+    src/esp8266_wdev.cpp \
+    src/esp8266_mac_timers.cpp \
+    src/esp8266_wifi_dma.cpp \
+    src/esp8266_radio.cpp \
+    src/esp_wifi.cpp \
+    src/esp_rf_math.cpp \
+    src/esp_frc_timers.cpp \
+    src/esp32_mmio.cpp \
+    src/esp32_analog.cpp \
+    src/esp32_phy.cpp \
+    src/esp32_rng.cpp \
+    src/esp32_cache.cpp \
+    src/esp32_rtc_io.cpp \
+    src/esp_aes.cpp \
+    src/rom_image.cpp \
+    src/esp_rom.cpp \
+    src/esp_spi.cpp \
+    src/esp_psram.cpp \
+    src/esp32_psram_mmu.cpp \
+    src/esp_uart.cpp \
+    src/esp32_interrupts.cpp
+ESP_CORE_OBJ := $(patsubst src/%.cpp,$(BUILD)/%.o,$(ESP_CORE_SRC))
+
 # Library objects shared by every executable (every src/*.cpp except main.cpp).
 LIB_SRC := \
     src/common.cpp \
@@ -80,6 +117,10 @@ LIB_SRC := \
     src/emulator_mmio2.cpp \
     src/emulator_mmio3.cpp \
     src/emulator_build.cpp \
+    src/emulator_backend.cpp \
+    src/beken_backend.cpp \
+    src/esp_backend.cpp \
+    $(ESP_CORE_SRC) \
     src/cli.cpp
 
 LIB_OBJ := $(patsubst src/%.cpp,$(BUILD)/%.o,$(LIB_SRC))
@@ -89,8 +130,9 @@ UNIT := unittests$(EXE)
 SELFTEST := self_test$(EXE)
 MKOBK := make_obk_config$(EXE)
 SIMUI := sim_ui$(EXE)
+ESPTEST := esp_firmware$(EXE)
 
-.PHONY: all cli tests tools check clean dirs
+.PHONY: all cli tests tools check check-esp-dumps clean dirs
 
 cli: dirs $(CLI)
 
@@ -113,7 +155,14 @@ $(CLI): $(LIB_OBJ) $(BUILD)/main.o
 
 $(UNIT): $(LIB_OBJ) $(BUILD)/unittests.o $(BUILD)/test_chips.o $(BUILD)/test_timers.o \
         $(BUILD)/test_gpio_button.o $(BUILD)/test_gpio_emulator.o $(BUILD)/test_image_loader.o \
-        $(BUILD)/test_watchdog.o
+        $(BUILD)/test_watchdog.o $(BUILD)/test_backends.o $(BUILD)/test_esp_image.o \
+        $(BUILD)/test_xtensa.o $(BUILD)/test_esp_machine.o $(BUILD)/test_rom_image.o \
+        $(BUILD)/test_esp32_mmio.o $(BUILD)/test_esp_timing.o $(BUILD)/test_esp_clocked_devices.o $(BUILD)/test_esp8266_radio.o $(BUILD)/test_esp_wifi_acceptance.o $(BUILD)/test_esp_spi.o \
+        $(BUILD)/test_esp_interrupts.o $(BUILD)/test_esp_exceptions.o $(BUILD)/test_esp_uart.o \
+        $(BUILD)/test_esp_eri.o $(BUILD)/test_esp32_rng.o $(BUILD)/test_esp_multicore.o $(BUILD)/test_esp_resets.o \
+        $(BUILD)/test_esp_psram.o $(BUILD)/test_esp_gpio.o $(BUILD)/test_esp_memory.o $(BUILD)/test_esp_acceptance.o \
+        $(BUILD)/test_esp8266_timers.o $(BUILD)/test_esp32_frc.o \
+        $(BUILD)/test_esp8266_watchdog.o $(BUILD)/test_esp_aes.o $(BUILD)/test_esp_cache_faults.o $(BUILD)/test_esp8266_wdev.o $(BUILD)/test_esp8266_mac_timers.o $(BUILD)/test_esp_rtc_io.o $(BUILD)/test_esp8266_wifi_dma.o $(BUILD)/test_esp_wifi.o $(BUILD)/test_esp32_analog.o $(BUILD)/test_esp32_phy.o $(BUILD)/test_esp_rf_math.o
 	$(CXX) $(CXXFLAGS) $(STATIC) $^ -o $@ $(LDFLAGS) $(PLATFORM_LIBS)
 
 $(BUILD)/testcase_data.o: tests/testcase_data.cpp | dirs
@@ -130,7 +179,11 @@ SIMUI_OBJ := $(BUILD)/sim_ui.o $(BUILD)/sim_ui_util.o $(BUILD)/sim_ui_logic.o $(
 $(SIMUI): $(LIB_OBJ) $(SIMUI_OBJ)
 	$(CXX) $(CXXFLAGS) $(STATIC) $^ -o $@ $(LDFLAGS) $(GUI_LDFLAGS) $(PLATFORM_LIBS)
 
-tests: dirs $(UNIT) $(SELFTEST)
+$(ESPTEST): $(BUILD)/common.o $(BUILD)/platform.o $(BUILD)/crypto_prims.o \
+            $(ESP_CORE_OBJ) $(BUILD)/esp_firmware.o
+	$(CXX) $(CXXFLAGS) $(STATIC) $^ -o $@ $(LDFLAGS) $(PLATFORM_LIBS)
+
+tests: dirs $(UNIT) $(SELFTEST) $(ESPTEST)
 
 ifeq ($(IS_WINDOWS),1)
 tools: dirs $(MKOBK) $(SIMUI)
@@ -141,7 +194,11 @@ endif
 check: $(UNIT)
 	./$(UNIT)
 
+# Uses ESP_FLASH_DUMPS or ../FlashDumps. Missing or mismatched samples fail.
+check-esp-dumps: $(ESPTEST)
+	./$(ESPTEST)
+
 -include $(wildcard $(BUILD)/*.d)
 
 clean:
-	rm -rf $(BUILD) $(CLI) $(UNIT) $(SELFTEST) $(MKOBK) $(SIMUI)
+	rm -rf $(BUILD) $(CLI) $(UNIT) $(SELFTEST) $(ESPTEST) $(MKOBK) $(SIMUI)
