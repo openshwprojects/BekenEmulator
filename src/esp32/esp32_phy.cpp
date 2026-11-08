@@ -71,6 +71,14 @@ const Register controls[] = {
     {0x3ff4609c,0x00004014,2}, /* bit2/4 also used by phy_close_pa */
     {0x3ff4604c,0x0000ff00,2},
     {0x3ff46048,0x0000ff00,2}, /* tx_paon_set front-end delay */
+    {0x3ff46030,0xffffffff,2}, /* set_pbus_mem bank range configuration */
+    {0x3ff46034,0xffffffff,2},
+    {0x3ff46038,0xffffffff,2},
+    {0x3ff4603c,0xffffffff,2},
+    {0x3ff46040,0xffffffff,2},
+    {0x3ff46044,0xffffffff,2},
+    {0x3ff45038,0xffffffff,2}, /* set_pbus_mem table word and address/strobe */
+    {0x3ff45034,0x0003ff00,2},
     {0x3ff460c0,0x00000080,2}, /* ram_en_pwdet front-end route enable */
     /* set_chan_freq_hw_init programs upper16 to0x0c80 after preserving
      * lower16. No active MAC request or status is accepted here. */
