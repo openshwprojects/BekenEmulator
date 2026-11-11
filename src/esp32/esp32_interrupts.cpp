@@ -15,7 +15,7 @@ bool timer_address(u32 address,unsigned &group,u32 &offset) {
     else if (address>=0x3ff60000u && address<0x3ff60100u) group=1;
     else return false;
     offset=address-(0x3ff5f000u+group*0x1000);
-    return !(offset&3) && (offset<=0x44 || (offset>=0x98 && offset<=0xa4));
+    return !(offset&3) && (offset<=0x44 || (offset>=0x70 && offset<=0xa4));
 }
 bool matrix_address(u32 address,unsigned &core,unsigned &source) {
     if (address>=MATRIX0 && address<MATRIX1) { core=0; source=(address-MATRIX0)/4; }
@@ -48,7 +48,11 @@ void Esp32Interrupts::attach_cpu(unsigned core,XtensaCpu *cpu) {
 void Esp32Interrupts::reset() {
     legacy_timers_.reset();
     memset(timers_,0,sizeof(timers_));
-    for(unsigned group=0;group<2;++group) for(unsigned i=0;i<2;++i) timers_[group][i].config=0x60002000;
+    for(unsigned group=0;group<2;++group) {
+        for(unsigned i=0;i<2;++i) timers_[group][i].config=0x60002000;
+        timers_[group][2].config=0xffff0000u;
+        lact_rtc_[group]=0;
+    }
     memset(matrix_,16,sizeof(matrix_)); // documented reset route: internal timer2, no external input
     memset(sources_,0,sizeof(sources_));
     memset(group_modes_,0,sizeof(group_modes_));
@@ -95,7 +99,9 @@ void Esp32Interrupts::set_core_source(unsigned core,unsigned source,bool active)
 void Esp32Interrupts::update_sources() {
     bool changed=false;
     for(unsigned group=0;group<2;++group) for(unsigned index=0;index<4;++index) {
-        const u32 conf=index<2?timers_[group][index].config:u32(group_modes_[group][index])<<11;
+        const u32 conf=index<2?timers_[group][index].config:
+                       index==3?timers_[group][2].config:
+                       u32(group_modes_[group][index])<<11;
         const bool pending=(raw_[group]&enabled_[group]&(1u<<index))!=0;
         const unsigned level_source=14+group*4+index,edge_source=58+group*4+index;
         const bool level=pending && (conf&LEVEL),edge=pending && (conf&EDGE);
@@ -135,8 +141,9 @@ void Esp32Interrupts::update_legacy_sources(unsigned events) {
 
 void Esp32Interrupts::advance(u64 now) {
     update_legacy_sources(legacy_timers_.advance(now));
-    for(unsigned group=0;group<2;++group) for(unsigned index=0;index<2;++index) {
+    for(unsigned group=0;group<2;++group) for(unsigned index=0;index<3;++index) {
         Timer &timer=timers_[group][index];
+        const unsigned irq_bit=index==2?3:index;
         const u64 elapsed=now>=timer.timestamp?now-timer.timestamp:0;
         timer.timestamp=now;
         if(!(timer.config&ENABLE)) continue;
@@ -145,10 +152,11 @@ void Esp32Interrupts::advance(u64 now) {
         timer.phase+=elapsed%div;
         whole+=timer.phase/div; timer.phase%=div;
         const bool up=(timer.config&UP)!=0;
-        const u64 distance=up?timer.alarm-timer.counter:timer.counter-timer.alarm;
+        const u64 distance=(index==2 && up && timer.alarm<=timer.counter)?0:
+                           (up?timer.alarm-timer.counter:timer.counter-timer.alarm);
         if((timer.config&ALARM) && distance<=whole) {
             timer.config&=~ALARM;
-            raw_[group]|=1u<<index;
+            raw_[group]|=1u<<irq_bit;
             if(timer.config&RELOAD) {
                 timer.counter=timer.load;
                 whole-=distance;
@@ -177,8 +185,10 @@ bool Esp32Interrupts::read(u32 address,u64 now,u32 &value) {
         value=offset==0x98?enabled_[group]:offset==0x9c?raw_[group]:offset==0xa0?(enabled_[group]&raw_[group]):0;
         return true;
     }
-    Timer &timer=timers_[group][offset/0x24];
-    switch(offset%0x24) {
+    if(offset==0x74) { value=lact_rtc_[group]; return true; }
+    Timer &timer=timers_[group][offset>=0x70?2:(offset/0x24)];
+    const u32 rel=offset>=0x70?(offset==0x70?0:(offset-0x74)):(offset%0x24);
+    switch(rel) {
     case 0: value=timer.config; break;
     case 4: value=u32(timer.captured); break;
     case 8: value=u32(timer.captured>>32); break;
@@ -207,12 +217,21 @@ bool Esp32Interrupts::write(u32 address,u64 now,u32 value) {
         if(offset==0x98) enabled_[group]=value&15;
         else if(offset==0xa4) raw_[group]&=~value;
         else return false;
+    } else if(offset==0x74) {
+        lact_rtc_[group]=value;
     } else {
-        Timer &timer=timers_[group][offset/0x24];
-        switch(offset%0x24) {
+        Timer &timer=timers_[group][offset>=0x70?2:(offset/0x24)];
+        const u32 rel=offset>=0x70?(offset==0x70?0:(offset-0x74)):(offset%0x24);
+        switch(rel) {
         case 0:
             if((timer.config^value)&0x1fffe000u) timer.phase=0;
             timer.config=value&0xfffffc00u;
+            if(offset>=0x70 && (timer.config&(ENABLE|ALARM))==(ENABLE|ALARM) &&
+               ((timer.config&UP)?(timer.counter>=timer.alarm):(timer.counter<=timer.alarm))) {
+                timer.config&=~ALARM;
+                raw_[group]|=1u<<3;
+                if(timer.config&RELOAD) timer.counter=timer.load;
+            }
             break;
         case 0xc: timer.captured=timer.counter; break;
         case 0x10: set_word(timer.alarm,value,false); break;
@@ -253,12 +272,14 @@ bool Esp32Interrupts::next_event_ticks(u64 &ticks) const {
             ticks=delta;found=true;
         }
     }
-    for(unsigned group=0;group<2;++group) for(unsigned index=0;index<2;++index) {
+    for(unsigned group=0;group<2;++group) for(unsigned index=0;index<3;++index) {
         const Timer &timer=timers_[group][index];
-        if((timer.config&(ENABLE|ALARM))!=(ENABLE|ALARM) || !(enabled_[group]&(1u<<index))) continue;
-        if(!((timer.config&LEVEL) && source_can_wake(14+group*4+index)) &&
-           !((timer.config&EDGE) && source_can_wake(58+group*4+index))) continue;
-        const u64 distance=(timer.config&UP)?timer.alarm-timer.counter:timer.counter-timer.alarm;
+        const unsigned irq_bit=index==2?3:index;
+        if((timer.config&(ENABLE|ALARM))!=(ENABLE|ALARM) || !(enabled_[group]&(1u<<irq_bit))) continue;
+        if(!((timer.config&LEVEL) && source_can_wake(14+group*4+irq_bit)) &&
+           !((timer.config&EDGE) && source_can_wake(58+group*4+irq_bit))) continue;
+        const u64 distance=(index==2 && (timer.config&UP) && timer.alarm<=timer.counter)?0:
+                           ((timer.config&UP)?timer.alarm-timer.counter:timer.counter-timer.alarm);
         const unsigned div=divider(timer.config);
         if(distance>~u64(0)/div) continue; // distant 64-bit wrap cannot fit our time horizon
         u64 delta=distance*div;

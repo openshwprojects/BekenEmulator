@@ -42,6 +42,16 @@ public:
         return true;
     }
     bool set_gpio_input(int pin, int level) { return machine_->set_gpio_input(pin, level); }
+    void attach_wifi_peer(const std::string &role, const std::string &ssid, int channel,
+                          const Bytes &peer_mac, const std::string &passphrase,
+                          const std::vector<std::pair<int, int> > &forwards, bool net_out,
+                          const std::string &pcap, const StrList &http_gets,
+                          const std::vector<std::pair<std::string, Bytes> > &mqtt_pubs,
+                          const std::vector<Bytes> &tls_psks, bool tuya_legacy_identity_psk) {
+        machine_->attach_wifi_peer(role, ssid, channel, peer_mac, passphrase, forwards, net_out,
+                                   pcap, http_gets, mqtt_pubs, tls_psks, tuya_legacy_identity_psk);
+    }
+    void set_pcap_ip(const std::string &path) { machine_->set_pcap_ip(path); }
 };
 }
 

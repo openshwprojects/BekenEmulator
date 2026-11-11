@@ -35,6 +35,7 @@ public:
     explicit Esp8266WifiDma(XtensaBus &bus);
     void reset();
     void set_air(Air *air){air_=air;}
+    Air *air() const{return air_;}
     void set_ack_timeout_us(unsigned value){ack_timeout_us_=value;}
     static bool handles(u32 address);
     bool read(const Registers &registers,u32 address,u32 &value) const;

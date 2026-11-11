@@ -495,7 +495,7 @@ Bytes sha256(const Bytes &data)
 }
 
 /* ==================================================================== MD5 */
-Bytes md5(const Bytes &data)
+static void md5_transform(u32 buf[4], const u32 in[16])
 {
     static const u32 K[64] = {
         0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,
@@ -511,51 +511,110 @@ Bytes md5(const Bytes &data)
         5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,
         4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,
         6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21};
-    u32 a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
-    Bytes msg = data;
-    u64 ml = (u64)data.size() * 8;
-    msg += (char)0x80;
-    while (msg.size() % 64 != 56)
-        msg += '\0';
-    msg += p64le(ml);
-    for (size_t off = 0; off < msg.size(); off += 64) {
-        u32 M[16];
-        for (int i = 0; i < 16; i++)
-            M[i] = rd32le(msg.data() + off + i * 4);
-        u32 A = a0, B = b0, C = c0, D = d0;
-        for (int i = 0; i < 64; i++) {
-            u32 F;
-            int g;
-            if (i < 16) {
-                F = (B & C) | (~B & D);
-                g = i;
-            } else if (i < 32) {
-                F = (D & B) | (~D & C);
-                g = (5 * i + 1) % 16;
-            } else if (i < 48) {
-                F = B ^ C ^ D;
-                g = (3 * i + 5) % 16;
-            } else {
-                F = C ^ (B | ~D);
-                g = (7 * i) % 16;
-            }
-            F = F + A + K[i] + M[g];
-            A = D;
-            D = C;
-            C = B;
-            B = B + rol32(F, S[i]);
+    u32 A = buf[0], B = buf[1], C = buf[2], D = buf[3];
+    for (int i = 0; i < 64; i++) {
+        u32 F;
+        int g;
+        if (i < 16) {
+            F = (B & C) | (~B & D);
+            g = i;
+        } else if (i < 32) {
+            F = (D & B) | (~D & C);
+            g = (5 * i + 1) % 16;
+        } else if (i < 48) {
+            F = B ^ C ^ D;
+            g = (3 * i + 5) % 16;
+        } else {
+            F = C ^ (B | ~D);
+            g = (7 * i) % 16;
         }
-        a0 += A;
-        b0 += B;
-        c0 += C;
-        d0 += D;
+        F = F + A + K[i] + in[g];
+        A = D;
+        D = C;
+        C = B;
+        B = B + rol32(F, S[i]);
     }
-    Bytes out;
-    out += p32le(a0);
-    out += p32le(b0);
-    out += p32le(c0);
-    out += p32le(d0);
-    return out;
+    buf[0] += A;
+    buf[1] += B;
+    buf[2] += C;
+    buf[3] += D;
+}
+
+void md5_init(Md5Context *ctx)
+{
+    ctx->buf[0] = 0x67452301;
+    ctx->buf[1] = 0xefcdab89;
+    ctx->buf[2] = 0x98badcfe;
+    ctx->buf[3] = 0x10325476;
+    ctx->bits[0] = 0;
+    ctx->bits[1] = 0;
+    memset(ctx->in, 0, 64);
+}
+
+void md5_update(Md5Context *ctx, const u8 *data, size_t len)
+{
+    u32 t = ctx->bits[0];
+    if ((ctx->bits[0] = t + ((u32)len << 3)) < t)
+        ctx->bits[1]++;
+    ctx->bits[1] += (u32)(len >> 29);
+
+    u32 off = (t >> 3) & 0x3f;
+    if (off) {
+        u8 *p = ctx->in + off;
+        size_t part = 64 - off;
+        if (len < part) {
+            memcpy(p, data, len);
+            return;
+        }
+        memcpy(p, data, part);
+        u32 in32[16];
+        for (int i = 0; i < 16; ++i) in32[i] = rd32le(ctx->in + i * 4);
+        md5_transform(ctx->buf, in32);
+        data += part;
+        len -= part;
+    }
+    while (len >= 64) {
+        u32 in32[16];
+        for (int i = 0; i < 16; ++i) in32[i] = rd32le(data + i * 4);
+        md5_transform(ctx->buf, in32);
+        data += 64;
+        len -= 64;
+    }
+    if (len) memcpy(ctx->in, data, len);
+}
+
+void md5_final(u8 digest[16], Md5Context *ctx)
+{
+    unsigned count = (ctx->bits[0] >> 3) & 0x3f;
+    u8 *p = ctx->in + count;
+    *p++ = 0x80;
+    count = 64 - 1 - count;
+    if (count < 8) {
+        memset(p, 0, count);
+        u32 in32[16];
+        for (int i = 0; i < 16; ++i) in32[i] = rd32le(ctx->in + i * 4);
+        md5_transform(ctx->buf, in32);
+        memset(ctx->in, 0, 56);
+    } else {
+        memset(p, 0, count - 8);
+    }
+    wr32le(ctx->in + 56, ctx->bits[0]);
+    wr32le(ctx->in + 60, ctx->bits[1]);
+    u32 in32[16];
+    for (int i = 0; i < 16; ++i) in32[i] = rd32le(ctx->in + i * 4);
+    md5_transform(ctx->buf, in32);
+    for (int i = 0; i < 4; ++i) wr32le(digest + i * 4, ctx->buf[i]);
+    memset(ctx, 0, sizeof(*ctx));
+}
+
+Bytes md5(const Bytes &data)
+{
+    Md5Context ctx;
+    md5_init(&ctx);
+    md5_update(&ctx, (const u8 *)data.data(), data.size());
+    u8 dig[16];
+    md5_final(dig, &ctx);
+    return Bytes((const char *)dig, 16);
 }
 
 /* ================================================================== HMAC */

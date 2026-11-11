@@ -1,5 +1,6 @@
 #include "esp/esp_spi.h"
 #include "esp32/esp_psram.h"
+#include <cstdio>
 
 /* ESP32 soc/spi_reg.h and ESP8266 esp8266/spi_register.h define the same
  * command engine with different data windows and transfer-length fields.
@@ -262,8 +263,18 @@ Result command(esp::Chip chip,std::map<u32,u32> &regs,Bytes &flash,
         flash.replace(start,length,length,'\xff');
         regs[STATUS]&=~2u;return OK;
     }
+    case 0x5a: {
+        // Read SFDP: 24-bit address, dummy byte, then data.
+        // For standard flash without SFDP or fallback, fill buffer with 0xff.
+        for (unsigned i = 0; i < rx; ++i) set_byte(regs, buffer, rx_offset + i, 0xff);
+        return OK;
+    }
     case 0xb9:regs[POWER_DOWN]=1;return OK;
-    default:return error(err,"unsupported SPI NOR opcode");
+    default: {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "unsupported SPI NOR opcode 0x%02x (cmd=0x%08x)", (unsigned)opcode, (unsigned)get(regs,base+0x24,0x70000000));
+        return error(err, msg);
+    }
     }
 }
 }

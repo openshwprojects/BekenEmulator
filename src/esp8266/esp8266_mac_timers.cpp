@@ -49,7 +49,7 @@ void advance(Registers &regs,u64 now)
     /* Clock origins change only when software loads or gates the counter.
      * The scheduler calls this after every instruction: an idle device must
      * neither allocate map entries nor continuously rewrite its counter. */
-    if(!(get(regs,CONTROL)&ENABLE) || !get(regs,ARMED))return;
+    if(!get(regs,ARMED) || !(get(regs,CONTROL)&ENABLE))return;
     const u64 delta=elapsed(regs,now);
     const unsigned phase=get(regs,PHASE)+unsigned(delta%80);
     const u64 increments=delta/80+phase/80;
@@ -62,7 +62,7 @@ void advance(Registers &regs,u64 now)
 
 bool read(Registers &regs,u32 address,u64 now,u32 &value)
 {
-    if(!handles(address))return false;
+    if(!handles(address)) return false;
     advance(regs,now);
     unsigned phase=0;
     if(address==COUNT_LO)value=(u32)counter(regs,now,phase);
@@ -93,7 +93,7 @@ bool write(Registers &regs,u32 address,u32 value,u64 now)
 
 bool next_event_ticks(const Registers &regs,u64 now,u64 &ticks)
 {
-    if(!(get(regs,CONTROL)&ENABLE) || !get(regs,ARMED))return false;
+    if(!get(regs,ARMED) || !(get(regs,CONTROL)&ENABLE))return false;
     unsigned phase=0;const u64 count=counter(regs,now,phase);
     const u64 distance=forward_distance(count,pair(regs,ALARM_LO));
     if(distance>~u64(0)/80)return false;

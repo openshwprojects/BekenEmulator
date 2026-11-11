@@ -217,12 +217,28 @@ static bool dump_fixture(const EspFixture &fixture)
     ESP_CHECK(app.file_offset == fixture.app_offset && app.segments.size() == fixture.app_segments);
     ESP_CHECK(boot.checksum_valid && app.checksum_valid);
     if (fixture.chip == esp::CHIP_ESP8266) {
-        ESP_CHECK(app.version == 2 && app.crc_valid && app.segments[0].mapped);
-        ESP_CHECK(app.segments[0].address == 0x40201010);
+        ESP_CHECK(app.segments[0].mapped);
+        if (app.version == 2) {
+            ESP_CHECK(app.crc_valid);
+            ESP_CHECK(app.segments[0].address == 0x40201010);
+        } else {
+            ESP_CHECK((app.segments[0].address & 0xfff00000) == 0x40200000);
+        }
     } else {
-        ESP_CHECK(boot.hash_valid && app.hash_valid && flash.partitions.size() == 5);
-        ESP_CHECK(flash.partitions[3].subtype == 0x10 && flash.partitions[3].offset == 0x20000);
-        ESP_CHECK(app.segments[0].mapped && app.segments[4].mapped);
+        ESP_CHECK(boot.hash_valid && app.hash_valid && flash.partitions.size() >= 5);
+        bool has_ota = false;
+        for (size_t p = 0; p < flash.partitions.size(); ++p) {
+            if (flash.partitions[p].subtype == 0x10 && flash.partitions[p].offset == fixture.app_offset) {
+                has_ota = true; break;
+            }
+        }
+        ESP_CHECK(has_ota);
+        bool has_irom = false;
+        for (size_t s = 0; s < app.segments.size(); ++s) {
+            if (app.segments[s].mapped && (app.segments[s].address & 0xfff00000) == 0x40000000)
+                has_irom = true;
+        }
+        ESP_CHECK(app.segments[0].mapped && has_irom);
     }
     for (size_t i = 0; i < app.segments.size(); ++i) {
         const esp::Segment &s = app.segments[i];

@@ -217,6 +217,22 @@ bool EspMachine::load_rom(const std::vector<RomSegment> &input_segments, std::st
     if (chip_ == esp::CHIP_ESP32 && !lx6_rom_stores(segments,error)) return false;
     if (chip_ == esp::CHIP_ESP32) lx6_flash_handoff(segments,cpu_mhz_);
     const bool core_views=chip_==esp::CHIP_ESP32 && lx6_private_rom_views(segments);
+    /* Remove default placeholder ROM vectors if an incoming segment provides them. */
+    for (size_t k = 0; k < segments.size(); ++k) {
+        if (segments[k].initialize_ram) continue;
+        u32 seg_base = segments[k].address;
+        u32 seg_size = (u32)segments[k].data.size();
+        for (size_t j = 0; j < regions_.size(); ) {
+            if (!regions_[j].writable && !regions_[j].flash_mapped &&
+                regions_[j].base == 0x40000000 && regions_[j].bytes.size() <= 0x400 &&
+                (u64)seg_base < (u64)regions_[j].base + regions_[j].bytes.size() &&
+                (u64)regions_[j].base < (u64)seg_base + seg_size) {
+                regions_.erase(regions_.begin() + j);
+            } else {
+                ++j;
+            }
+        }
+    }
     /* Validate the entire mapping before changing machine state. */
     std::vector<Region> mapped;
     for (size_t i = 0; i < segments.size(); ++i) {

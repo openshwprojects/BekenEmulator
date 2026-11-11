@@ -1388,10 +1388,10 @@ int cli_main(int argc, char **argv)
             || !parse_mqtt_pubs(ns.list[A_MQTT_PUBLISH], mqtt_pubs, err))
             return value_error(err);
         long long ch = ns.num[A_WIFI_CHANNEL];
-        emu->attach_wifi_peer(ns.given[A_WIFI_PEER] ? ns.str[A_WIFI_PEER] : "auto", ns.str[A_WIFI_SSID],
-                              (int)std::max(-0x7FFFFFFFLL, std::min(ch, 0x7FFFFFFFLL)), mac, ns.str[A_WIFI_PASS],
-                              forwards, ns.flag[A_NET_OUT], ns.str[A_PCAP], ns.list[A_NET_HTTP_GET], mqtt_pubs,
-                              tls_psks, tuya_legacy);
+        backend->attach_wifi_peer(ns.given[A_WIFI_PEER] ? ns.str[A_WIFI_PEER] : "auto", ns.str[A_WIFI_SSID],
+                                  (int)std::max(-0x7FFFFFFFLL, std::min(ch, 0x7FFFFFFFLL)), mac, ns.str[A_WIFI_PASS],
+                                  forwards, ns.flag[A_NET_OUT], ns.str[A_PCAP], ns.list[A_NET_HTTP_GET], mqtt_pubs,
+                                  tls_psks, tuya_legacy);
         if (ns.given[A_PCAP]) {
             /* the peer opens --pcap itself (Python: open(pcap, "wb") in
              * WifiPeer, an OSError main() does not catch) */
@@ -1413,7 +1413,7 @@ int cli_main(int argc, char **argv)
             return uncaught(type, msg);
         }
         fclose(f);
-        emu->set_pcap_ip(ns.str[A_PCAP_IP]);
+        backend->set_pcap_ip(ns.str[A_PCAP_IP]);
     }
     if (!ns.str[A_SNAPSHOT_SAVE].empty()) {
         const std::string &at = ns.str[A_SNAPSHOT_AT];

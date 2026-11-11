@@ -154,7 +154,7 @@ XtensaResult XtensaCpu::float_operation(u32 insn,u32 &next,bool &jump) {
             case 5: fr_[r]=reg(s); break;
             case 6: fr_[r]=fr_[s]^0x80000000u; break;
             case 7: case 8: case 9: case 10: case 11: case 14: break;
-            case 12: result=sqrtf(x); write_float=true; break;
+            case 12: result=sqrtf(x); if(x<0.0f)feraiseexcept(FE_INVALID); write_float=true; break;
             case 13: { volatile float divisor=bits_float(fr_[r]); result=x/divisor; write_float=true; break; }
             default: return XTENSA_INVALID;
             }
@@ -289,7 +289,7 @@ XtensaResult XtensaCpu::data_write(u32 addr, unsigned size, u32 value) {
 void XtensaCpu::call(unsigned increment, u32 return_pc) {
     pending_call_ = increment;
     if (increment) {
-        sr_[XT_SR_PS] = (sr_[XT_SR_PS] & ~0x30000u) | (increment << 16);
+        if (windowed_) sr_[XT_SR_PS] = (sr_[XT_SR_PS] & ~0x30000u) | (increment << 16);
         set_reg(increment * 4, (return_pc & 0x3fffffffu) | (increment << 30));
     } else set_reg(0, return_pc);
 }
@@ -469,14 +469,22 @@ XtensaResult XtensaCpu::execute(u32 insn, unsigned length, u32 &next, bool &jump
                     if (t != 0 && t != 1 && t != 2 && t != 3 && t != 8 && t != 12 && t != 13 && t != 15) return XTENSA_INVALID;
                     break; /* Uncached bus: sync/cache ordering is immediate. */
                 case 3:
-                    if (t == 0 && (s == 0 || s == 2)) { if (!s) sr_[XT_SR_PS] &= ~PS_EXCM; next = sr_[s ? XT_SR_DEPC : XT_SR_EPC1]; }
-                    else if (t == 0 && (s == 4 || s == 5) && windowed_) {
+                    if (t == 0 && (s == 0 || s == 2)) {
+                        if (!s) {
+                            sr_[XT_SR_PS] &= ~PS_EXCM;
+                            if (windowed_ && (sr_[XT_SR_PS] & PS_WOE)) pending_call_ = (sr_[XT_SR_PS] >> 16) & 3;
+                        }
+                        next = sr_[s ? XT_SR_DEPC : XT_SR_EPC1];
+                    } else if (t == 0 && (s == 4 || s == 5) && windowed_) {
                         if (s == 4) sr_[XT_SR_WINDOWSTART] &= ~(1u << sr_[XT_SR_WINDOWBASE]);
                         else sr_[XT_SR_WINDOWSTART] |= 1u << sr_[XT_SR_WINDOWBASE];
                         sr_[XT_SR_WINDOWBASE] = (sr_[XT_SR_PS] >> 8) & 15;
                         sr_[XT_SR_PS] &= ~PS_EXCM; next = sr_[XT_SR_EPC1];
-                    } else if (t == 1 && s >= 2 && s <= 7) { sr_[XT_SR_PS] = sr_[192+s]; next = sr_[XT_SR_EPC1+s-1]; }
-                    else return XTENSA_INVALID;
+                    } else if (t == 1 && s >= 2 && s <= 7) {
+                        sr_[XT_SR_PS] = sr_[192+s];
+                        if (windowed_ && (sr_[XT_SR_PS] & PS_WOE)) pending_call_ = (sr_[XT_SR_PS] >> 16) & 3;
+                        next = sr_[XT_SR_EPC1+s-1];
+                    } else return XTENSA_INVALID;
                     jump = true; break;
                 case 4: return XTENSA_BREAK;
                 case 5: if (s || t) return XTENSA_INVALID; sr_[XT_SR_EXCCAUSE] = 1; return XTENSA_EXCEPTION;

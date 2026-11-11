@@ -35,7 +35,19 @@ const Register configuration[] = {
      * asserted until explicitly released; clocks and SoC reset are separate.
      * The Wi-Fi baseband reset also clears its decoded receiver controls. */
     {0x3ff000d0,0,0x7ff},
-    {0x3ff00440,0x100,0x111}, {0x3ff00468,0x100,0x111}, /* CPU record controls */
+    {0x3ff000d4,0x000000ff,0x00001fff}, /* DPORT_BT_LPCK_DIV_INT_REG */
+    {0x3ff000d8,0x02001001,0x0fffffff}, /* DPORT_BT_LPCK_DIV_FRAC_REG */
+    {0x3ff00440,0x100,0x111}, {0x3ff00444,0,0xffffffff},
+    {0x3ff00448,0,0xffffffff}, {0x3ff0044c,0,0xffffffff},
+    {0x3ff00450,0,0xffffffff}, {0x3ff00454,0,0xffffffff},
+    {0x3ff00458,0,0xffffffff}, {0x3ff0045c,0,0xffffffff},
+    {0x3ff00460,0,0xffffffff}, {0x3ff00464,0,0xffffffff},
+    {0x3ff00468,0x100,0x111}, {0x3ff0046c,0,0xffffffff},
+    {0x3ff00470,0,0xffffffff}, {0x3ff00474,0,0xffffffff},
+    {0x3ff00478,0,0xffffffff}, {0x3ff0047c,0,0xffffffff},
+    {0x3ff00480,0,0xffffffff}, {0x3ff00484,0,0xffffffff},
+    {0x3ff00488,0,0xffffffff}, {0x3ff0048c,0,0xffffffff},
+    {0x3ff00490,0,0xffffffff}, /* CPU record controls */
     {0x3ff005a0,0,0x0fffffff}, /* per-core cache invalid-access interrupt enables */
     {0x3ff48000,0x1c492000,0x7fffffcf}, /* oscillator/PLL power controls */
     {0x3ff4800c,0,0}, {0x3ff48010,0,0}, {0x3ff48014,0,0},
@@ -66,10 +78,45 @@ const Register configuration[] = {
     /* Normal powered operation: DET stays low. Enabling detection, reset or
      * RF/flash shutdown does not itself cause a voltage-drop event. */
     {0x3ff480d4,0x13ff0000,0x7fffc000}, /* brownout threshold, wait and action enables */
+    {0x3ff48478,0,0xffffffff},          /* RTCIO_HALL_SENS_REG */
+    {0x3ff48808,0x000a000a,0xffffffff}, /* SENS_SAR_MEAS_WAIT1_REG */
+    {0x3ff4880c,0x00090203,0xffffffff}, /* SENS_SAR_READ_CTRL_REG */
+    {0x3ff48810,0x0707338f,0xffffffff}, /* SENS_SAR_MEAS_CTRL_REG */
+    {0x3ff48814,0,0xffffffff},          /* SENS_SAR_READ_STATUS2_REG */
+    {0x3ff4882c,0x00020002,0xffffffff}, /* SENS_SAR_MEAS_WAIT2_REG */
+    {0x3ff48834,0xffffffff,0xffffffff}, /* SENS_SAR_ATTEN1_REG */
+    {0x3ff48838,0,0xffffffff},          /* SENS_SAR_START_FORCE_REG */
+    {0x3ff4883c,0,0x3fffffff},          /* SENS_SAR_SLAVE_ADDR1_REG */
+    {0x3ff48844,0x60000000,0xffffffff}, /* SENS_SAR_SLAVE_ADDR3_REG (TSENS_OUT=128, TSENS_RDY=1) */
+    {0x3ff4884c,0x00060000,0xffffffff}, /* SENS_SAR_TSENS_CTRL_REG */
+    {0x3ff48854,0,0xffffffff},          /* SENS_SAR_MEAS_START1_REG */
+    {0x3ff48858,0x02041000,0x0fffffff}, /* SENS_SAR_TOUCH_CTRL1_REG */
+    {0x3ff48878,0,0xffffffff},          /* SENS_SAR_TOUCH_OUT3_REG */
+    {0x3ff48884,0x00400800,0x7fffffff}, /* SENS_SAR_TOUCH_CTRL2_REG */
+    {0x3ff4888c,0x3fffffff,0x3fffffff}, /* SENS_SAR_TOUCH_ENABLE_REG */
+    {0x3ff48890,0,0xffffffff},          /* SENS_SAR_MEAS_START2_REG */
+    {0x3ff48894,0x00041000,0xffffffff}, /* SENS_SAR_TOUCH_CTRL1_REG */
+    {0x3ff48898,0,0x03ffffff},          /* SENS_SAR_DAC_CTRL1_REG */
+    {0x3ff4889c,0x03000000,0x03ffffff}, /* SENS_SAR_DAC_CTRL2_REG */
+    {0x3ff488a0,0x00000003,0x0007ffff}, /* SENS_SAR_MEAS_CTRL2_REG */
+    {0x3ff488fc,0x01605180,0x0fffffff}, /* SENS_SARDATE_REG */
+    /* DR_REG_BT_BASE (Bluetooth controller baseband and control registers) */
+    {0x3ff51000,0,0xffffffff}, {0x3ff51014,0,0xffffffff},
+    {0x3ff51020,0,0xffffffff}, {0x3ff51028,0,0xffffffff},
+    {0x3ff5103c,0,0xffffffff}, {0x3ff51040,0,0xffffffff},
+    {0x3ff51044,0,0xffffffff}, {0x3ff5104c,0,0xffffffff},
+    {0x3ff51058,0,0xffffffff}, {0x3ff5105c,0,0xffffffff},
+    {0x3ff5106c,0,0xffffffff}, {0x3ff51084,0,0xffffffff},
+    {0x3ff51098,0,0xffffffff}, {0x3ff5109c,0,0xffffffff},
+    {0x3ff510a0,0,0xffffffff}, {0x3ff510f8,0,0xffffffff},
+    {0x3ff51100,0,0xffffffff}, {0x3ff51104,0,0xffffffff},
+    {0x3ff5110c,0,0xffffffff}, {0x3ff51110,0,0xffffffff},
     {0x3ff5a0f8,0,0xffffffff}, {0x3ff5a0fc,0,0xffff},
     {0x3ff5a110,0,3}, {0x3ff5a118,0,0xffffffff},
+    {0x3ff5a1fc,0x16041400,0xffffffff}, /* EFUSE_DATE_REG */
     {0x3ff66000,0x2000,0x3fff}, /* SYSCON system-clock source divider */
     {0x3ff66004,39,0xff}, {0x3ff66008,79,0xff}, {0x3ff6600c,11,0xff},
+    {0x3ff66010,0x000f0000,0xffffffff}, /* SYSCON_SARADC_CTRL_REG */
     {0x3ff6607c,0x96042000,0x7fffffff} /* date plus revision-3 ECO bit */
 };
 
@@ -267,6 +314,8 @@ bool EspMachine::esp32_mmu_read(u32 address, unsigned size, u32 &value,
 
 bool EspMachine::esp32_mmio_read(u32 address, u32 &value)
 {
+    if(address>=0x60008800 && address<=0x600088ff)address=address-0x60008800+0x3ff48800;
+    if(address>=0x60011000 && address<=0x60011fff)address=address-0x60011000+0x3ff51000;
     /* Espressif libpp hal_now and lmacAdjustTimestamp use this 32-bit MAC
      * microsecond counter. PHY code uses its APB alias. Derive both views
      * from continuous simulated time; neither reads nor CPU clock changes
@@ -301,16 +350,24 @@ bool EspMachine::esp32_mmio_read(u32 address, u32 &value)
     if (address >= 0x3ff03080 && address <= 0x3ff030bc && !(address&3)) {
         value = 0; return true; /* four engines' command/busy words, synchronous work */
     }
-    if (address == 0x3ff5f068 || address == 0x3ff60068 ||
-        address == 0x3ff5f06c || address == 0x3ff6006c) {
-        u32 config = address & ~4u;
-        u32 state = 0xffff1100 + (config == 0x3ff60068 ? 16 : 0);
-        u64 deadline = stored(registers_,state) | ((u64)stored(registers_,state+4)<<32);
-        if (deadline && elapsed_us() >= deadline) {
-            registers_[config] |= 0x8000;
-            registers_[config+4] = stored(registers_,state+8);
+    u32 timg_base = (address >= 0x3ff60000 && address < 0x3ff600c0 && !(address & 3)) ? 0x3ff60000 :
+                    (address >= 0x3ff5f000 && address < 0x3ff5f0c0 && !(address & 3)) ? 0x3ff5f000 : 0;
+    if (timg_base) {
+        u32 offset = address - timg_base;
+        if (offset == 0x68 || offset == 0x6c) {
+            u32 config = timg_base + 0x68;
+            u32 state = 0xffff1100 + (config == 0x3ff60068 ? 16 : 0);
+            u64 deadline = stored(registers_,state) | ((u64)stored(registers_,state+4)<<32);
+            if (deadline && elapsed_us() >= deadline) {
+                registers_[config] |= 0x8000;
+                registers_[config+4] = stored(registers_,state+8);
+            }
+            value = stored(registers_,address,offset == 0x68 ? 0x13000 : 0);
+            return true;
         }
-        value = stored(registers_,address,address == config ? 0x13000 : 0);
+        if (offset == 0x70) { value = stored(registers_, address, 0xffff0000); return true; }
+        if (offset == 0x90) { value = stored(registers_, address, 0x16040300); return true; }
+        value = stored(registers_, address, 0);
         return true;
     }
     if (address >= 0x3ff10000 && address < 0x3ff14000 && !(address & 3)) {
@@ -362,10 +419,86 @@ bool EspMachine::esp32_mmio_read(u32 address, u32 &value)
 
 bool EspMachine::esp32_mmio_write(u32 address, u32 value)
 {
+    if(address>=0x60008800 && address<=0x600088ff)address=address-0x60008800+0x3ff48800;
+    if(address>=0x60011000 && address<=0x60011fff)address=address-0x60011000+0x3ff51000;
+    if((address==0x3ff4e060 || address==0x6000e060) && (value&~3u)==0) {
+        registers_[0x3ff4e060]=value;
+        return true;
+    }
     const esp32_analog::Result analog=esp32_analog::write(registers_,address,value,diagnostic_,elapsed_us(),xtal_frequency()*1000);
     if(analog!=esp32_analog::UNHANDLED)return analog==esp32_analog::OK;
     const esp32_phy::Result phy=esp32_phy::write(registers_,address,value,diagnostic_,elapsed_us());
-    if(phy!=esp32_phy::UNHANDLED)return phy==esp32_phy::OK;
+    if(phy!=esp32_phy::UNHANDLED) {
+        if(phy!=esp32_phy::OK)return false;
+        const u32 canon=address>=0x60000000?address-0x60000000+0x3ff40000:address;
+        if(canon==0x3ff73c4c) {
+            registers_[0x3ff73c48]=stored(registers_,0x3ff73c48)&~value;
+            registers_[0x3ff73c4c]=0;
+        }
+        if(canon==0x3ff73cc4) {
+            registers_[0x3ff73cc8]=stored(registers_,0x3ff73cc8)&~value;
+            registers_[0x3ff73cc0]=stored(registers_,0x3ff73cc0)&~value;
+            registers_[0x3ff73cc4]=0;
+        }
+        if(canon==0x3ff73088 && value>=0x3ffae000u && value<0x40000000u) {
+            registers_[0x3ff7308c]=value;
+            registers_[0xffff3010u]=stored(registers_,0xffff3010u)+1;
+        } else if(canon==0x3ff73084) {
+            if((value&0x80000001u)==0x80000001u) {
+                registers_[0x3ff73084]=value&~1u;
+                if(stored(registers_,0x3ff7308c)<0x3ffae000u) {
+                    const u32 last=stored(registers_,0x3ff73090);
+                    u32 next=0;
+                    if(last>=0x3ffae000u && last<0x40000000u && read(last+8,4,next,false) &&
+                       next>=0x3ffae000u && next<0x40000000u)
+                        registers_[0x3ff7308c]=next;
+                }
+            }
+            registers_[0xffff3010u]=stored(registers_,0xffff3010u)+1;
+        } else if(canon>=0x3ff73ce8 && canon<=0x3ff73d20 && ((0x3ff73d20-canon)&7)==0 &&
+                  (value&0xc0000000u)==0xc0000000u) {
+            const unsigned q=(0x3ff73d20-canon)/8;
+            const u32 desc=0x3ff00000u|(value&0x000fffffu);
+            Bytes frame;
+            u32 cur=desc;
+            for(unsigned seg=0;seg<16 && cur>=0x3ffae000u && cur<0x40000000u;++seg) {
+                u32 w0=0,buf=0,next=0;
+                if(!read(cur,4,w0,false) || !read(cur+4,4,buf,false) || !read(cur+8,4,next,false))break;
+                const unsigned len=(w0>>12)&0xfffu;
+                if(buf>=0x3ffae000u && buf<0x40000000u && len>0 && frame.size()+len<=2048) {
+                    for(unsigned i=0;i<len;++i) {
+                        u32 b=0;read(buf+i,1,b,false);
+                        frame.push_back((char)(b&0xffu));
+                    }
+                }
+                write(cur,4,w0&~0x80000000u);
+                if((w0&0x40000000u) || next<0x3ffae000u || next>=0x40000000u || next==cur)break;
+                cur=next;
+            }
+            registers_[canon]=value&~0x40000000u;
+            registers_[0x3ff73cc8]=stored(registers_,0x3ff73cc8)|(1u<<q);
+            registers_[0x3ff74270-60*q]=(1u<<25)|(1u<<24);
+            registers_[0x3ff74284-60*q]=stored(registers_,0x3ff74258-60*q)&0xfffu;
+            registers_[0x3ff73cb8]=stored(registers_,0x3ff73cb8)&~0x2000u;
+            registers_[0xffff3000u]=stored(registers_,0xffff3000u)+1;
+            registers_[0x3ff73c48]=stored(registers_,0x3ff73c48)|0x80u;
+            if(wifi_dma_.air() && frame.size()>=10) {
+                Esp8266WifiDma::Frame tx_frame;
+                tx_frame.queue=q;tx_frame.rate=11;tx_frame.descriptor=desc;
+                tx_frame.ack_requested=(u8(frame[4])&1u)==0;
+                tx_frame.started=tx_frame.air_finished=tx_frame.completed=esp32_apb_ticks();
+                tx_frame.outcome=Esp8266WifiDma::SUCCESS;
+                tx_frame.bytes=frame;
+                wifi_dma_.air()->transmit(tx_frame);
+            }
+        }
+        if(canon==0x3ff73c40 || canon==0x3ff73c48 || canon==0x3ff73c4c ||
+           (canon>=0x3ff73ce8 && canon<=0x3ff73d20)) {
+            const u32 ena=stored(registers_,0x3ff73c40);
+            interrupts_.set_source(0,(stored(registers_,0x3ff73c48)&(ena|(ena?0x04u:0u)))!=0);
+        }
+        return true;
+    }
     if(address==0x3ff480c8 || (address>=0x3ff48400 && address<=0x3ff484b0)) {
         update_gpio_interrupts();
         const esp32_rtc_io::Result rtc=esp32_rtc_io::write(registers_,address,value,diagnostic_);
@@ -382,8 +515,8 @@ bool EspMachine::esp32_mmio_write(u32 address, u32 value)
      * forced-on overrides are removed. Explicit shutdown/isolation needs
      * a separate sleep/power transition model; never silently keep running. */
     if((address==0x3ff48080 && (value&0x0004949a)) ||
-       (address==0x3ff48084 && (value&0x000aaaa0)) ||
-       (address==0x3ff48088 && (value&0x5555a100)))
+       (address==0x3ff48084 && (value&(1u<<19))) ||
+       (address==0x3ff48088 && (value&(0x5555a100u & ~(1u<<28)))))
         return fault("ESP32 forced power-down or isolation is unsupported",address);
     u32 wdt_base=watchdog_register(address);
     if(wdt_base) {
@@ -451,20 +584,28 @@ bool EspMachine::esp32_mmio_write(u32 address, u32 value)
         /* Reset request bits are self-clearing and excluded by the normal
          * OPTIONS0 writable mask. Other oscillator/stall bits still latch. */
     }
-    if (address == 0x3ff5f068 || address == 0x3ff60068) {
-        u32 old = stored(registers_,address,0x13000);
-        registers_[address] = (value & 0xffff7000) | (old & 0x8000);
-        if ((value & 0x80000000u) && !(old & 0x80000000u)) {
-            unsigned count = (value>>16)&0x7fff, source = (value>>13)&3;
-            if (source == 3) return fault("reserved ESP32 calibration clock",address);
-            u32 hz = source == 1 ? 31250 : source == 2 ? 32768 : rtc_slow_hz(registers_);
-            u64 deadline = elapsed_us() + ((u64)(count ? count : 1)*1000000 + hz-1)/hz;
-            u32 state = 0xffff1100 + (address == 0x3ff60068 ? 16 : 0);
-            registers_[state] = (u32)deadline;
-            registers_[state+4] = (u32)(deadline>>32);
-            registers_[state+8] = (u32)((u64)count*xtal_frequency()*1000000/hz) << 7;
-            registers_[address] &= ~0x8000u;
+    u32 timg_base = (address >= 0x3ff60000 && address < 0x3ff600c0 && !(address & 3)) ? 0x3ff60000 :
+                    (address >= 0x3ff5f000 && address < 0x3ff5f0c0 && !(address & 3)) ? 0x3ff5f000 : 0;
+    if (timg_base) {
+        u32 offset = address - timg_base;
+        if (offset == 0x6c) return false; /* RTCCALICFG1 is read-only */
+        if (offset == 0x68) {
+            u32 old = stored(registers_,address,0x13000);
+            registers_[address] = (value & 0xffff7000) | (old & 0x8000);
+            if ((value & 0x80000000u) && !(old & 0x80000000u)) {
+                unsigned count = (value>>16)&0x7fff, source = (value>>13)&3;
+                if (source == 3) return fault("reserved ESP32 calibration clock",address);
+                u32 hz = source == 1 ? 31250 : source == 2 ? 32768 : rtc_slow_hz(registers_);
+                u64 deadline = elapsed_us() + ((u64)(count ? count : 1)*1000000 + hz-1)/hz;
+                u32 state = 0xffff1100 + (address == 0x3ff60068 ? 16 : 0);
+                registers_[state] = (u32)deadline;
+                registers_[state+4] = (u32)(deadline>>32);
+                registers_[state+8] = (u32)((u64)count*xtal_frequency()*1000000/hz) << 7;
+                registers_[address] &= ~0x8000u;
+            }
+            return true;
         }
+        registers_[address] = value;
         return true;
     }
     if (address >= 0x3ff10000 && address < 0x3ff14000 && !(address & 3)) {
@@ -502,6 +643,14 @@ bool EspMachine::esp32_mmio_write(u32 address, u32 value)
         return true;
     }
     if (address == 0x3ff5a114) { registers_[0x3ff5a108] &= ~(value & 3); return true; }
+    if (address == 0x3ff48854 || address == 0x3ff48890) {
+        if (value & (1u << 17)) {
+            registers_[address] = (value & ~(1u << 17)) | (1u << 16) | 0x800;
+        } else {
+            registers_[address] = value;
+        }
+        return true;
+    }
     const Register *reg = find_register(address);
     if (reg && reg->writable) {
         if(address==0x3ff0001c || address==0x3ff00020)

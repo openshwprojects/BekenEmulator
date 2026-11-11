@@ -49,7 +49,7 @@ bool EspMachine::apply_pending_reset()
             frc_timers_.reset(esp32_apb_ticks());
         }
         app_reset_=true;gpio_levels_=0;
-        putc1_=0;output_stack_.clear();flash_window_=0;cache_enabled_=true;
+        putc1_=0;output_stack_.clear();flash_window_=0;cache_enabled_=true;esp8266_timer_check_ticks_=0;
         if(domain==RESET_RTC) {
             rtc_epoch_us_=elapsed_us();rtc_wake_us_=rtc_calibration_us_=0;
         }

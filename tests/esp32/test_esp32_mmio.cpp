@@ -45,6 +45,32 @@ bool clock_configuration()
     CHECK(m.read(0x3ff4807c,4,v,false) && v==0xa9002400);
     CHECK(m.write(0x3ff4807c,4,0xffffffff));
     CHECK(m.read(0x3ff4807c,4,v,false) && v==0xffffff80);
+    CHECK(m.read(0x3ff48478,4,v,false) && v==0);
+    CHECK(m.write(0x3ff48478,4,0x80000000));
+    CHECK(m.read(0x3ff48478,4,v,false) && v==0x80000000);
+    CHECK(m.read(0x3ff488a0,4,v,false) && v==3);
+    CHECK(m.write(0x3ff488a0,4,v&~0x0fu));
+    CHECK(m.read(0x600088a0,4,v,false) && v==0);
+    CHECK(m.write(0x3ff48854,4,0x40000));
+    CHECK(m.read(0x3ff48854,4,v,false) && v==0x40000);
+    CHECK(m.write(0x3ff48854,4,0x60000));
+    CHECK(m.read(0x3ff48854,4,v,false) && (v & 0x30000) == 0x10000 && (v & 0xffff) == 0x800);
+    CHECK(m.read(0x3ff48834,4,v,false) && v==0xffffffff);
+    CHECK(m.write(0x60008834,4,0x12345678));
+    CHECK(m.read(0x3ff48834,4,v,false) && v==0x12345678);
+    CHECK(m.read(0x3ff510a0,4,v,false) && v==0);
+    CHECK(m.write(0x3ff510a0,4,0x3ffb1234));
+    CHECK(m.read(0x600110a0,4,v,false) && v==0x3ffb1234);
+    CHECK(m.read(0x3ff5106c,4,v,false) && v==0);
+    CHECK(m.write(0x6001106c,4,0xabcdef01));
+    CHECK(m.read(0x3ff5106c,4,v,false) && v==0xabcdef01);
+    CHECK(m.read(0x3ff51000,4,v,false) && v==0);
+    CHECK(m.read(0x3ff51014,4,v,false) && v==0);
+    CHECK(m.read(0x3ff51040,4,v,false) && v==0);
+    CHECK(m.read(0x3ff510f8,4,v,false) && v==0);
+    CHECK(m.read(0x3ff51104,4,v,false) && v==0);
+    CHECK(m.read(0x3ff51110,4,v,false) && v==0);
+    CHECK(!m.read(0x3ff51004,4,v,false));
     CHECK(m.read(0x3ff000cc,4,v,false) && v==0xfffce030);
     CHECK(m.write(0x3ff000cc,4,0x8000)); /* bootloader enables RNG clock */
     CHECK(m.read(0x3ff000cc,4,v,false) && v==0x8000);
@@ -53,6 +79,10 @@ bool clock_configuration()
     CHECK(m.read(0x3ff000d0,4,v,false) && v==0x7ff); /* eleven documented reset lines */
     CHECK(m.write(0x3ff000d0,4,v&~0x24u)); /* SDK periph_module_enable releases reset */
     CHECK(m.read(0x3ff000d0,4,v,false) && v==0x7db);
+    CHECK(m.read(0x3ff000d4,4,v,false) && v==0xff);
+    CHECK(m.read(0x3ff000d8,4,v,false) && v==0x02001001);
+    CHECK(m.write(0x3ff000d8,4,0x04001001));
+    CHECK(m.read(0x3ff000d8,4,v,false) && v==0x04001001);
     CHECK(m.read(0x3ff000cc,4,v,false) && v==0x8000); /* independent clock register */
     CHECK(m.read(0x3ff480d4,4,v,false) && v==0x13ff0000); /* brownout default threshold/wait */
     CHECK(m.write(0x3ff480d4,4,0x40028000)); /* real SDK setup: detect on, RF powerdown enabled */
@@ -422,6 +452,9 @@ bool efuse_read_controller()
     CHECK(m.read(0x3ff5a10c, 4, v, false) && v == 0);
     CHECK(!m.write(0x3ff5a104, 4, 2)); /* programming not silently emulated */
     CHECK(!m.read(0x3ff5a180, 4, v, false)); /* reserved registers are not RAM */
+    CHECK(m.read(0x3ff5a1fc, 4, v, false) && v == 0x16041400);
+    CHECK(m.write(0x3ff5a1fc, 4, 0));
+    CHECK(m.read(0x3ff5a1fc, 4, v, false) && v == 0);
     return true;
 }
 

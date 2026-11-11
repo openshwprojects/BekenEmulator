@@ -25,20 +25,19 @@ bool configuration(u32 address)
     }
     /* Espressif NONOS SDK wDev_Option_Init programs these individual MAC
      * configuration words. None is a packet-completion or ready flag. */
+    if(address>=0x3ff20000 && address<=0x3ff201fc && !(address&3)) return true;
+    if(address>=0x3ff20800 && address<=0x3ff2083c && !(address&3)) return true;
     switch(address) {
-    case 0x3ff20000:case 0x3ff20004: /* receive control */
-    case 0x3ff20008:case 0x3ff2000c:case 0x3ff20010: /* RX descriptor heads */
-    case 0x3ff2007c:case 0x3ff20080: /* RX buffer ring limits */
-    case 0x3ff20084:case 0x3ff20088: /* aggregate-length descriptor ring */
-    case 0x3ff2006c:case 0x3ff20178: /* RX policy and block-ack configuration */
-    case 0x3ff20800:case 0x3ff20804: /* per-interface crypto policy */
-    case 0x3ff20808:case 0x3ff2080c: /* key-table selection and valid slots */
+    case 0x3ff2006c:case 0x3ff20178:case 0x3ff201c0: /* RX policy and block-ack configuration */
     case 0x3ff20400:case 0x3ff20404:case 0x3ff20408: /* ACK rate table */
     case 0x3ff2040c: /* wDevForceAck6M rate selection */
+    case 0x3ff20c08:case 0x3ff20c0c:case 0x3ff20c10: /* timer matches */
     case 0x3ff20c14: /* MAC option enables and receive timing */
     case 0x3ff20c68:case 0x3ff20c6c: /* receive/transmit timing */
     case 0x3ff20c70: /* PHY/MAC configuration */
     case 0x3ff20c74: /* pm_sleep_set_mac / pm_wakeup_init timing and gates */
+    case 0x3ff20c78:case 0x3ff20c7c:case 0x3ff20c80:case 0x3ff20c84:
+    case 0x3ff20ca0:
     /* NONOS SDK3.0.5 wDev_AppendRxBlocks updates these policy words
      * after replenishing its RX pool, preserving low28 and setting the
      * high nibbles to1/5 when at least two buffers remain. Retaining the
@@ -46,8 +45,10 @@ bool configuration(u32 address)
     case 0x3ff20ca8:case 0x3ff20cac:
     case 0x3ff20de0: /* SDK 3.x pm_sleep_set_mac power-switch timing */
     case 0x3ff20ce4:case 0x3ff20ce8: /* remaining Tx_Copy2Queue staging words */
-    case 0x3ff20c88:case 0x3ff20c90:case 0x3ff20c94:
-    case 0x3ff20e08:return true;
+    case 0x3ff20c88:case 0x3ff20c8c:case 0x3ff20c90:case 0x3ff20c94:case 0x3ff20c98:case 0x3ff20c9c:
+    case 0x3ff20e08:case 0x3ff21014:
+    case 0x3ff21018:case 0x3ff2101c:
+    case 0x3ff21098:case 0x3ff2109c:case 0x3ff210a0:return true;
     default:
         /* Two BSSID/address values and their compare masks, individually
          * programmed by wDev_SetBssid and wDev_SetMacAddress. */
@@ -66,8 +67,8 @@ bool queue_lifetime(u32 address)
 }
 bool handles(u32 address)
 {
-    return address==0x3ff20c00 || address==MASK || address==RAW || address==STATUS || address==CLEAR ||
-        address==0x3ff20c84 || address==0x3ff20410 || address==0x3ff201d0 ||
+    return address==0x3ff20c00 || address==0x3ff20c04 || address==MASK || address==RAW || address==STATUS || address==CLEAR ||
+        address==0x3ff20c84 || (address>=0x3ff20410 && address<=0x3ff2043c && !(address&3)) || address==0x3ff201d0 ||
         address==RNG || address==ACK_SIGNAL || address==QUEUE_EVENTS || queue_lifetime(address) || configuration(address);
 }
 bool interrupt(const Registers &registers)
@@ -85,6 +86,7 @@ void raise_queue_events(Registers &registers,u32 collisions,u32 expirations)
 bool read(Registers &registers,u32 address,u64 microseconds,u32 &value)
 {
     if(address==0x3ff20c00){value=(u32)microseconds;return true;}
+    if(address==0x3ff20c04){value=(u32)(microseconds>>32);return true;}
     /* wDev_ProcessFiq tests bit24 before using the signal byte at bits23:16
      * for TX completion. A broadcast/no-ACK exchange has no ACK sample.
      * The functional Air interface supplies ACK outcome but no measured
@@ -105,7 +107,7 @@ bool read(Registers &registers,u32 address,u64 microseconds,u32 &value)
     if(address==STATUS){value=get(registers,EVENTS)&get(registers,MASK);return true;}
     /* pm_check_mac_idle polls TX state[3:0] at20410 and RX state[15:12] at201d0.
      * Both are idle at reset; active DMA owns their state transitions. */
-    if(address==MASK || address==0x3ff20c84 || address==0x3ff20410 || address==0x3ff201d0 ||
+    if(address==MASK || address==0x3ff20c84 || (address>=0x3ff20410 && address<=0x3ff2043c && !(address&3)) || address==0x3ff201d0 ||
        queue_lifetime(address) || configuration(address)) {
         value=get(registers,address);return true;
     }
@@ -125,6 +127,12 @@ bool write(Registers &registers,u32 address,u32 value)
     if(queue_lifetime(address)) {
         if(value&~0x00fff000u)return false;
         registers[address]=value;return true;
+    }
+    if(address==ACK_SIGNAL || address==0x3ff20018 || address==0x3ff2001c || address==0x3ff2003c || address==0x3ff201d0 ||
+       (address>=0x3ff20410 && address<=0x3ff2043c && !(address&3))) {
+        if(value!=0 && value!=get(registers,address))return false;
+        if(value==0)registers[address]=0;
+        return true;
     }
     if(address==MASK || configuration(address)){registers[address]=value;return true;}
     return false;

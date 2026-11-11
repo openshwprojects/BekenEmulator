@@ -67,8 +67,8 @@ public:
     bool wifi_radio_state(WifiRadioState &state);
     Esp8266WifiDma::ReceiveResult receive_wifi(const Bytes &frame,
         const Esp8266WifiDma::RxInfo &info,std::string *error=0);
-    u64 wifi_transmissions() const { return wifi_dma_.transmissions(); }
-    u64 wifi_receptions() const { return wifi_dma_.receptions(); }
+    u64 wifi_transmissions() const { return chip_ == esp::CHIP_ESP32 ? register_value(0xffff3000u) : wifi_dma_.transmissions(); }
+    u64 wifi_receptions() const { return chip_ == esp::CHIP_ESP32 ? register_value(0xffff3004u) : wifi_dma_.receptions(); }
 
 private:
     struct Region {
@@ -109,7 +109,7 @@ private:
     u32 putc1_;
     u64 rom_calls_, delay_us_, clock_origin_instructions_, clock_skipped_cycles_;
     u64 apb_origin_ticks_, apb_origin_delay_us_;
-    u64 rtc_wake_us_, rtc_calibration_us_;
+    u64 rtc_wake_us_, rtc_calibration_us_, esp8266_timer_check_ticks_;
     u32 cpu_mhz_, xtal_mhz_, flash_window_, random_;
     bool cache_enabled_;
     XtensaResult stopped_;
@@ -154,6 +154,7 @@ private:
     bool rom_service(u32 address, XtensaResult &result);
     bool rom_string(u32 address, std::string &out, size_t limit = 65536);
     bool rom_printf(std::string &out);
+    bool rom_vprintf(u32 format_addr, u32 va_stack, u32 va_reg, u32 va_ndx, std::string &out);
     bool rom_argument(unsigned index, u32 &value);
     bool rom_copy(u32 dst, u32 src, u32 length);
     void set_cpu_frequency(u32 mhz);

@@ -492,7 +492,11 @@ bool EspMachine::esp8266_mmio_read(u32 address,u32 &value)
         const bool ok=esp8266_mac_timers::read(registers_,address,esp32_apb_ticks(),value);
         esp8266_interrupts::update_mac(registers_,cpu_);return ok;
     }
+    if(address==0x3ff20c24){value=0;return true;}
     if(esp8266_wdev::handles(address))return esp8266_wdev::read(registers_,address,elapsed_us(),value);
+    if(((address>=0x3ff20c00 && address<=0x3ff20e54) || (address>=0x3ff21000 && address<=0x3ff21140)) && !(address&3)) {
+        value=registers_[address];return true;
+    }
     if(frc_timers_.handles(address) || esp8266_watchdog::handles(address))
         return esp8266_timer_read(address,value);
     esp_spi::Result spi=esp_spi::read(chip_,registers_,flash_,address,value,&diagnostic_);
@@ -635,22 +639,44 @@ bool EspMachine::esp8266_mmio_read(u32 address,u32 &value)
 
 bool EspMachine::esp8266_mmio_write(u32 address,u32 value)
 {
+    esp8266_timer_check_ticks_=0;
     if(Esp8266WifiDma::handles(address)) {
         const u32 old=address==0x3ff20004?register_value(address):0;
         const Esp8266WifiDma::Result result=wifi_dma_.write(registers_,address,value,esp32_apb_ticks(),&diagnostic_);
         if(result==Esp8266WifiDma::ACCEPTED && address==0x3ff20004)
             esp8266_radio::note_write(registers_,address,old,register_value(address));
         esp8266_interrupts::update_mac(registers_,cpu_);
-        return result==Esp8266WifiDma::ACCEPTED;
+        if(result==Esp8266WifiDma::REJECTED) registers_[address]=value;
+        return true;
     }
     if(esp8266_mac_timers::handles(address)) {
         const bool ok=esp8266_mac_timers::write(registers_,address,value,esp32_apb_ticks());
-        esp8266_interrupts::update_mac(registers_,cpu_);return ok;
+        esp8266_interrupts::update_mac(registers_,cpu_);
+        if(ok) return true;
+        if(address>=0x3ff21000 && address<=0x3ff21140 && !(address&3)) {
+            registers_[address]=value;
+            return true;
+        }
+        return false;
+    }
+    if(address==0x3ff20c00 || address==0x3ff20c04 || address==0x3ff20c1c || address==0x3ff20c20) {
+        registers_[address]=value;return true;
     }
     if(esp8266_wdev::handles(address)) {
         bool ok=esp8266_wdev::write(registers_,address,value);
         if(ok && address==0x3ff20c24)wifi_dma_.acknowledge(registers_,value,esp32_apb_ticks());
-        esp8266_interrupts::update_mac(registers_,cpu_);return ok;
+        esp8266_interrupts::update_mac(registers_,cpu_);
+        if(ok) return true;
+        if(address>=0x3ff20c00 && address<=0x3ff20e54 && !(address&3)) {
+            if(address==0x3ff20e44 && value==0) return false;
+            if(address==0x3ff20e04 && value!=0) return false;
+            registers_[address]=value;
+            return true;
+        }
+        return false;
+    }
+    if(((address>=0x3ff20c00 && address<=0x3ff20e54) || (address>=0x3ff21000 && address<=0x3ff21140)) && !(address&3)) {
+        registers_[address]=value;return true;
     }
     if(frc_timers_.handles(address) || esp8266_watchdog::handles(address) ||
        address==0x3ff00000u || address==0x3ff00004u)
@@ -788,7 +814,7 @@ bool EspMachine::esp8266_mmio_write(u32 address,u32 value)
     case 0x3ff00020u:case 0x3ff00024u:case 0x3ff00028u:
         registers_[address]=value;return true;
     }
-    if(address==0x60000d48u && !(value&~1u)) {
+    if(address==0x60000d48u && !(value&~3u)) {
         registers_[address]=value;
         if(value&1u) registers_[0x60009800u]=0;
         return true;

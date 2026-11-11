@@ -30,7 +30,8 @@ private:
     struct Timer {
         u64 counter, captured, load, alarm, phase, timestamp;
         u32 config;
-    } timers_[2][2];
+    } timers_[2][3];
+    u32 lact_rtc_[2];
     XtensaCpu *cpus_[2];
     u8 matrix_[2][69];
     bool sources_[2][69];

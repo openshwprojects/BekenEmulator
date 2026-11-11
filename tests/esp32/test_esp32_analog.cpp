@@ -100,9 +100,11 @@ int esp32_analog_tests()
         ANALOG_CHECK(write(r,address,command,error)==OK);
         ANALOG_CHECK(read(r,address,value)==OK && ((value>>16)&255)==analog_config[i][3]);
     }
-    ANALOG_CHECK(write(r,0x3ff4e004,0x01000067,error)==ERROR); /* continuous TX is not configuration */
-    ANALOG_CHECK(write(r,0x3ff4e00c,0x01a00168,error)==ERROR); /* active RC calibration remains explicit */
-    ANALOG_CHECK(write(r,0x3ff4e008,0x0000046a,error)==ERROR);
+    ANALOG_CHECK(write(r,0x3ff4e004,0x01000067,error)==OK);
+    ANALOG_CHECK(write(r,0x3ff4e004,0x01000d67,error)==ERROR); /* reg 13 is unsupported */
+    ANALOG_CHECK(write(r,0x3ff4e00c,0x01a00168,error)==OK);
+    ANALOG_CHECK(write(r,0x3ff4e00c,0x00000268,error)==ERROR);
+    ANALOG_CHECK(write(r,0x3ff4e008,0x0000036a,error)==ERROR);
     /* No lock for absent divider programming, or a frequency outside the
      * virtual oscillator curve. A different XTAL changes the decoded RF. */
     for(unsigned scenario=0;scenario<3;++scenario) {
@@ -139,14 +141,16 @@ int esp32_analog_tests()
     ANALOG_CHECK(read(r,0x6000e050,value)==OK && value==0xc0);
     ANALOG_CHECK(write(r,0x3ff4e060,2,error)==OK);
     ANALOG_CHECK(read(r,0x6000e060,value)==OK && value==2);
-    ANALOG_CHECK(write(r,0x3ff4e050,0xc2,error)==ERROR); /* manual SAR trigger */
-    ANALOG_CHECK(read(r,0x3ff4e050,value)==OK && value==0xc0);
+    ANALOG_CHECK(read(r,0x3ff4e080,value)==UNHANDLED); /* no SAR sample before conversion */
+    ANALOG_CHECK(write(r,0x3ff4e050,0xc2,error)==OK); /* manual SAR trigger */
+    ANALOG_CHECK(read(r,0x3ff4e050,value)==OK && value==0xc2);
+    ANALOG_CHECK(read(r,0x3ff4e080,value)==OK && value==((~100u)&0xfff));
+    ANALOG_CHECK(write(r,0x3ff4e050,0x04,error)==ERROR); /* unsupported detector control bit */
     ANALOG_CHECK(write(r,0x3ff4e060,3,error)==ERROR); /* one-shot detector trigger */
     ANALOG_CHECK(read(r,0x3ff4e060,value)==OK && value==2);
     ANALOG_CHECK(write(r,0x3ff4e05c,0x00400000,error)==ERROR);
     ANALOG_CHECK(write(r,0x3ff4e060,0x01000002,error)==ERROR); /* rate is not writable */
     ANALOG_CHECK(read(r,0x3ff4e058,value)==UNHANDLED);
-    ANALOG_CHECK(read(r,0x3ff4e080,value)==UNHANDLED); /* no invented SAR sample */
     /* get_rf_freq_init selects manual capacitor controls before it starts
      * the existing RFPLL calibration trigger sequence. */
     ANALOG_CHECK(write(r,0x3ff4e004,0x016e0162,error)==OK);

@@ -44,32 +44,48 @@ bool run_fixture(const std::string &root, const EspFixture &fixture,
             return false;
         }
     }
-    u32 history[2][64] = {{0}};
+    u32 history[2][256] = {{0}};
     u64 steps = 0;
     EspAcceptance acceptance(fixture.boot_marker,fixture.app_marker,bootloader,fixture.uart_command[0]!=0);
     EspButtonAcceptance button;
+    size_t factory_responded = 0;
     XtensaResult result = XTENSA_OK;
     double started = mono_time();
     for (; steps < budget; ++steps) {
         if(trace && steps && steps%10000000==0) {
-            printf("[progress] %s: instructions=%llu us=%llu core=%u PC=%08x boot=%s app=%s uart=%u\n",
+            bool bin=false,bout=false,ben=false,rin=false,rout=false,ren=false;
+            if(fixture.button_pin>=0) {
+                machine.gpio_state(fixture.button_pin,bin,bout,ben);
+                machine.gpio_state(fixture.relay_pin,rin,rout,ren);
+            }
+            printf("[progress] %s: instructions=%llu us=%llu core=%u PC=%08x boot=%s app=%s btn(in=%d en=%d) rly(out=%d en=%d) btn_done=%s\n",
                 fixture.label,(unsigned long long)machine.instructions(),
                 (unsigned long long)machine.elapsed_us(),machine.active_core(),
                 machine.cpu(machine.active_core()).pc(),acceptance.boot_seen()?"yes":"no",
-                acceptance.app_seen()?"yes":"no",(unsigned)machine.uart().size());
+                acceptance.app_seen()?"yes":"no",bin?1:0,ben?1:0,rout?1:0,ren?1:0,button.complete()?"yes":"no");
             fflush(stdout);
         }
         if(trace)for(unsigned core=0;core<machine.core_count();++core)
-            history[core][steps % 64] = machine.cpu(core).pc();
+            history[core][steps % 256] = machine.cpu(core).pc();
         result = machine.step();
         if (result != XTENSA_OK) break;
         acceptance.observe(machine.uart(),machine.instructions(),machine.elapsed_us(),machine.reset_count());
         /* Query-capable firmware must actually schedule its UART task before
          * it can produce the required reply. Retry after each million steps
-         * while firmware initializes its UART task. */
+         * while firmware initializes its UART task. For factory-protocol
+         * fixtures like Sonoff NSPanel, complete the factory handshake first. */
         if (fixture.uart_command[0] && steps > 0 && steps % 1000000 == 0) {
-            machine.receive_uart(0, fixture.uart_command);
-            acceptance.query_sent(machine.uart().size());
+            size_t fpos = machine.uart().find("factory?", factory_responded);
+            if (fpos != std::string::npos && machine.uart().find("factory mode") == std::string::npos) {
+                if (trace) printf("[handshake] %s: sending factory! at step %llu\n", fixture.label, (unsigned long long)steps);
+                machine.receive_uart(0, "factory!\r\n");
+                factory_responded = fpos + 8;
+            } else if (machine.uart().find("factory mode") != std::string::npos ||
+                       (machine.uart().find("factory?") == std::string::npos && !machine.uart().empty() && fixture.label != std::string("Sonoff NSPanel"))) {
+                if (trace && steps % 10000000 == 0) printf("[query] %s: sending %s at step %llu\n", fixture.label, fixture.uart_command, (unsigned long long)steps);
+                machine.receive_uart(0, fixture.uart_command);
+                acceptance.query_sent(machine.uart().size());
+            }
         }
         if(fixture.button_pin>=0) {
             bool input=false,output=false,enabled=false;
@@ -110,15 +126,16 @@ bool run_fixture(const std::string &root, const EspFixture &fixture,
         machine.reset_count(),machine.active_core(),machine.cpu(machine.active_core()).pc(),
         (unsigned long long)machine.elapsed_us(),(unsigned)machine.uart().size());
     if (!passed) {
+        if (!machine.uart().empty()) printf("  UART output: %s\n", machine.uart().c_str());
         if (!machine.diagnostic().empty()) printf("  %s\n", machine.diagnostic().c_str());
         else printf("  %s (result=%d, opcode=%06x)\n",
             error.empty() ? "Required runtime milestone was not reached" : error.c_str(),
             (int)result, machine.cpu(machine.active_core()).last_instruction());
         if (trace) {
-            u64 first = steps < 63 ? 0 : steps - 63;
+            u64 first = steps < 255 ? 0 : steps - 255;
             for (u64 i = first; i <= steps; ++i) {
-                printf("  PC[%llu] core0=%08x", (unsigned long long)i, history[0][i % 64]);
-                if(machine.core_count()>1)printf(" core1=%08x",history[1][i % 64]);
+                printf("  PC[%llu] core0=%08x", (unsigned long long)i, history[0][i % 256]);
+                if(machine.core_count()>1)printf(" core1=%08x",history[1][i % 256]);
                 printf("\n");
             }
         }

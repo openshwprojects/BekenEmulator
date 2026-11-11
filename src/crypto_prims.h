@@ -41,6 +41,15 @@ Bytes sha256(const Bytes &data);
 void sha256_compress(u32 state[8], const u8 block[64]);
 Bytes md5(const Bytes &data);
 
+struct Md5Context {
+    u32 buf[4];
+    u32 bits[2];
+    u8 in[64];
+};
+void md5_init(Md5Context *ctx);
+void md5_update(Md5Context *ctx, const u8 *data, size_t len);
+void md5_final(u8 digest[16], Md5Context *ctx);
+
 /* Incremental SHA-256, for the running TLS transcript hash. */
 class Sha256 {
 public:

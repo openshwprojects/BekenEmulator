@@ -1,9 +1,9 @@
 #include "esp8266/esp8266_wifi_dma.h"
 #include "esp8266/esp8266_wdev.h"
 #include "esp/esp_state.h"
-#include <stdio.h>
 namespace {
 const u32 TX_START=1u<<18,TX_COMPLETE=1u<<19,TX_EVENTS=TX_START|TX_COMPLETE;
+const u32 MASK=0x3ff20c18;
 const u32 TX_STATUS=0x3ff20c84,TX_STATE=0x3ff20410;
 const u32 RX_COMPLETE=1u<<8,RX_CONTROL=0x3ff20004,RX_HEAD=0x3ff20008;
 const u32 RX_EOF=0x3ff20014,RX_TIME=0x3ff210fc,RX_STATE=0x3ff201d0;
@@ -125,10 +125,9 @@ bool Esp8266WifiDma::capture(const Registers &regs,unsigned queue,u32 control,
          * and the programmed PHY frame length instead. */
         const unsigned size=flags&4095,count=(flags>>12)&4095;
         if(count>length-pending.frame.bytes.size()) {
-            char detail[240];snprintf(detail,sizeof(detail),
+            return fail(error,strf(
                 "Wi-Fi TX descriptor length exceeds its frame (queue%u descriptor%08x flags%08x size%u length%u captured%u PHY%08x control%08x)",
-                queue,descriptor,flags,size,count,(unsigned)pending.frame.bytes.size(),phy,control);
-            return fail(error,detail);
+                queue,descriptor,flags,size,count,(unsigned)pending.frame.bytes.size(),phy,control).c_str());
         }
         /* ROM lldesc_build_chain and SDK allocation preserve bits28:24.
          * They are software metadata, not an offset applied by the MAC. */
@@ -189,7 +188,11 @@ Esp8266WifiDma::Result Esp8266WifiDma::write(Registers &regs,u32 address,u32 val
         regs[address]=value;return ACCEPTED;
     }
     if(stage_!=IDLE && current_.frame.queue==queue) {
-        fail(error,"Wi-Fi TX queue is already active");return REJECTED;
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Wi-Fi TX queue is already active (stage=%d, pending=0x%x, now=%llu, deadline=%llu)",
+                 (int)stage_, (unsigned)pending_events_, (unsigned long long)now, (unsigned long long)deadline_);
+        fail(error, buf);
+        return REJECTED;
     }
     for(size_t i=0;i<queue_.size();++i)if(queue_[i].frame.queue==queue) {
         fail(error,"Wi-Fi TX queue already has a pending frame");return REJECTED;
@@ -217,6 +220,8 @@ void Esp8266WifiDma::finish(Registers &regs,u64 now)
     ++transmissions_;
     if(completed_.size()==256)completed_.pop_front();
     completed_.push_back(current_.frame);stage_=REPORTED;
+    const u32 required=reg(regs,MASK)&TX_EVENTS;
+    if(!required) {pending_events_=0;stage_=IDLE;begin(regs,now);advance(regs,now);}
 }
 
 void Esp8266WifiDma::advance(Registers &regs,u64 now)
@@ -247,7 +252,11 @@ void Esp8266WifiDma::acknowledge(Registers &regs,u32 events,u64 now)
 {
     pending_events_&=~(events&TX_EVENTS);
     if(events&RX_COMPLETE)rx_reported_=false;
-    if(stage_==REPORTED && !pending_events_) {stage_=IDLE;begin(regs,now);advance(regs,now);}
+    const u32 required=reg(regs,MASK)&TX_EVENTS;
+    if(stage_==REPORTED && !(pending_events_&required)) {
+        pending_events_&=required;
+        stage_=IDLE;begin(regs,now);advance(regs,now);
+    }
 }
 
 bool Esp8266WifiDma::next_event_ticks(u64 now,u64 &ticks)const
@@ -409,5 +418,5 @@ void Esp8266WifiDma::finish_receive(Registers &regs)
     rx_writes_.clear();rx_cursor_=rx_next_;
     regs[RX_EOF]=rx_eof_;regs[RX_TIME]=(u32)rx_timestamp_;
     regs[RX_RATE]=(reg(regs,RX_PENDING_RATE)&15)<<16;regs.erase(RX_PENDING_RATE);
-    ++receptions_;rx_reported_=true;esp8266_wdev::raise(regs,RX_COMPLETE);
+    ++receptions_;regs[0x3ff201c0]=reg(regs,0x3ff201c0)+1;rx_reported_=true;esp8266_wdev::raise(regs,RX_COMPLETE);
 }

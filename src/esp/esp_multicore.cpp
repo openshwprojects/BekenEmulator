@@ -7,6 +7,7 @@
 bool EspMachine::esp8266_timer_read(u32 address,u32 &value)
 {
     if(esp8266_watchdog::handles(address)) {
+        esp8266_timer_check_ticks_=0;
         if(!update_esp8266_timers())return false;
         return esp8266_watchdog::read(registers_,address,esp32_apb_ticks(),value);
     }
@@ -15,9 +16,12 @@ bool EspMachine::esp8266_timer_read(u32 address,u32 &value)
 
 bool EspMachine::esp8266_timer_write(u32 address,u32 value)
 {
+    esp8266_timer_check_ticks_=0;
     if(esp8266_watchdog::handles(address)) {
         if(!update_esp8266_timers())return false;
-        return esp8266_watchdog::write(registers_,address,value,esp32_apb_ticks());
+        const bool ok=esp8266_watchdog::write(registers_,address,value,esp32_apb_ticks());
+        esp8266_timer_check_ticks_=0;
+        return ok;
     }
     if(address==0x3ff00000 || address==0x3ff00004) {
         if(address==0x3ff00000 && (register_value(address)&31)==1 && (value&31)!=1)cpu_.set_irq(14,false);
@@ -33,6 +37,7 @@ bool EspMachine::update_esp8266_timers()
 {
     if(chip_!=esp::CHIP_ESP8266)return true;
     const u64 now=esp32_apb_ticks();frc_timers_.advance(now);
+    if(now<esp8266_timer_check_ticks_)return true;
     esp8266_mac_timers::advance(registers_,now);
     wifi_dma_.advance(registers_,now);
     if(!wifi_dma_.receive_error().empty()) {
@@ -42,6 +47,11 @@ bool EspMachine::update_esp8266_timers()
     const unsigned events=esp8266_watchdog::advance(registers_,now);
     if((events&esp8266_watchdog::INTERRUPT) && (register_value(0x3ff00004)&1))cpu_.set_irq(8);
     if(events&esp8266_watchdog::RESET)request_reset(RESET_DIGITAL,1,4);
+    u64 delta,best=~u64(0);
+    if(wifi_dma_.next_event_ticks(now,delta) && delta<best)best=delta;
+    if(esp8266_mac_timers::next_event_ticks(registers_,now,delta) && delta<best)best=delta;
+    if(esp8266_watchdog::next_event_ticks(registers_,now,delta) && delta<best)best=delta;
+    esp8266_timer_check_ticks_=best==~u64(0)?~u64(0):now+best;
     return true;
 }
 
@@ -198,16 +208,18 @@ XtensaResult EspMachine::step_core()
     XtensaCpu &current=active_cpu();
     XtensaResult result;
     const u32 pc=current.pc();
-    const bool ram_boot=chip_==esp::CHIP_ESP32 && pc>=0x40000000 && pc<0x40008000 &&
-        (register_value(0x3ff00000+active_core_*4)&1);
-    Region *code=region(ram_boot?0x400b0000+(pc-0x40000000):pc,1);
-    bool mapped_rom=code && code->executable && !code->flash_mapped && !code->writable;
-    if(!ram_boot && !mapped_rom && app_rom_bootstrap()) return XTENSA_OK;
-    if(!ram_boot && !mapped_rom && rom_service(pc,result)) return result;
     const u32 rom_end=chip_==esp::CHIP_ESP32?0x40070000u:0x40010000u;
-    if(!ram_boot && !mapped_rom && pc>=0x40000000u && pc<rom_end) {
-        diagnostic_=strf("unsupported %s ROM service at 0x%08x",esp::chip_name(chip_),pc);
-        return XTENSA_EXCEPTION;
+    if(pc>=0x40000000u && pc<rom_end) {
+        const bool ram_boot=chip_==esp::CHIP_ESP32 && pc<0x40008000 &&
+            (register_value(0x3ff00000+active_core_*4)&1);
+        Region *code=region(ram_boot?0x400b0000+(pc-0x40000000):pc,1);
+        bool mapped_rom=code && code->executable && !code->flash_mapped && !code->writable;
+        if(!ram_boot && !mapped_rom && app_rom_bootstrap()) return XTENSA_OK;
+        if(!ram_boot && !mapped_rom && rom_service(pc,result)) return result;
+        if(!ram_boot && !mapped_rom) {
+            diagnostic_=strf("unsupported %s ROM service at 0x%08x",esp::chip_name(chip_),pc);
+            return XTENSA_EXCEPTION;
+        }
     }
     result=current.step();
     if(result==XTENSA_EXCEPTION) {

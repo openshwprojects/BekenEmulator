@@ -486,11 +486,21 @@ bool ArmCpu::t32_group_f0(u32 insn, u32 pc, bool in_it)
             if ((insn & 0x04602000u) == 0x00600000u) { /* MRS */
                 if ((insn & 0xEF) == 0x20)
                     return op_mrs_banked((insn >> 20) & 1, ((insn & 0x10) ? 0x10 : 0) | rn, rd);
-                if ((insn & 0x000F00FFu) == 0x000F0000u) {
-                    bool r = (insn >> 20) & 1;
-                    if (r && cur_mode() == MODE_USR)
-                        return false;
-                    wreg(rd, mrs_value(r));
+                if ((insn & 0x000F0000u) == 0x000F0000u) {
+                    u32 sysm = insn & 0xFF;
+                    if (sysm == 0) {
+                        bool r = (insn >> 20) & 1;
+                        if (r && cur_mode() == MODE_USR)
+                            return false;
+                        wreg(rd, mrs_value(r));
+                        return true;
+                    }
+                    /* Cortex-M special registers */
+                    u32 val = 0;
+                    if (sysm == 5) val = 0; /* IPSR: 0 = thread mode */
+                    else if (sysm == 8 || sysm == 9) val = r_[13]; /* MSP / PSP */
+                    else if (sysm == 1 || sysm == 2 || sysm == 3) val = mrs_value(false); /* XPSR */
+                    wreg(rd, val);
                     return true;
                 }
             }
@@ -499,6 +509,8 @@ bool ArmCpu::t32_group_f0(u32 insn, u32 pc, bool in_it)
                     return op_msr_banked((insn >> 20) & 1, ((insn & 0x10) ? 0x10 : 0) | rd, rn);
                 if ((insn & 0xFF) == 0)
                     return op_msr(r_[rn], rd, (insn >> 20) & 1);
+                /* Cortex-M special registers (PRIMASK, BASEPRI, etc.) */
+                return true;
             }
             if ((insn & 0x04702FFFu) == 0x00400F00u) { /* BXJ: a plain BX */
                 branch_interwork(r_[rn]);

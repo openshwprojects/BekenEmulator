@@ -242,7 +242,8 @@ bool gpio_registers()
     CHECK(m.write(0x60000d48,4,1));
     CHECK(m.read(0x60000d48,4,value,false) && value==1);
     CHECK(m.write(0x60000d48,4,0));
-    CHECK(!m.write(0x60000d48,4,2));
+    CHECK(m.write(0x60000d48,4,2));
+    CHECK(!m.write(0x60000d48,4,4));
     CHECK(!m.read(0x60000d44,4,value,false));
     CHECK(m.read(0x3ff00058,4,value,false) && (value&0x9000)==0x9000);
     CHECK(!m.write(0x3ff00058,4,0));

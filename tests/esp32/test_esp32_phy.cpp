@@ -29,6 +29,10 @@ int esp32_phy_tests()
     PHY_CHECK(write(r,0x3ff5c080,1,error)==OK && !agc_enabled(r));
     PHY_CHECK(write(r,0x3ff5c080,2,error)==ERROR);
     PHY_CHECK(read(r,0x3ff5c080,value)==OK && value==1); /* failed write is atomic */
+    PHY_CHECK(write(r,0x3ff5c080,0x6001d408,error)==OK);
+    PHY_CHECK(read(r,0x3ff5c080,value)==OK && value==0x6001d408);
+    PHY_CHECK(write(r,0x3ff5c07c,0x03a10000,error)==OK);
+    PHY_CHECK(read(r,0x3ff5c07c,value)==OK && value==0x03a10000);
     PHY_CHECK(write(r,0x3ff5c038,0x80000000,error)==ERROR);
     PHY_CHECK(read(r,0x6001c038,value)==OK && value==0x04000000);
     PHY_CHECK(read(r,0x3ff5c020,value)==UNHANDLED);
@@ -287,9 +291,47 @@ int esp32_phy_tests()
     PHY_CHECK(read(r,0x3ff73d38,value)==OK && value==0x0c800000);
     r[0x3ff000d0]=4;
     PHY_CHECK(write(r,0x60033d38,0,error)==ERROR);
+    PHY_CHECK(write(r,0x60033084,0x7fffffff,error)==ERROR);
+    PHY_CHECK(write(r,0x60033cb8,0x17ff,error)==ERROR);
     r[0x3ff000d0]=0;
+    PHY_CHECK(read(r,0x3ff73084,value)==OK && value==0);
+    PHY_CHECK(write(r,0x3ff73084,0x7fffffff,error)==OK);
+    PHY_CHECK(read(r,0x60033084,value)==OK && value==0x7fffffff);
+    PHY_CHECK(read(r,0x3ff73cb8,value)==OK && value==0);
+    PHY_CHECK(write(r,0x3ff73cb8,0x17ff,error)==OK);
+    PHY_CHECK(read(r,0x60033cb8,value)==OK && value==0x17ff);
+    PHY_CHECK(read(r,0x3ff7302c,value)==OK && value==0);
+    PHY_CHECK(write(r,0x3ff7302c,0x12345678,error)==OK);
+    PHY_CHECK(read(r,0x6003302c,value)==OK && value==0x12345678);
+    PHY_CHECK(read(r,0x3ff7306c,value)==OK && value==0);
+    PHY_CHECK(write(r,0x3ff7306c,0x87654321,error)==OK);
+    PHY_CHECK(read(r,0x6003306c,value)==OK && value==0x87654321);
+    PHY_CHECK(read(r,0x3ff73c80,value)==OK && value==0);
+    PHY_CHECK(write(r,0x3ff73c80,0x55aa55aa,error)==OK);
+    PHY_CHECK(read(r,0x60033c80,value)==OK && value==0x55aa55aa);
+    PHY_CHECK(read(r,0x3ff73d18,value)==OK && value==0);
+    PHY_CHECK(write(r,0x3ff73d18,0x11223344,error)==OK);
+    PHY_CHECK(read(r,0x60033d18,value)==OK && value==0x11223344);
+    PHY_CHECK(read(r,0x3ff73d20,value)==OK && value==0);
+    PHY_CHECK(write(r,0x3ff73d20,0x55667788,error)==OK);
+    PHY_CHECK(read(r,0x60033d20,value)==OK && value==0x55667788);
     reset_mac(r);
     PHY_CHECK(read(r,0x60033d38,value)==OK && value==0);
+    PHY_CHECK(read(r,0x3ff73084,value)==OK && value==0);
+    PHY_CHECK(read(r,0x3ff73cb8,value)==OK && value==0);
+    PHY_CHECK(read(r,0x3ff7302c,value)==OK && value==0);
+    PHY_CHECK(read(r,0x3ff7306c,value)==OK && value==0);
+    PHY_CHECK(read(r,0x3ff73c80,value)==OK && value==0);
+    PHY_CHECK(read(r,0x3ff73d18,value)==OK && value==0);
+    PHY_CHECK(read(r,0x3ff73d20,value)==OK && value==0);
+    PHY_CHECK(write(r,0x3ff7101c,0x80000000u,error,312500)==OK);
+    PHY_CHECK(read(r,0x3ff7101c,value)==OK && value==1000);
+    PHY_CHECK(!(value&0x80000000u));
+    PHY_CHECK(write(r,0x3ff7121c,0x80000000u,error,625000)==OK);
+    PHY_CHECK(read(r,0x3ff7121c,value)==OK && value==2000);
+    PHY_CHECK(!(value&0x80000000u));
+    PHY_CHECK(read(r,0x3ff71004,value)==OK && value==0x08000b00);
+    PHY_CHECK(read(r,0x3ff71204,value)==OK && value==0x08000900);
 #undef PHY_CHECK
     return checks;
 }
